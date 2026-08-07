@@ -168,7 +168,7 @@ a { color: var(--forest-700); }
 }
 
 .content-card h2:first-child { margin-top: 0; }
-.embedded-page { display: grid; }
+.embedded-page { margin-top: 2.5rem; display: grid; }
 .embedded-page-error { padding: 1rem; border: 1px dashed #aabbb0; border-radius: .65rem; color: var(--muted); background: #f8faf8; }
 
 .prose, .content-card > p {
@@ -367,7 +367,7 @@ a { color: var(--forest-700); }
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin: 2rem 0;
+    margin: 0.5rem 0;
     padding: 1.5rem;
     border-radius: 1rem;
     background: var(--forest-100);
