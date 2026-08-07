@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" role="img" aria-labelledby="title description">
+  <title id="title">Waldbad Borkheide</title>
+  <desc id="description">Ovales Waldbad-Borkheide-Logo mit grünen Bäumen und blauen Wasserflächen.</desc>
+  <defs>
+    <clipPath id="oval-clip">
+      <ellipse cx="800" cy="610" rx="770" ry="560"/>
+    </clipPath>
+  </defs>
+
+  <ellipse cx="800" cy="610" rx="778" ry="568" fill="#fff" stroke="#fff" stroke-width="24"/>
+  <ellipse cx="800" cy="610" rx="770" ry="560" fill="#fff" stroke="#006b3f" stroke-width="14"/>
+  <ellipse cx="800" cy="610" rx="748" ry="538" fill="none" stroke="#006b3f" stroke-width="9"/>
+
+  <g fill="#006b3f">
+    <ellipse cx="334" cy="447" rx="64" ry="88"/>
+    <ellipse cx="238" cy="690" rx="94" ry="118"/>
+    <path d="M466 732C450 563 451 358 468 176C479 65 503 11 534 11C571 11 593 81 605 193C624 383 622 602 596 779C585 858 565 888 542 888C504 888 478 814 466 732Z" stroke="#fff" stroke-width="22" stroke-linejoin="round"/>
+    <ellipse cx="705" cy="444" rx="45" ry="230"/>
+    <ellipse cx="1112" cy="756" rx="75" ry="70"/>
+  </g>
+
+  <text x="774" y="490" fill="#211b1a" font-family="Arial, Helvetica, sans-serif" font-size="148" font-weight="700" letter-spacing="-3">Waldbad</text>
+  <text x="774" y="640" fill="#211b1a" font-family="Arial, Helvetica, sans-serif" font-size="148" font-weight="700" letter-spacing="-3">Borkheide</text>
+
+  <g fill="#55b2d8" clip-path="url(#oval-clip)">
+    <ellipse cx="875" cy="758" rx="520" ry="40"/>
+    <ellipse cx="1132" cy="895" rx="230" ry="47"/>
+    <ellipse cx="635" cy="1000" rx="380" ry="69"/>
+  </g>
+</svg>

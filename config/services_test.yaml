@@ -1,0 +1,5 @@
+services:
+    App\UI\Guestbook\Entry\Cli\ImportPublishedGuestbookEntriesCommand:
+        autowire: true
+        autoconfigure: true
+        public: true

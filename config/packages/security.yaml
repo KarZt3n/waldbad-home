@@ -1,11 +1,38 @@
 security:
+    role_hierarchy:
+        ROLE_SUPER_ADMIN:
+            - ROLE_ADMIN
+            - ROLE_ROLE_MANAGE
+            - ROLE_SYSTEM_MANAGE
+        ROLE_ADMIN:
+            - ROLE_PUBLISHER
+            - ROLE_MODERATOR
+            - ROLE_USER_MANAGE
+            - ROLE_MEMBERSHIP_MANAGE
+        ROLE_PUBLISHER:
+            - ROLE_EDITOR
+            - ROLE_CONTENT_PUBLISH
+            - ROLE_AUDIT_READ
+        ROLE_EDITOR:
+            - ROLE_VIEWER
+            - ROLE_CONTENT_EDIT
+        ROLE_MODERATOR:
+            - ROLE_VIEWER
+            - ROLE_GUESTBOOK_MODERATE
+            - ROLE_CONTACT_MANAGE
+            - ROLE_EVENT_HELP_MANAGE
+        ROLE_VIEWER:
+            - ROLE_CMS
+            - ROLE_CMS_READ
+
     # https://symfony.com/doc/current/security.html#registering-the-user-hashing-passwords
     password_hashers:
         Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
 
     # https://symfony.com/doc/current/security.html#loading-the-user-the-user-provider
     providers:
-        users_in_memory: { memory: null }
+        cms_users:
+            id: App\UI\IdentityAccess\Security\AuthenticatedUserProvider
 
     firewalls:
         dev:
@@ -14,18 +41,23 @@ security:
             security: false
         main:
             lazy: true
-            provider: users_in_memory
-
-            # Activate different ways to authenticate:
-            # https://symfony.com/doc/current/security.html#the-firewall
-
-            # https://symfony.com/doc/current/security/impersonating_user.html
-            # switch_user: true
+            provider: cms_users
+            json_login:
+                check_path: api_login
+                username_path: email
+                password_path: password
+                success_handler: App\UI\IdentityAccess\Security\LoginSuccessHandler
+                failure_handler: App\UI\IdentityAccess\Security\LoginFailureHandler
+            login_throttling:
+                max_attempts: 5
+                interval: '15 minutes'
+            logout:
+                path: api_logout
 
     # Note: Only the *first* matching rule is applied
     access_control:
-        # - { path: ^/admin, roles: ROLE_ADMIN }
-        # - { path: ^/profile, roles: ROLE_USER }
+        - { path: ^/api/admin, roles: ROLE_CMS }
+        - { path: ^/admin, roles: PUBLIC_ACCESS }
 
 when@test:
     security:
