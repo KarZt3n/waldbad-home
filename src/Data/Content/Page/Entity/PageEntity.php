@@ -18,6 +18,7 @@ class PageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource?: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout?: string|null,
@@ -32,6 +33,7 @@ class PageEntity
      *     eventIdentifier?: string|null,
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
+     *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey?: string|null
      * }>
      */
@@ -106,6 +108,7 @@ class PageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource?: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout?: string|null,
@@ -120,6 +123,7 @@ class PageEntity
      *     eventIdentifier?: string|null,
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
+     *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey?: string|null
      * }>
      */
@@ -134,6 +138,7 @@ class PageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource?: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout?: string|null,
@@ -148,6 +153,7 @@ class PageEntity
      *     eventIdentifier?: string|null,
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
+     *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey?: string|null
      * }> $blocks
      */

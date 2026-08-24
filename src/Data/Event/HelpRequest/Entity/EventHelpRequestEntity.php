@@ -18,6 +18,10 @@ class EventHelpRequestEntity
     #[ORM\OrderBy(['position' => 'ASC'])]
     private Collection $participationIntervals;
 
+    /** @var Collection<int, EventHelpRequestActivityEntity> */
+    #[ORM\OneToMany(targetEntity: EventHelpRequestActivityEntity::class, mappedBy: 'request', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private Collection $selectedActivities;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: Types::STRING, length: 36)]
@@ -50,6 +54,7 @@ class EventHelpRequestEntity
         private \DateTimeImmutable $updatedAt,
     ) {
         $this->participationIntervals = new ArrayCollection();
+        $this->selectedActivities = new ArrayCollection();
     }
 
     public function getId(): string { return $this->id; }
@@ -71,6 +76,17 @@ class EventHelpRequestEntity
         $this->participationIntervals->clear();
         foreach ($intervals as $interval) {
             $this->participationIntervals->add($interval);
+        }
+    }
+    /** @return list<EventHelpRequestActivityEntity> */
+    public function getSelectedActivities(): array { return array_values($this->selectedActivities->toArray()); }
+
+    /** @param list<EventHelpRequestActivityEntity> $activities */
+    public function replaceSelectedActivities(array $activities): void
+    {
+        $this->selectedActivities->clear();
+        foreach ($activities as $activity) {
+            $this->selectedActivities->add($activity);
         }
     }
     public function getSubmittedAt(): \DateTimeImmutable { return $this->submittedAt; }

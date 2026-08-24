@@ -19,6 +19,8 @@ readonly class EventHelpRequest
         public ?int $participationMinutes,
         /** @var list<ParticipationInterval> */
         public array $participationIntervals,
+        /** @var list<SelectedEventActivity> */
+        public array $selectedActivities,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -78,6 +80,7 @@ readonly class EventHelpRequest
             status: $participated ? EventHelpRequestStatus::Participated : EventHelpRequestStatus::NotParticipated,
             participationMinutes: $participated ? array_sum(array_map(static fn (ParticipationInterval $interval): int => $interval->minutes, $participationIntervals)) : 0,
             participationIntervals: $participated ? $participationIntervals : [],
+            selectedActivities: $this->selectedActivities,
             submittedAt: $this->submittedAt,
             updatedAt: $updatedAt,
         );

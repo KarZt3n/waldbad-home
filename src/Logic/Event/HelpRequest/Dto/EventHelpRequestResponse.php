@@ -5,6 +5,7 @@ namespace App\Logic\Event\HelpRequest\Dto;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\ParticipationInterval;
+use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
 
 readonly class EventHelpRequestResponse
 {
@@ -21,6 +22,8 @@ readonly class EventHelpRequestResponse
         public ?int $participationMinutes,
         /** @var list<ParticipationInterval> */
         public array $participationIntervals,
+        /** @var list<SelectedEventActivity> */
+        public array $selectedActivities,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -40,6 +43,7 @@ readonly class EventHelpRequestResponse
             status: $request->status,
             participationMinutes: $request->participationMinutes,
             participationIntervals: $request->participationIntervals,
+            selectedActivities: $request->selectedActivities,
             submittedAt: $request->submittedAt,
             updatedAt: $request->updatedAt,
         );

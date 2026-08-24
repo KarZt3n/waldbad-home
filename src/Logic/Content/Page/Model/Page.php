@@ -31,8 +31,8 @@ readonly class Page
             throw new BusinessRuleViolationException('Seitentitel und Navigationsbezeichnung dürfen nicht leer sein.');
         }
 
-        if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', $this->slug) !== 1) {
-            throw new BusinessRuleViolationException('Der Slug darf nur Kleinbuchstaben, Zahlen und Bindestriche enthalten.');
+        if (preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/', $this->slug) !== 1) {
+            throw new BusinessRuleViolationException('Der Slug darf nur Kleinbuchstaben, Zahlen, Bindestriche und Schrägstriche zur Gliederung enthalten.');
         }
 
         if ($this->navigationPosition < 0) {
@@ -118,12 +118,17 @@ readonly class Page
 
     public function reposition(int $navigationPosition, \DateTimeImmutable $updatedAt): self
     {
+        return $this->relocate($this->parentId, $navigationPosition, $updatedAt);
+    }
+
+    public function relocate(?string $parentId, int $navigationPosition, \DateTimeImmutable $updatedAt): self
+    {
         return new self(
             id: $this->id,
             title: $this->title,
             slug: $this->slug,
             navigationLabel: $this->navigationLabel,
-            parentId: $this->parentId,
+            parentId: $parentId,
             blocks: $this->blocks,
             status: $this->status,
             visible: $this->visible,

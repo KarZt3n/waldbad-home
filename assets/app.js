@@ -13,6 +13,7 @@ const BLOCK_TYPES = {
     call_to_action: 'Handlungsaufruf',
     custom_html: 'Eigenes HTML',
     embedded_page: 'Seite einbetten',
+    page_teaser: 'Seitenteaser',
     event: 'Veranstaltung',
     event_reference: 'Veranstaltung einbetten',
     extension: 'Erweiterung',
@@ -23,13 +24,14 @@ const createBlock = (type) => ({
     content: '',
     mediaUrl: null,
     mediaAlt: null,
+    mediaSource: null,
     linkUrl: null,
     linkLabel: null,
-    layout: ['image_text', 'event_reference'].includes(type) ? 'image_left' : (type === 'image' ? 'center' : null),
-    imageWidthPercent: ['image_text', 'event_reference'].includes(type) ? 50 : (type === 'image' ? 100 : null),
-    verticalAlignment: ['image_text', 'event_reference'].includes(type) ? 'center' : null,
-    textAlignment: ['image_text', 'event_reference'].includes(type) ? 'left' : null,
-    imageFit: ['image_text', 'event_reference'].includes(type) ? 'cover' : null,
+    layout: ['image_text', 'page_teaser', 'event_reference'].includes(type) ? 'image_left' : (type === 'image' ? 'center' : null),
+    imageWidthPercent: ['image_text', 'page_teaser', 'event_reference'].includes(type) ? 50 : (type === 'image' ? 100 : null),
+    verticalAlignment: ['image_text', 'page_teaser', 'event_reference'].includes(type) ? 'center' : null,
+    textAlignment: ['image_text', 'page_teaser', 'event_reference'].includes(type) ? 'left' : null,
+    imageFit: ['image_text', 'page_teaser', 'event_reference'].includes(type) ? 'cover' : null,
     embeddedPageId: null,
     eventTitle: type === 'event' ? '' : null,
     eventDate: type === 'event' ? '' : null,
@@ -37,6 +39,7 @@ const createBlock = (type) => ({
     eventIdentifier: type === 'event' ? crypto.randomUUID() : null,
     eventHelpEnabled: type === 'event',
     eventHelpButtonLabel: type === 'event' ? 'Ich möchte helfen!' : null,
+    eventActivities: [],
     extensionKey: type === 'extension' ? 'membership_application' : null,
 });
 
@@ -69,7 +72,8 @@ const flattenPageTree = (nodes, depth = 0) => nodes.flatMap((node) => [
     ...flattenPageTree(node.children, depth + 1),
 ]);
 
-const pageHref = (slug) => slug === 'startseite' ? '/' : '/seite/' + encodeURIComponent(slug);
+const encodePageSlug = (slug) => slug.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+const pageHref = (slug) => slug === 'startseite' ? '/' : '/seite/' + encodePageSlug(slug);
 const treeContainsSlug = (page, slug) => page.slug === slug || page.children.some((child) => treeContainsSlug(child, slug));
 const slugify = (value) => value
     .trim()
@@ -82,6 +86,13 @@ const slugify = (value) => value
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+const hierarchicalSlug = (title, parentId, pages) => {
+    const leafSlug = slugify(title);
+    if (!leafSlug) return '';
+
+    const parent = pages.find((candidate) => candidate.id === parentId);
+    return parent ? `${parent.slug}/${leafSlug}` : leafSlug;
+};
 
 const element = (tag, options = {}) => {
     const node = document.createElement(tag);
@@ -466,11 +477,43 @@ const renderError = (message) => {
     }));
 };
 
-const openEventHelpDialog = (block) => {
+const openEventHelpDialog = async (block) => {
+    const availability = await request(`/api/public/v1/event-activities/${encodeURIComponent(block.eventIdentifier)}`);
     const dialog = element('dialog', {className: 'event-help-dialog'});
     const message = formMessage();
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Helferanmeldung schließen'}});
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
+    const activityChoices = (availability.items || []).map((activity) => {
+        const isFull = activity.registeredHelpers >= activity.requiredHelpers;
+        const input = element('input', {attributes: {
+            type: 'checkbox', name: 'activityIds', value: activity.id,
+            ...(isFull ? {disabled: 'disabled'} : {}),
+        }});
+        return element('label', {className: `event-activity-choice${isFull ? ' is-full' : ''}`, children: [
+            input,
+            element('span', {children: [
+                element('strong', {text: activity.name}),
+                element('small', {text: isFull
+                    ? `Belegt · ${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`
+                    : `${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`}),
+                ...(activity.description ? [element('small', {text: activity.description})] : []),
+            ]}),
+        ]});
+    });
+    const activityInputs = activityChoices.map((choice) => choice.querySelector('input'));
+    const selectableActivityInputs = activityInputs.filter((input) => !input.disabled);
+    const updateActivityRequirement = () => {
+        const hasSelection = selectableActivityInputs.some((input) => input.checked);
+        selectableActivityInputs.forEach((input, index) => input.required = !hasSelection && index === 0);
+    };
+    selectableActivityInputs.forEach((input) => input.addEventListener('change', updateActivityRequirement));
+    updateActivityRequirement();
+    const allActivitiesFull = activityChoices.length > 0 && selectableActivityInputs.length === 0;
+    const submitButton = element('button', {
+        className: 'button',
+        text: allActivitiesFull ? 'Aktuell keine Plätze frei' : 'Helferanmeldung absenden',
+        attributes: {type: 'submit', ...(allActivitiesFull ? {disabled: 'disabled'} : {})},
+    });
     const form = element('form', {className: 'public-form event-help-form', children: [
         element('header', {children: [
             element('p', {className: 'eyebrow', text: 'Helferanmeldung'}),
@@ -478,10 +521,14 @@ const openEventHelpDialog = (block) => {
             element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
         ]}),
         element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
+        ...(activityChoices.length ? [element('fieldset', {className: 'event-activity-choices', children: [
+            element('legend', {text: 'Wobei möchtest du helfen?'}),
+            ...activityChoices,
+        ]})] : []),
         field('Nachricht / Wobei möchtest du helfen? (optional)', 'message', '', 'textarea'),
         element('label', {className: 'check-field', children: [privacy, element('span', {text: 'Ich stimme der Verarbeitung meiner Angaben zur Organisation dieser Veranstaltung zu.'})]}),
         message,
-        element('button', {className: 'button', text: 'Helferanmeldung absenden', attributes: {type: 'submit'}}),
+        submitButton,
     ]});
     form.querySelector('[name="firstName"]').required = true;
     form.querySelector('[name="lastName"]').required = true;
@@ -496,6 +543,7 @@ const openEventHelpDialog = (block) => {
                 firstName: data.get('firstName'),
                 lastName: data.get('lastName'),
                 message: data.get('message'),
+                activityIds: data.getAll('activityIds'),
                 privacyAccepted: data.get('privacyAccepted') === 'on',
             })});
             toast(response.message);
@@ -503,7 +551,7 @@ const openEventHelpDialog = (block) => {
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
-            submit.disabled = false;
+            submit.disabled = allActivitiesFull;
         }
     });
     close.addEventListener('click', () => dialog.close());
@@ -514,9 +562,63 @@ const openEventHelpDialog = (block) => {
     form.querySelector('[name="firstName"]').focus();
 };
 
+const renderImageSource = (source) => source
+    ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
+    : null;
+
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
+    }
+    if (block.type === 'page_teaser') {
+        const container = element('section', {className: 'page-teaser-loading', attributes: {'aria-live': 'polite'}});
+        if (!block.embeddedPageId) {
+            if (context.showEmbedErrors) container.append(element('p', {className: 'embedded-page-error', text: 'Für den Seitenteaser wurde keine Zielseite ausgewählt.'}));
+            return container;
+        }
+
+        const localPage = context.pagesById?.get(block.embeddedPageId);
+        const pageRequest = localPage
+            ? Promise.resolve(localPage)
+            : request('/api/public/v1/pages/id/' + encodeURIComponent(block.embeddedPageId));
+        pageRequest.then((targetPage) => {
+            const href = pageHref(targetPage.slug);
+            const copy = element('div', {className: 'image-text-copy page-teaser-copy', children: [
+                element('h2', {text: targetPage.title}),
+            ]});
+            if (block.content) {
+                const teaserText = element('div', {className: 'rich-html'});
+                teaserText.innerHTML = block.content;
+                copy.append(teaserText);
+            }
+            copy.append(element('a', {className: 'button', text: block.linkLabel || 'Mehr erfahren', attributes: {href}}));
+            const layout = block.layout === 'image_right' ? 'image-right' : 'image-left';
+            const imageWidth = Number.isInteger(block.imageWidthPercent) ? block.imageWidthPercent : 50;
+            const verticalAlignment = block.verticalAlignment || 'center';
+            const textAlignment = block.textAlignment || 'left';
+            const imageFit = block.imageFit || 'cover';
+            container.className = `image-text page-teaser ${layout} align-${verticalAlignment} text-${textAlignment} fit-${imageFit}${block.mediaUrl ? ' has-image' : ''}`;
+            container.style.setProperty('--image-width', `${imageWidth}%`);
+            container.replaceChildren(
+                ...(block.mediaUrl ? [element('figure', {
+                    className: 'image-text-media',
+                    children: [
+                        element('a', {
+                            attributes: {href, 'aria-label': targetPage.title},
+                            children: [element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}})],
+                        }),
+                        ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
+                    ],
+                })] : []),
+                copy,
+            );
+        }).catch(() => {
+            container.replaceChildren(...(context.showEmbedErrors
+                ? [element('p', {className: 'embedded-page-error', text: 'Die Zielseite des Teasers ist nicht veröffentlicht oder nicht sichtbar.'})]
+                : []));
+        });
+
+        return container;
     }
     if (block.type === 'embedded_page') {
         const container = element('section', {className: 'embedded-page', attributes: {'aria-live': 'polite'}});
@@ -564,6 +666,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                 ...event,
                 mediaUrl: block.mediaUrl || event.mediaUrl,
                 mediaAlt: block.mediaUrl ? block.mediaAlt : event.mediaAlt,
+                mediaSource: block.mediaUrl ? block.mediaSource : (block.mediaSource || event.mediaSource),
                 layout: block.layout || event.layout,
                 imageWidthPercent: block.imageWidthPercent || event.imageWidthPercent,
                 verticalAlignment: block.verticalAlignment || event.verticalAlignment,
@@ -597,7 +700,13 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                 text: block.eventHelpButtonLabel || 'Ich möchte helfen!',
                 attributes: {type: 'button', ...(context.isPreview ? {disabled: 'disabled', title: 'In der Vorschau nicht verfügbar'} : {})},
             });
-            if (!context.isPreview) help.addEventListener('click', () => openEventHelpDialog(block));
+            if (!context.isPreview) help.addEventListener('click', async () => {
+                try {
+                    await openEventHelpDialog(block);
+                } catch (error) {
+                    toast(error.message, 'error');
+                }
+            });
             copy.append(help);
         }
         const layout = ['image_left', 'image_right', 'image_top'].includes(block.layout) ? block.layout : 'image_left';
@@ -605,11 +714,15 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         const verticalAlignment = ['top', 'center', 'bottom'].includes(block.verticalAlignment) ? block.verticalAlignment : 'center';
         const textAlignment = ['left', 'center', 'right'].includes(block.textAlignment) ? block.textAlignment : 'left';
         const imageFit = ['cover', 'contain'].includes(block.imageFit) ? block.imageFit : 'cover';
+        const media = block.mediaUrl ? element('figure', {className: 'event-media', children: [
+            element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}}),
+            ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
+        ]}) : null;
         return element('article', {
             className: `event-block${block.mediaUrl ? ` has-image ${layout} align-${verticalAlignment} text-${textAlignment} fit-${imageFit}` : ''}`,
             attributes: {style: `--event-image-width: ${imageWidth}%`},
             children: [
-            ...(block.mediaUrl ? [element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}})] : []),
+            ...(media ? [media] : []),
             copy,
         ]});
     }
@@ -631,13 +744,16 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         const textAlignment = block.textAlignment || 'left';
         const imageFit = block.imageFit || 'cover';
         const image = element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}});
-        const media = block.linkUrl
+        const imageContent = block.linkUrl
             ? element('a', {
-                className: 'image-text-media',
                 attributes: {href: block.linkUrl, target: '_blank', rel: 'noopener noreferrer'},
                 children: [image],
             })
-            : element('div', {className: 'image-text-media', children: [image]});
+            : image;
+        const media = element('figure', {className: 'image-text-media', children: [
+            imageContent,
+            ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
+        ]});
         return element('section', {
             className: `image-text ${block.layout === 'image_right' ? 'image-right' : 'image-left'} align-${verticalAlignment} text-${textAlignment} fit-${imageFit}`,
             attributes: {style: `--image-width: ${imageWidth}%`},
@@ -655,6 +771,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             attributes: {style: `--image-width: ${imageWidth}%`},
             children: [
                 element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}}),
+                ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
             ],
         });
     }
@@ -692,7 +809,7 @@ const renderPublic = async () => {
         const slug = app.dataset.pageSlug;
         const [navigation, page] = await Promise.all([
             request('/api/public/v1/navigation'),
-            request('/api/public/v1/pages/' + encodeURIComponent(slug)),
+            request('/api/public/v1/pages/' + encodePageSlug(slug)),
         ]);
         document.title = (page.seoTitle || page.title) + ' – Waldbad Borkheide';
 
@@ -710,7 +827,6 @@ const renderPublic = async () => {
 
             const toggle = element('button', {
                 className: 'submenu-toggle',
-                text: '⌄',
                 attributes: {type: 'button', 'aria-label': `Unterseiten von ${item.label} anzeigen`, 'aria-expanded': 'false'},
             });
             const container = element('div', {
@@ -1075,6 +1191,7 @@ const openImagePicker = async (onSelect) => {
                 element('img', {attributes: {src: image.url, alt: '', loading: 'lazy'}}),
                 element('strong', {text: image.originalName}),
                 element('small', {text: `${image.width} × ${image.height} px`}),
+                ...(image.source ? [element('small', {className: 'media-card-source', text: `Quelle: ${image.source}`})] : []),
                 choose,
             ]});
         }));
@@ -1156,6 +1273,93 @@ const blockEditor = (block, index, handlers) => {
                 element('span', {text: 'Im Frontend den Button „Ich möchte helfen!“ mit Anmeldeformular anzeigen'}),
             ]}),
             helpLabel,
+        );
+        const activityList = element('div', {className: 'event-activity-editor-list'});
+        const renderAssignments = () => {
+            block.eventActivities = Array.isArray(block.eventActivities) ? block.eventActivities : [];
+            activityList.replaceChildren(...block.eventActivities.map((assignment, assignmentIndex) => {
+                const select = element('select', {attributes: {'aria-label': 'Aktivität'}});
+                (handlers.activities || []).forEach((activity) => {
+                    if (!activity.active && activity.id !== assignment.activityId) return;
+                    if (activity.id !== assignment.activityId && block.eventActivities.some((item) => item.activityId === activity.id)) return;
+                    select.append(element('option', {text: `${activity.name}${activity.active ? '' : ' (inaktiv)'}`, attributes: {value: activity.id}}));
+                });
+                select.value = assignment.activityId;
+                select.addEventListener('change', () => assignment.activityId = select.value);
+                const count = element('input', {attributes: {
+                    type: 'number', min: '1', max: '999', value: String(assignment.requiredHelpers || 1),
+                    'aria-label': 'Benötigte Helfer',
+                }});
+                const decrease = element('button', {className: 'activity-count-button', text: '−', attributes: {type: 'button', 'aria-label': 'Helferzahl verringern'}});
+                const increase = element('button', {className: 'activity-count-button', text: '+', attributes: {type: 'button', 'aria-label': 'Helferzahl erhöhen'}});
+                const setCount = (value) => {
+                    const normalized = Math.min(999, Math.max(1, value || 1));
+                    count.value = String(normalized);
+                    assignment.requiredHelpers = normalized;
+                };
+                count.addEventListener('input', () => setCount(Number.parseInt(count.value, 10)));
+                count.addEventListener('blur', () => setCount(Number.parseInt(count.value, 10)));
+                decrease.addEventListener('click', () => setCount(Number.parseInt(count.value, 10) - 1));
+                increase.addEventListener('click', () => setCount(Number.parseInt(count.value, 10) + 1));
+                const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Zuordnung entfernen', 'aria-label': 'Zuordnung entfernen'}});
+                remove.addEventListener('click', () => {
+                    block.eventActivities.splice(assignmentIndex, 1);
+                    renderAssignments();
+                });
+                return element('div', {className: 'event-activity-editor-row', children: [
+                    select,
+                    element('div', {className: 'activity-count-control', children: [decrease, count, increase]}),
+                    remove,
+                ]});
+            }));
+        };
+        const addActivity = element('button', {className: 'secondary-button', text: '＋ Aktivität zuordnen', attributes: {type: 'button'}});
+        addActivity.addEventListener('click', () => {
+            const available = (handlers.activities || []).find((activity) => activity.active && !block.eventActivities.some((item) => item.activityId === activity.id));
+            if (!available) {
+                toast('Keine weitere aktive Aktivität verfügbar.', 'error');
+                return;
+            }
+            block.eventActivities.push({activityId: available.id, requiredHelpers: 1});
+            renderAssignments();
+        });
+        renderAssignments();
+        card.append(element('fieldset', {className: 'event-activity-editor', children: [
+            element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
+            element('small', {text: 'Die benötigte Helferzahl gilt nur für diese Veranstaltung.'}),
+            element('div', {className: 'event-activity-editor-head', children: [
+                element('strong', {text: 'Aktivität'}),
+                element('strong', {text: 'Benötigt'}),
+            ]}),
+            activityList,
+            addActivity,
+        ]}));
+    } else if (block.type === 'page_teaser') {
+        const select = element('select', {attributes: {id: 'block-page-teaser-' + index}});
+        select.append(element('option', {text: 'Zielseite auswählen …', attributes: {value: ''}}));
+        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
+            if (candidate.id === handlers.currentPageId) return;
+            select.append(element('option', {
+                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
+                attributes: {value: candidate.id},
+            }));
+        });
+        select.value = block.embeddedPageId || '';
+        select.addEventListener('change', () => block.embeddedPageId = select.value || null);
+        const linkLabel = field('Beschriftung des Links', 'block-page-teaser-label-' + index, block.linkLabel || 'Mehr erfahren');
+        block.linkLabel = linkLabel.querySelector('input').value;
+        linkLabel.querySelector('input').addEventListener('input', (event) => block.linkLabel = event.target.value || 'Mehr erfahren');
+        card.append(
+            element('label', {className: 'field', children: [
+                element('span', {text: 'Verlinkte Unterseite'}),
+                select,
+                element('small', {text: 'Titel und Link werden automatisch aus der ausgewählten Seite übernommen.'}),
+            ]}),
+            element('div', {className: 'field', children: [
+                element('span', {text: 'Teasertext'}),
+                richTextEditor(block, index + '-page-teaser', null, 'Teasertext'),
+            ]}),
+            linkLabel,
         );
     } else if (block.type === 'embedded_page') {
         const select = element('select', {attributes: {id: 'block-page-' + index}});
@@ -1239,13 +1443,34 @@ const blockEditor = (block, index, handlers) => {
         card.append(content);
     }
 
-    if (block.type === 'image' || block.type === 'image_text' || block.type === 'event' || block.type === 'event_reference') {
-        const optionalMedia = block.type === 'event' || block.type === 'event_reference';
+    if (block.type === 'image' || block.type === 'image_text' || block.type === 'page_teaser' || block.type === 'event' || block.type === 'event_reference') {
+        const optionalMedia = block.type === 'page_teaser' || block.type === 'event' || block.type === 'event_reference';
         const media = field(optionalMedia ? 'Bild-URL (optional)' : 'Bild-URL', 'block-media-' + index, block.mediaUrl || '');
         const alt = field('Alternativtext (optional; leer = dekorativ)', 'block-alt-' + index, block.mediaAlt || '');
+        const source = field('Bildquelle (optional)', 'block-source-' + index, block.mediaSource || '');
         const mediaInput = media.querySelector('input');
+        const sourceInput = source.querySelector('input');
+        let storedSource = block.mediaSource || null;
         mediaInput.addEventListener('input', (event) => block.mediaUrl = event.target.value || null);
         alt.querySelector('input').addEventListener('input', (event) => block.mediaAlt = event.target.value || null);
+        sourceInput.setAttribute('maxlength', '300');
+        sourceInput.addEventListener('input', (event) => block.mediaSource = event.target.value || null);
+        sourceInput.addEventListener('blur', async () => {
+            const normalizedSource = sourceInput.value.trim() || null;
+            if (!block.mediaUrl?.startsWith('/uploads/media/') || normalizedSource === storedSource) return;
+            try {
+                const updated = await request('/api/admin/v1/media/images/source', {
+                    method: 'PATCH',
+                    body: JSON.stringify({url: block.mediaUrl, source: normalizedSource}),
+                });
+                storedSource = updated.source;
+                block.mediaSource = updated.source;
+                sourceInput.value = updated.source || '';
+                toast('Die Bildquelle wurde in der Medienbibliothek aktualisiert.');
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        });
         const uploadInput = element('input', {attributes: {type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: 'hidden'}});
         const uploadButton = element('button', {className: 'secondary-button', text: 'Bild hochladen', attributes: {type: 'button'}});
         const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen', attributes: {type: 'button'}});
@@ -1253,7 +1478,10 @@ const blockEditor = (block, index, handlers) => {
         uploadButton.addEventListener('click', () => uploadInput.click());
         selectButton.addEventListener('click', () => openImagePicker((image) => {
             block.mediaUrl = image.url;
+            block.mediaSource = image.source || null;
             mediaInput.value = image.url;
+            sourceInput.value = image.source || '';
+            storedSource = image.source || null;
             uploadMessage.textContent = `${image.originalName} wurde ausgewählt.`;
             toast(`${image.originalName} wurde ausgewählt.`);
         }));
@@ -1262,12 +1490,16 @@ const blockEditor = (block, index, handlers) => {
             if (!image) return;
             const body = new FormData();
             body.append('image', image);
+            body.append('source', sourceInput.value.trim());
             uploadButton.disabled = true;
             uploadMessage.textContent = 'Bild wird hochgeladen …';
             try {
                 const stored = await request('/api/admin/v1/media/images', {method: 'POST', body});
                 block.mediaUrl = stored.url;
+                block.mediaSource = stored.source || null;
                 mediaInput.value = stored.url;
+                sourceInput.value = stored.source || '';
+                storedSource = stored.source || null;
                 uploadMessage.textContent = `${stored.originalName} wurde hochgeladen (${stored.width} × ${stored.height} px).`;
                 toast(`${stored.originalName} wurde hochgeladen.`);
             } catch (error) {
@@ -1282,13 +1514,17 @@ const blockEditor = (block, index, handlers) => {
             element('div', {className: 'media-input-row', children: [media, selectButton, uploadButton, uploadInput]}),
             uploadMessage,
             alt,
+            source,
+            element('small', {text: 'Bei Bibliotheksbildern wird diese Quelle gespeichert und bei jeder späteren Auswahl automatisch übernommen.'}),
             ...(block.type === 'event_reference' ? [element('small', {text: 'Ohne eigenes Bild wird das Bild der ausgewählten Veranstaltung verwendet.'})] : []),
         );
     }
-    if (block.type === 'image_text') {
-        const imageLink = field('Linkziel des Bildes (optional)', 'block-image-link-' + index, block.linkUrl || '', 'url');
-        imageLink.querySelector('input').addEventListener('input', (event) => block.linkUrl = event.target.value || null);
-        card.append(imageLink);
+    if (block.type === 'image_text' || block.type === 'page_teaser') {
+        if (block.type === 'image_text') {
+            const imageLink = field('Linkziel des Bildes (optional)', 'block-image-link-' + index, block.linkUrl || '', 'url');
+            imageLink.querySelector('input').addEventListener('input', (event) => block.linkUrl = event.target.value || null);
+            card.append(imageLink);
+        }
 
         const layout = element('select', {attributes: {id: 'block-layout-' + index}});
         layout.append(
@@ -1488,7 +1724,7 @@ const openPagePreview = async (payload, availablePages, currentPageId) => {
     dialog.showModal();
 };
 
-const pageEditor = (page, onSaved, pages = [], initialParentId = null) => {
+const pageEditor = (page, onSaved, pages = [], initialParentId = null, activities = []) => {
     const blocks = (page?.blocks || []).map((block) => ({...block}));
     const blockList = element('div', {className: 'block-list'});
     let draggedIndex = null;
@@ -1555,6 +1791,7 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null) => {
             children.push(blockEditor(block, index, {
                 lastIndex: blocks.length - 1,
                 pages,
+                activities,
                 currentPageId: page?.id || null,
                 onRemove: () => {
                     blocks.splice(index, 1);
@@ -1665,16 +1902,29 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null) => {
     });
     const titleInput = form.querySelector('[name="title"]');
     const slugInput = form.querySelector('[name="slug"]');
+    const parentInput = form.querySelector('[name="parentId"]');
     const navigationLabelInput = form.querySelector('[name="navigationLabel"]');
     const seoTitleInput = form.querySelector('[name="seoTitle"]');
-    let updateSlugAutomatically = !page || page.slug === slugify(page.title);
+    const initialAutomaticSlug = hierarchicalSlug(
+        page?.title || '',
+        page?.parentId || initialParentId || '',
+        pages,
+    );
+    let updateSlugAutomatically = !page || page.slug === initialAutomaticSlug;
     let updateNavigationAutomatically = !page || page.navigationLabel === page.title;
     let updateSeoTitleAutomatically = !page || !page.seoTitle || page.seoTitle === page.title;
+    const refreshAutomaticSlug = () => {
+        if (updateSlugAutomatically) {
+            slugInput.value = hierarchicalSlug(titleInput.value, parentInput.value, pages);
+        }
+    };
+    if (!page) slugInput.readOnly = true;
     slugInput.addEventListener('input', () => updateSlugAutomatically = false);
+    parentInput.addEventListener('change', refreshAutomaticSlug);
     navigationLabelInput.addEventListener('input', () => updateNavigationAutomatically = false);
     seoTitleInput.addEventListener('input', () => updateSeoTitleAutomatically = false);
     titleInput.addEventListener('input', () => {
-        if (updateSlugAutomatically) slugInput.value = slugify(titleInput.value);
+        refreshAutomaticSlug();
         if (updateNavigationAutomatically) navigationLabelInput.value = titleInput.value.trim();
         if (updateSeoTitleAutomatically) seoTitleInput.value = titleInput.value.trim();
     });
@@ -1717,11 +1967,77 @@ const renderAdmin = async () => {
     const menu = element('nav', {className: 'admin-menu', attributes: {'aria-label': 'Redaktionsbereiche'}});
 
     const showPages = async () => {
-        const pages = await request('/api/admin/v1/pages');
+        const [pages, activityData] = await Promise.all([
+            request('/api/admin/v1/pages'),
+            request('/api/admin/v1/event-activities'),
+        ]);
+        const activities = activityData.items || [];
         const list = element('div', {className: 'management-list page-tree-panel'});
+        const pageById = new Map(pages.items.map((page) => [page.id, page]));
+        const pointerDropTargets = new WeakMap();
+        let draggedPageId = null;
+        const isDescendantOf = (pageId, possibleAncestorId) => {
+            let current = pageById.get(pageId);
+            while (current?.parentId) {
+                if (current.parentId === possibleAncestorId) return true;
+                current = pageById.get(current.parentId);
+            }
+
+            return false;
+        };
+        const clearDragState = () => {
+            draggedPageId = null;
+            list.classList.remove('is-page-dragging');
+            list.querySelectorAll('.drag-over, .is-disabled').forEach((node) => node.classList.remove('drag-over', 'is-disabled'));
+        };
+        const reorderPage = async (parentId, position) => {
+            const draggedPage = draggedPageId ? pageById.get(draggedPageId) : null;
+            if (!draggedPage || draggedPage.id === parentId || (parentId && isDescendantOf(parentId, draggedPage.id))) {
+                clearDragState();
+                if (draggedPage) toast('Eine Seite kann nicht in sich selbst oder eine eigene Unterseite verschoben werden.', 'error');
+                return;
+            }
+            const targetSiblings = pages.items
+                .filter((candidate) => candidate.parentId === parentId)
+                .sort((left, right) => (left.navigationPosition - right.navigationPosition)
+                    || left.title.localeCompare(right.title, 'de') || left.id.localeCompare(right.id));
+            const sourceIndex = targetSiblings.findIndex((candidate) => candidate.id === draggedPage.id);
+            const adjustedPosition = sourceIndex >= 0 && sourceIndex < position ? position - 1 : position;
+            if (draggedPage.parentId === parentId && sourceIndex === adjustedPosition) {
+                clearDragState();
+                return;
+            }
+            clearDragState();
+            try {
+                await request(`/api/admin/v1/pages/${draggedPage.id}/position`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        parentId,
+                        navigationPosition: adjustedPosition,
+                        version: draggedPage.version,
+                    }),
+                });
+                const target = parentId ? `unter „${pageById.get(parentId)?.title || 'Seite'}“` : 'als Hauptseite';
+                toast(`„${draggedPage.title}“ wurde ${target} einsortiert.`);
+                await showPages();
+            } catch (error) {
+                toast(error.message, 'error');
+                await showPages();
+            }
+        };
+        const pageDropZone = (parentId, position, rootLevel = false) => {
+            const zone = element('li', {
+                className: 'page-tree-drop-zone',
+                attributes: {'aria-hidden': 'true'},
+                children: [element('span', {text: rootLevel ? 'Als Hauptseite hier einsortieren' : 'Hier einsortieren'})],
+            });
+            pointerDropTargets.set(zone, () => reorderPage(parentId, position));
+
+            return zone;
+        };
         if (canEdit()) {
             const create = element('button', {className: 'secondary-button full', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
-            create.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items)));
+            create.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, null, activities)));
             list.append(create);
         }
         const renderTreeNode = (page, siblingIndex, siblings) => {
@@ -1738,7 +2054,7 @@ const renderAdmin = async () => {
                     ]}),
                 ],
             });
-            title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items)));
+            title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
 
             const actions = [];
             if (canEdit()) {
@@ -1754,9 +2070,9 @@ const renderAdmin = async () => {
                     }
                 };
                 const addChild = element('button', {className: 'tree-icon-button', text: '＋', attributes: {type: 'button', title: `Unterseite zu ${page.title} hinzufügen`, 'aria-label': `Unterseite zu ${page.title} hinzufügen`}});
-                addChild.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, page.id)));
+                addChild.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, page.id, activities)));
                 const edit = element('button', {className: 'tree-icon-button', text: '✎', attributes: {type: 'button', title: `${page.title} bearbeiten`, 'aria-label': `${page.title} bearbeiten`}});
-                edit.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items)));
+                edit.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
                 const duplicate = element('button', {className: 'tree-icon-button', text: '⧉', attributes: {type: 'button', title: `${page.title} duplizieren`, 'aria-label': `${page.title} duplizieren`}});
                 duplicate.addEventListener('click', () => runPageAction(
                     duplicate,
@@ -1793,10 +2109,68 @@ const renderAdmin = async () => {
                 actions.push(addChild, edit, duplicate, moveUp, moveDown, remove);
             }
 
-            const row = element('div', {className: 'page-tree-row', children: [title, element('div', {className: 'page-tree-actions', children: actions})]});
+            const dragHandle = element('div', {
+                className: 'page-tree-drag-handle',
+                text: '↕',
+                attributes: {title: `${page.title} ziehen`, 'aria-label': `${page.title} per Drag-and-drop verschieben`},
+            });
+            let pointerId = null;
+            let pointerTarget = null;
+            const updatePointerTarget = (clientX, clientY) => {
+                const candidate = document.elementFromPoint(clientX, clientY)?.closest('.page-tree-drop-zone, .page-tree-child-drop-zone');
+                const target = candidate && list.contains(candidate) && pointerDropTargets.has(candidate) ? candidate : null;
+                if (pointerTarget === target) return;
+                pointerTarget?.classList.remove('drag-over');
+                pointerTarget = target;
+                pointerTarget?.classList.add('drag-over');
+            };
+            const endPointerDrag = async (event, drop) => {
+                if (event.pointerId !== pointerId) return;
+                dragHandle.releasePointerCapture?.(event.pointerId);
+                const action = drop && pointerTarget ? pointerDropTargets.get(pointerTarget) : null;
+                pointerTarget?.classList.remove('drag-over');
+                pointerTarget = null;
+                pointerId = null;
+                item.classList.remove('dragging');
+                if (action) await action();
+                else clearDragState();
+            };
+            dragHandle.addEventListener('pointerdown', (event) => {
+                if (event.pointerType === 'mouse' && event.button !== 0) return;
+                event.preventDefault();
+                pointerId = event.pointerId;
+                draggedPageId = page.id;
+                list.classList.add('is-page-dragging');
+                item.classList.add('dragging');
+                list.querySelectorAll('.page-tree-child-drop-zone').forEach((zone) => {
+                    const parentPageId = zone.dataset.parentPageId;
+                    if (parentPageId === page.id || (parentPageId && isDescendantOf(parentPageId, page.id))) {
+                        zone.classList.add('is-disabled');
+                    }
+                });
+                dragHandle.setPointerCapture?.(event.pointerId);
+            });
+            dragHandle.addEventListener('pointermove', (event) => {
+                if (event.pointerId !== pointerId) return;
+                event.preventDefault();
+                updatePointerTarget(event.clientX, event.clientY);
+            });
+            dragHandle.addEventListener('pointerup', (event) => endPointerDrag(event, true));
+            dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
+            const row = element('div', {
+                className: 'page-tree-row',
+                children: [...(canEdit() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
+            });
             const item = element('li', {className: `page-tree-node${page.visible ? '' : ' is-hidden'}`, children: [row]});
+            const childDropZone = element('div', {
+                className: 'page-tree-child-drop-zone',
+                attributes: {'aria-hidden': 'true', 'data-parent-page-id': page.id},
+                children: [element('span', {text: `Als Unterseite von „${page.title}“ ablegen`})],
+            });
+            pointerDropTargets.set(childDropZone, () => reorderPage(page.id, page.children.length));
+            item.append(childDropZone);
             if (page.children.length) {
-                const children = element('ul', {className: 'page-tree-children', children: page.children.map(renderTreeNode)});
+                const children = renderTreeLevel(page.children, page.id);
                 const toggle = element('button', {className: 'tree-toggle', text: '▾', attributes: {type: 'button', title: 'Unterseiten ein- oder ausblenden', 'aria-label': `Unterseiten von ${page.title} ausblenden`, 'aria-expanded': 'true'}});
                 toggle.addEventListener('click', () => {
                     children.hidden = !children.hidden;
@@ -1812,11 +2186,23 @@ const renderAdmin = async () => {
 
             return item;
         };
+        const renderTreeLevel = (nodes, parentId, rootLevel = false) => {
+            const children = [];
+            nodes.forEach((node, index) => {
+                children.push(pageDropZone(parentId, index, rootLevel), renderTreeNode(node, index, nodes));
+            });
+            children.push(pageDropZone(parentId, nodes.length, rootLevel));
+
+            return element('ul', {className: rootLevel ? 'page-tree' : 'page-tree-children', children});
+        };
         const tree = buildPageTree(pages.items);
         list.append(tree.length
-            ? element('ul', {className: 'page-tree', children: tree.map(renderTreeNode)})
+            ? renderTreeLevel(tree, null, true)
             : emptyState('Noch keine Seiten vorhanden.'));
-        workspace.replaceChildren(sectionHeading('Seitenstruktur', 'Hauptseiten und Unterseiten verwalten'), list);
+        workspace.replaceChildren(sectionHeading(
+            'Seitenstruktur',
+            'Seiten am ↕-Griff ziehen, zwischen Seiten sortieren oder auf einer Seite als Untermenü ablegen',
+        ), list);
     };
 
     const showGuestbook = async () => {
@@ -1992,6 +2378,7 @@ const renderAdmin = async () => {
                     }
                 }
                 const intervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
+                const selectedActivities = Array.isArray(requestItem.selectedActivities) ? requestItem.selectedActivities : [];
                 return element('article', {className: `management-card status-${requestItem.status}`, children: [
                 element('header', {children: [
                     element('strong', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
@@ -2000,6 +2387,10 @@ const renderAdmin = async () => {
                 ...(typeof requestItem.message === 'string' && requestItem.message.trim() !== ''
                     ? [element('p', {text: requestItem.message})]
                     : []),
+                ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
+                    element('strong', {text: 'Angemeldet für:'}),
+                    ...selectedActivities.map((activity) => element('span', {className: 'activity-chip', text: activity.name})),
+                ]})] : []),
                 ...(intervals.length ? [element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))})] : []),
                 ...(actionButtons.length ? [element('div', {className: 'card-actions', children: actionButtons})] : []),
                 ]});
@@ -2077,6 +2468,92 @@ const renderAdmin = async () => {
         }));
     };
 
+    const showActivities = async () => {
+        const data = await request('/api/admin/v1/event-activities');
+        const openActivityDialog = (activity = null) => {
+            const dialog = element('dialog', {className: 'activity-dialog'});
+            const name = field('Bezeichnung', `activity-name-${activity?.id || 'new'}`, activity?.name || '');
+            const description = field('Beschreibung (optional)', `activity-description-${activity?.id || 'new'}`, activity?.description || '', 'textarea');
+            const active = element('input', {attributes: {type: 'checkbox'}});
+            active.checked = activity?.active !== false;
+            const message = formMessage();
+            const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
+            const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+            const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+            const form = element('form', {className: 'activity-dialog-content', children: [
+                element('header', {children: [
+                    element('div', {children: [
+                        element('p', {className: 'eyebrow', text: activity ? 'Aktivität bearbeiten' : 'Neue Aktivität'}),
+                        element('h2', {text: activity?.name || 'Aktivität anlegen'}),
+                    ]}),
+                ]}),
+                name,
+                description,
+                element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
+                message,
+                element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+            ]});
+            name.querySelector('input').required = true;
+            cancel.addEventListener('click', () => dialog.close());
+            close.addEventListener('click', () => dialog.close());
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                submit.disabled = true;
+                try {
+                    await request(activity ? `/api/admin/v1/event-activities/${activity.id}` : '/api/admin/v1/event-activities', {
+                        method: activity ? 'PUT' : 'POST',
+                        body: JSON.stringify({
+                            name: name.querySelector('input').value,
+                            description: description.querySelector('textarea').value,
+                            active: active.checked,
+                        }),
+                    });
+                    toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
+                    dialog.close();
+                    await showActivities();
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    submit.disabled = false;
+                }
+            });
+            dialog.addEventListener('close', () => dialog.remove());
+            dialog.append(close, form);
+            document.body.append(dialog);
+            dialog.showModal();
+            name.querySelector('input').focus();
+        };
+
+        const heading = sectionHeading('Aktivitäten', 'Wiederverwendbare Tätigkeiten für Veranstaltungen und gemeinsame Arbeitseinsätze');
+        if (canEdit()) {
+            const create = element('button', {className: 'button', text: '＋ Neue Aktivität', attributes: {type: 'button'}});
+            create.addEventListener('click', () => openActivityDialog());
+            heading.append(create);
+        }
+        const rows = data.items.map((activity) => {
+            const row = element('button', {
+                className: `activity-list-row${activity.active ? '' : ' is-inactive'}`,
+                attributes: {type: 'button', ...(canEdit() ? {} : {disabled: 'disabled'})},
+                children: [
+                    element('span', {className: 'activity-list-copy', children: [
+                        element('strong', {text: activity.name}),
+                        element('small', {text: activity.description || 'Keine Beschreibung hinterlegt.'}),
+                    ]}),
+                    element('span', {className: `status-badge ${activity.active ? 'status-active' : 'status-inactive'}`, text: activity.active ? 'Aktiv' : 'Inaktiv'}),
+                    ...(canEdit() ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
+                ],
+            });
+            if (canEdit()) row.addEventListener('click', () => openActivityDialog(activity));
+            return row;
+        });
+        workspace.replaceChildren(
+            heading,
+            element('div', {className: 'activity-list', children: data.items.length
+                ? rows
+                : [emptyState('Noch keine Aktivitäten angelegt.')]}),
+        );
+    };
+
     const addMenu = (label, action) => {
         const button = element('button', {className: 'admin-menu-item', text: label, attributes: {type: 'button'}});
         button.addEventListener('click', async () => {
@@ -2091,6 +2568,7 @@ const renderAdmin = async () => {
         return button;
     };
     const first = addMenu('Seiten', showPages);
+    addMenu('Aktivitäten', showActivities);
     if (canModerate()) {
         addMenu('Gästebuch', showGuestbook);
         addMenu('Kontaktanfragen', showContact);

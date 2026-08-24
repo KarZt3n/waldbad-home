@@ -21,8 +21,9 @@ readonly class CreatePageUseCase
 
     public function execute(CreatePageRequest $request): PageResponse
     {
-        $this->manager->ensureSlugAvailable($request->slug);
         $this->manager->ensureParentAllowed($request->parentId);
+        $slug = $this->manager->hierarchicalSlug($request->slug, $request->parentId);
+        $this->manager->ensureSlugAvailable($slug);
         $now = $this->clock->now();
         $pageId = $this->identifierGenerator->generate();
         $this->manager->ensureEmbeddedPagesAllowed($request->blocks, $pageId);
@@ -30,7 +31,7 @@ readonly class CreatePageUseCase
         $page = new Page(
             id: $pageId,
             title: $request->title,
-            slug: $request->slug,
+            slug: $slug,
             navigationLabel: $request->navigationLabel,
             parentId: $request->parentId,
             blocks: $request->blocks,

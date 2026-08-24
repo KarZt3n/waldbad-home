@@ -9,6 +9,7 @@ use App\Logic\Content\Page\UseCase\DeletePageUseCase;
 use App\Logic\Content\Page\UseCase\DuplicatePageUseCase;
 use App\Logic\Content\Page\UseCase\MovePageUseCase;
 use App\Logic\Content\Page\UseCase\PreviewPageUseCase;
+use App\Logic\Content\Page\UseCase\ReorderPageUseCase;
 use App\Logic\Content\Page\UseCase\UpdatePageUseCase;
 use App\UI\Common\Http\ApiResponseFactory;
 use App\UI\IdentityAccess\Security\Permission;
@@ -23,6 +24,7 @@ class AdminPageController extends AbstractController
     public function __construct(
         private readonly ApiResponseFactory $responseFactory,
         private readonly PageRequestMapper $requestMapper,
+        private readonly PageStructureRequestMapper $structureRequestMapper,
         private readonly DuplicatePageUseCase $duplicatePage,
         private readonly MovePageUseCase $movePage,
         private readonly DeletePageUseCase $deletePage,
@@ -78,6 +80,14 @@ class AdminPageController extends AbstractController
         $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
 
         return $this->responseFactory->page($this->movePage->execute($id, $direction));
+    }
+
+    #[Route('/{id}/position', name: 'api_admin_pages_position', methods: ['PUT'])]
+    public function position(string $id, Request $request, ReorderPageUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+
+        return $this->responseFactory->page($useCase->execute($this->structureRequestMapper->reorder($id, $request)));
     }
 
     #[Route('/{id}', name: 'api_admin_pages_delete', methods: ['DELETE'])]

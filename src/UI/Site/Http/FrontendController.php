@@ -14,7 +14,7 @@ class FrontendController extends AbstractController
         return $this->render('site/public.html.twig', ['slug' => 'startseite']);
     }
 
-    #[Route('/seite/{slug}', name: 'public_page', methods: ['GET'])]
+    #[Route('/seite/{slug}', name: 'public_page', requirements: ['slug' => '.+'], methods: ['GET'])]
     public function page(string $slug): Response
     {
         return $this->render('site/public.html.twig', ['slug' => $slug]);

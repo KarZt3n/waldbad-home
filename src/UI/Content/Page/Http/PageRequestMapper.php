@@ -7,6 +7,7 @@ use App\Logic\Content\Page\Dto\UpdatePageRequest;
 use App\Logic\Content\Page\HtmlSanitizerInterface;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
+use App\Logic\Content\Page\Model\EventActivityAssignment;
 use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -76,6 +77,7 @@ readonly class PageRequestMapper
             $contentValue = $block['content'] ?? '';
             $mediaUrl = $block['mediaUrl'] ?? null;
             $mediaAlt = $block['mediaAlt'] ?? null;
+            $mediaSource = $block['mediaSource'] ?? null;
             $linkUrl = $block['linkUrl'] ?? null;
             $linkLabel = $block['linkLabel'] ?? null;
             $layout = $block['layout'] ?? null;
@@ -90,6 +92,7 @@ readonly class PageRequestMapper
             $eventIdentifier = $block['eventIdentifier'] ?? null;
             $eventHelpEnabled = $block['eventHelpEnabled'] ?? $typeValue === ContentBlockType::Event->value;
             $eventHelpButtonLabel = $block['eventHelpButtonLabel'] ?? null;
+            $eventActivities = $block['eventActivities'] ?? [];
             $extensionKey = $block['extensionKey'] ?? null;
 
             if (!is_string($typeValue) || trim($typeValue) === '') {
@@ -103,6 +106,9 @@ readonly class PageRequestMapper
             }
             if ($mediaAlt !== null && !is_string($mediaAlt)) {
                 throw new BadRequestHttpException('Der Alternativtext muss eine Zeichenkette sein.');
+            }
+            if ($mediaSource !== null && !is_string($mediaSource)) {
+                throw new BadRequestHttpException('Die Bildquelle muss eine Zeichenkette sein.');
             }
             if ($linkUrl !== null && !is_string($linkUrl)) {
                 throw new BadRequestHttpException('Die Link-URL muss eine Zeichenkette sein.');
@@ -146,6 +152,16 @@ readonly class PageRequestMapper
             if ($eventHelpButtonLabel !== null && !is_string($eventHelpButtonLabel)) {
                 throw new BadRequestHttpException('Die Beschriftung der Helferanmeldung muss eine Zeichenkette sein.');
             }
+            if (!is_array($eventActivities) || !array_is_list($eventActivities)) {
+                throw new BadRequestHttpException('Die Veranstaltungsaktivitäten müssen als Liste angegeben werden.');
+            }
+            $mappedActivities = [];
+            foreach ($eventActivities as $activity) {
+                if (!is_array($activity) || !is_string($activity['activityId'] ?? null) || !is_int($activity['requiredHelpers'] ?? null)) {
+                    throw new BadRequestHttpException('Eine Veranstaltungsaktivität benötigt Kennung und Helferzahl.');
+                }
+                $mappedActivities[] = new EventActivityAssignment(trim($activity['activityId']), $activity['requiredHelpers']);
+            }
             if ($extensionKey !== null && !is_string($extensionKey)) {
                 throw new BadRequestHttpException('Der Erweiterungsschlüssel muss eine Zeichenkette sein.');
             }
@@ -184,6 +200,7 @@ readonly class PageRequestMapper
                 content: $content,
                 mediaUrl: $mediaUrl === null || trim($mediaUrl) === '' ? null : trim($mediaUrl),
                 mediaAlt: $mediaAlt === null || trim($mediaAlt) === '' ? null : trim($mediaAlt),
+                mediaSource: $mediaSource === null || trim(strip_tags($mediaSource)) === '' ? null : trim(strip_tags($mediaSource)),
                 linkUrl: $linkUrl === null || trim($linkUrl) === '' ? null : trim($linkUrl),
                 linkLabel: $linkLabel === null || trim($linkLabel) === '' ? null : trim($linkLabel),
                 layout: $layout === null || trim($layout) === '' ? null : trim($layout),
@@ -198,6 +215,7 @@ readonly class PageRequestMapper
                 eventIdentifier: $eventIdentifier === null || trim($eventIdentifier) === '' ? null : trim($eventIdentifier),
                 eventHelpEnabled: $eventHelpEnabled,
                 eventHelpButtonLabel: $eventHelpButtonLabel === null || trim($eventHelpButtonLabel) === '' ? null : trim($eventHelpButtonLabel),
+                eventActivities: $mappedActivities,
                 extensionKey: $extensionKey === null || trim($extensionKey) === '' ? null : trim($extensionKey),
             );
         }

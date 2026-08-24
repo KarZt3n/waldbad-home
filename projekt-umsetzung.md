@@ -677,3 +677,9 @@ Ein Veranstaltungsblock kann optional die Helferanmeldung aktivieren. Aktivierte
 Die öffentliche API akzeptiert ausschließlich reinen Text. Jede Anmeldung wird mit der stabilen Veranstaltungskennung sowie einer Momentaufnahme aus Titel, Datum und Uhrzeit gespeichert. Dadurch bleibt die fachliche Zuordnung erhalten, wenn eine Veranstaltung später umbenannt, verschoben oder archiviert wird.
 
 Moderatoren und Administratoren sehen die Anmeldungen im Redaktionsbereich „Veranstaltungshelfer“, gruppiert nach Veranstaltung. Nach der Veranstaltung wird je Anmeldung „Hat teilgenommen“ mit einem oder mehreren Von-bis-Zeiträumen oder „Nicht teilgenommen“ ohne Teilnahmezeit erfasst. Zeiträume können nachträglich ergänzt, bearbeitet oder entfernt werden und dürfen sich nicht überschneiden. Aus allen Zeiträumen wird die Gesamtzeit minutengenau berechnet. Für die öffentliche Übermittlung gilt im Produktivbetrieb ein Rate-Limit; in der DDEV- und Testumgebung ist es deaktiviert.
+
+### Wiederverwendbare Aktivitäten
+
+Im Redaktionsbereich „Aktivitäten“ werden Tätigkeiten wie „Aufbau“, „Abbau“, „Bierwagen“ oder „Wasserbecken entmoosen“ zentral angelegt, beschrieben und bei Bedarf deaktiviert. Dieselbe Aktivität kann mehreren Veranstaltungen zugeordnet werden. Die benötigte Helferzahl gehört zur jeweiligen Zuordnung und kann deshalb je Veranstaltung unterschiedlich sein.
+
+Das gilt sowohl für reguläre Veranstaltungen als auch für Arbeitseinsätze auf „Gemeinsam anpacken“: Beide werden als Veranstaltungsblock gepflegt und erhalten die passenden Aktivitäten. Im öffentlichen Helferformular werden die Tätigkeiten als Checkboxen mit Soll- und Anmeldezahl angezeigt. Bei konfigurierten Aktivitäten muss mindestens eine ausgewählt werden. Die Auswahl wird an der Helferanmeldung als historischer Snapshot gespeichert und in „Veranstaltungshelfer“ bei der jeweiligen Person angezeigt.

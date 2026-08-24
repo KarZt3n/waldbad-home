@@ -174,6 +174,16 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertArrayHasKey('csrfToken', $login);
         self::assertIsString($login['csrfToken']);
 
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
+            'name' => 'Aufbau',
+            'description' => 'Tische und Bänke aufstellen.',
+            'active' => true,
+        ], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseStatusCodeSame(201);
+        $createdActivity = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($createdActivity);
+        self::assertIsString($createdActivity['id']);
+
         $page = [
             'title' => 'Testseite',
             'slug' => 'testseite',
@@ -193,6 +203,7 @@ final class CmsWorkflowTest extends WebTestCase
                     'content' => 'Text neben dem Bild.',
                     'mediaUrl' => 'https://example.test/bild.jpg',
                     'mediaAlt' => 'Ein Testbild',
+                    'mediaSource' => 'Foto: <strong>Waldbad-Team</strong>',
                     'layout' => 'image_right',
                     'imageWidthPercent' => 55,
                     'verticalAlignment' => 'top',
@@ -216,6 +227,10 @@ final class CmsWorkflowTest extends WebTestCase
                     'eventIdentifier' => 'event-sommerfest-2026',
                     'eventHelpEnabled' => true,
                     'eventHelpButtonLabel' => 'Ich möchte helfen!',
+                    'eventActivities' => [[
+                        'activityId' => $createdActivity['id'],
+                        'requiredHelpers' => 1,
+                    ]],
                     'mediaUrl' => null,
                     'mediaAlt' => null,
                 ],
@@ -247,6 +262,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertStringContainsString('"verticalAlignment":"top"', $responseContent);
         self::assertStringContainsString('"textAlignment":"center"', $responseContent);
         self::assertStringContainsString('"imageFit":"contain"', $responseContent);
+        self::assertStringContainsString('"mediaSource":"Foto: Waldbad-Team"', $responseContent);
         self::assertStringContainsString('"layout":"right"', $responseContent);
         self::assertStringContainsString('"imageWidthPercent":65', $responseContent);
         self::assertStringContainsString('"eventTitle":"Sommerfest"', $responseContent);
@@ -272,6 +288,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertIsArray($createdChild);
         self::assertIsString($createdChild['id']);
         self::assertSame($createdPage['id'], $createdChild['parentId']);
+        self::assertSame('testseite/test-unterseite', $createdChild['slug']);
 
         $this->client->jsonRequest('POST', sprintf('/api/admin/v1/pages/%s/publish', $createdPage['id']), [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
         self::assertResponseIsSuccessful();
@@ -359,12 +376,38 @@ final class CmsWorkflowTest extends WebTestCase
             'firstName' => 'Erika',
             'lastName' => 'Musterfrau',
             'message' => '<b>Ich helfe beim Aufbau.</b>',
+            'activityIds' => [$createdActivity['id']],
             'privacyAccepted' => true,
         ]);
         self::assertResponseStatusCodeSame(202);
         $helperResponse = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($helperResponse);
         self::assertIsString($helperResponse['id']);
+
+        $this->client->request('GET', '/api/public/v1/event-activities/event-sommerfest-2026');
+        self::assertResponseIsSuccessful();
+        $availability = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($availability);
+        self::assertIsArray($availability['items']);
+        self::assertIsArray($availability['items'][0]);
+        $availableActivity = $availability['items'][0];
+        self::assertSame('Aufbau', $availableActivity['name']);
+        self::assertSame(1, $availableActivity['requiredHelpers']);
+        self::assertSame(1, $availableActivity['registeredHelpers']);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => 'event-sommerfest-2026',
+            'firstName' => 'Max',
+            'lastName' => 'Beispiel',
+            'message' => '',
+            'activityIds' => [$createdActivity['id']],
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        $capacityError = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($capacityError);
+        self::assertIsArray($capacityError['error']);
+        self::assertSame('Eine ausgewählte Aktivität ist bereits vollständig belegt.', $capacityError['error']['message']);
 
         $this->client->jsonRequest('POST', sprintf('/api/admin/v1/pages/%s/publish', $createdPage['id']), [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
         self::assertResponseIsSuccessful();
@@ -390,6 +433,9 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame('Sommerfest', $helper['eventTitle']);
         self::assertSame('<b>Ich helfe beim Aufbau.</b>', $helper['message']);
         self::assertSame('new', $helper['status']);
+        self::assertIsArray($helper['selectedActivities']);
+        self::assertIsArray($helper['selectedActivities'][0]);
+        self::assertSame('Aufbau', $helper['selectedActivities'][0]['name']);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/participation', [
             'participated' => true,
@@ -405,6 +451,9 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame(210, $participatedHelper['participationMinutes']);
         self::assertIsArray($participatedHelper['participationIntervals']);
         self::assertCount(2, $participatedHelper['participationIntervals']);
+        self::assertIsArray($participatedHelper['selectedActivities']);
+        self::assertIsArray($participatedHelper['selectedActivities'][0]);
+        self::assertSame('Aufbau', $participatedHelper['selectedActivities'][0]['name']);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/participation', [
             'participated' => true,
@@ -435,6 +484,17 @@ final class CmsWorkflowTest extends WebTestCase
         $publishedChild = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($publishedChild);
         self::assertIsInt($publishedChild['version']);
+        self::assertSame('testseite/test-unterseite', $publishedChild['slug']);
+        self::assertTrue($publishedChild['visible']);
+        $this->client->request('GET', '/api/public/v1/pages/id/'.$createdChild['id']);
+        self::assertResponseIsSuccessful();
+        $publishedChildById = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($publishedChildById);
+        self::assertSame('testseite/test-unterseite', $publishedChildById['slug']);
+        $this->client->request('GET', '/api/public/v1/pages/testseite/test-unterseite');
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/seite/testseite/test-unterseite');
+        self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/public/v1/navigation');
         self::assertResponseIsSuccessful();
         $navigation = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -490,7 +550,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertFalse($hiddenChild['visible']);
         $this->client->jsonRequest('POST', sprintf('/api/admin/v1/pages/%s/publish', $createdChild['id']), [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
         self::assertResponseIsSuccessful();
-        $this->client->request('GET', '/api/public/v1/pages/test-unterseite');
+        $this->client->request('GET', '/api/public/v1/pages/testseite/test-unterseite');
         self::assertResponseStatusCodeSame(404);
         $this->client->request('GET', '/api/public/v1/navigation');
         self::assertResponseIsSuccessful();
@@ -511,6 +571,7 @@ final class CmsWorkflowTest extends WebTestCase
         $this->client->request(
             method: 'POST',
             uri: '/api/admin/v1/media/images',
+            parameters: ['source' => 'Foto: Waldbad-Team'],
             files: ['image' => new UploadedFile($temporaryImage, 'waldbad.png', 'image/png', null, true)],
             server: ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']],
         );
@@ -521,13 +582,29 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame(1, $storedImage['width']);
         self::assertSame(1, $storedImage['height']);
         self::assertIsString($storedImage['url']);
+        self::assertSame('Foto: Waldbad-Team', $storedImage['source']);
         $storedPath = dirname(__DIR__, 2).'/public'.$storedImage['url'];
         self::assertFileExists($storedPath);
 
         $this->client->request('GET', '/api/admin/v1/media/images');
         self::assertResponseIsSuccessful();
         self::assertStringContainsString(str_replace('/', '\/', $storedImage['url']), $this->responseContent());
+        self::assertStringContainsString('Foto: Waldbad-Team', $this->responseContent());
+
+        $this->client->jsonRequest('PATCH', '/api/admin/v1/media/images/source', [
+            'url' => $storedImage['url'],
+            'source' => 'Illustration: Naturbad Borkheide e.V.',
+        ], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseIsSuccessful();
+        $updatedImage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($updatedImage);
+        self::assertSame('Illustration: Naturbad Borkheide e.V.', $updatedImage['source']);
+
         unlink($storedPath);
+        $sourcePath = $storedPath.'.source.txt';
+        if (is_file($sourcePath)) {
+            unlink($sourcePath);
+        }
     }
 
     public function testPagesCanBeMovedDuplicatedAndDeletedSafely(): void
@@ -608,6 +685,32 @@ final class CmsWorkflowTest extends WebTestCase
         $page['parentId'] = $secondPage['id'];
         $this->client->jsonRequest('POST', '/api/admin/v1/pages', $page, $headers);
         self::assertResponseStatusCodeSame(201);
+        $subPage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($subPage);
+        self::assertSame('zweite-seite/unterseite', $subPage['slug']);
+
+        $page['title'] = 'Verschiebbare Hauptseite';
+        $page['slug'] = 'verschiebbare-hauptseite';
+        $page['navigationLabel'] = 'Verschiebbare Hauptseite';
+        $page['parentId'] = null;
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages', $page, $headers);
+        self::assertResponseStatusCodeSame(201);
+        $movablePage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($movablePage);
+        self::assertIsString($movablePage['id']);
+        self::assertIsInt($movablePage['version']);
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/pages/'.$movablePage['id'].'/position', [
+            'parentId' => $secondPage['id'],
+            'navigationPosition' => 0,
+            'version' => $movablePage['version'],
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        $reorderedPage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($reorderedPage);
+        self::assertSame($secondPage['id'], $reorderedPage['parentId']);
+        self::assertSame(0, $reorderedPage['navigationPosition']);
+
         $this->client->jsonRequest('DELETE', '/api/admin/v1/pages/'.$secondPage['id'], [], $headers);
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Unterseiten', $this->responseContent());

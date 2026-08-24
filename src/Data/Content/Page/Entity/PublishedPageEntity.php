@@ -17,6 +17,7 @@ class PublishedPageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource?: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout?: string|null,
@@ -31,6 +32,7 @@ class PublishedPageEntity
      *     eventIdentifier?: string|null,
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
+     *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey?: string|null
      * }>
      */
@@ -102,6 +104,7 @@ class PublishedPageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource?: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout?: string|null,
@@ -116,6 +119,7 @@ class PublishedPageEntity
      *     eventIdentifier?: string|null,
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
+     *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey?: string|null
      * }>
      */
@@ -175,6 +179,7 @@ class PublishedPageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout: string|null,
@@ -189,6 +194,7 @@ class PublishedPageEntity
      *     eventIdentifier: string|null,
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
+     *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey: string|null
      * }> $blocks
      */
@@ -230,6 +236,7 @@ class PublishedPageEntity
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout: string|null,
@@ -244,6 +251,7 @@ class PublishedPageEntity
      *     eventIdentifier: string|null,
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
+     *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey: string|null
      * }> $blocks
      */

@@ -12,6 +12,7 @@ enum ContentBlockType: string
     case CallToAction = 'call_to_action';
     case CustomHtml = 'custom_html';
     case EmbeddedPage = 'embedded_page';
+    case PageTeaser = 'page_teaser';
     case Event = 'event';
     case EventReference = 'event_reference';
     case Extension = 'extension';

@@ -30,6 +30,8 @@ interface PageManagerInterface
 
     public function ensureSlugAvailable(string $slug, ?string $exceptId = null): void;
 
+    public function hierarchicalSlug(string $slug, ?string $parentId): string;
+
     public function ensureParentAllowed(?string $parentId, ?string $pageId = null): void;
 
     /**

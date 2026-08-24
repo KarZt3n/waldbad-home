@@ -11,6 +11,7 @@ readonly class StoredImage
         public int $size,
         public int $width,
         public int $height,
+        public ?string $source = null,
     ) {
     }
 }

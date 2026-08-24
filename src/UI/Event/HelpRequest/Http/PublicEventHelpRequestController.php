@@ -25,6 +25,17 @@ readonly class PublicEventHelpRequestController
         $firstName = trim($data->getString('firstName'));
         $lastName = trim($data->getString('lastName'));
         $message = trim($data->getString('message'));
+        $submittedActivityIds = $data->all('activityIds');
+        if (!array_is_list($submittedActivityIds) || count($submittedActivityIds) > 20) {
+            throw new BadRequestHttpException('Die ausgewählten Aktivitäten sind ungültig.');
+        }
+        $activityIds = [];
+        foreach ($submittedActivityIds as $activityId) {
+            if (!is_string($activityId)) {
+                throw new BadRequestHttpException('Die ausgewählten Aktivitäten sind ungültig.');
+            }
+            $activityIds[] = $activityId;
+        }
         if ($eventIdentifier === '' || $firstName === '' || $lastName === '' || !$data->getBoolean('privacyAccepted')) {
             throw new BadRequestHttpException('Veranstaltung, Vorname, Nachname und Datenschutzbestätigung sind erforderlich.');
         }
@@ -36,7 +47,7 @@ readonly class PublicEventHelpRequestController
             throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warten Sie, bevor Sie eine weitere Helferanmeldung senden.');
         }
 
-        $result = $useCase->execute($eventIdentifier, $firstName, $lastName, $message);
+        $result = $useCase->execute($eventIdentifier, $firstName, $lastName, $message, $activityIds);
 
         return new JsonResponse([
             'id' => $result->id,

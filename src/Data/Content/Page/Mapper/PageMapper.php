@@ -6,6 +6,7 @@ use App\Data\Content\Page\Entity\PageEntity;
 use App\Data\Content\Page\Entity\PublishedPageEntity;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
+use App\Logic\Content\Page\Model\EventActivityAssignment;
 use App\Logic\Content\Page\Model\Page;
 use App\Logic\Content\Page\Model\PageStatus;
 
@@ -25,6 +26,7 @@ readonly class PageMapper
                     content: $block['content'],
                     mediaUrl: $block['mediaUrl'],
                     mediaAlt: $block['mediaAlt'],
+                    mediaSource: $block['mediaSource'] ?? null,
                     linkUrl: $block['linkUrl'],
                     linkLabel: $block['linkLabel'],
                     layout: $block['layout'] ?? null,
@@ -39,6 +41,10 @@ readonly class PageMapper
                     eventIdentifier: $block['eventIdentifier'] ?? null,
                     eventHelpEnabled: $block['eventHelpEnabled'] ?? $block['type'] === ContentBlockType::Event->value,
                     eventHelpButtonLabel: $block['eventHelpButtonLabel'] ?? null,
+                    eventActivities: array_map(
+                        static fn (array $activity): EventActivityAssignment => new EventActivityAssignment($activity['activityId'], $activity['requiredHelpers']),
+                        $block['eventActivities'] ?? [],
+                    ),
                     extensionKey: $block['extensionKey'] ?? null,
                 ),
                 $entity->getBlocks(),
@@ -93,6 +99,7 @@ readonly class PageMapper
                     content: $block['content'],
                     mediaUrl: $block['mediaUrl'],
                     mediaAlt: $block['mediaAlt'],
+                    mediaSource: $block['mediaSource'] ?? null,
                     linkUrl: $block['linkUrl'],
                     linkLabel: $block['linkLabel'],
                     layout: $block['layout'] ?? null,
@@ -107,6 +114,10 @@ readonly class PageMapper
                     eventIdentifier: $block['eventIdentifier'] ?? null,
                     eventHelpEnabled: $block['eventHelpEnabled'] ?? $block['type'] === ContentBlockType::Event->value,
                     eventHelpButtonLabel: $block['eventHelpButtonLabel'] ?? null,
+                    eventActivities: array_map(
+                        static fn (array $activity): EventActivityAssignment => new EventActivityAssignment($activity['activityId'], $activity['requiredHelpers']),
+                        $block['eventActivities'] ?? [],
+                    ),
                     extensionKey: $block['extensionKey'] ?? null,
                 ),
                 $entity->getBlocks(),
@@ -194,6 +205,7 @@ readonly class PageMapper
      *     content: string,
      *     mediaUrl: string|null,
      *     mediaAlt: string|null,
+     *     mediaSource: string|null,
      *     linkUrl: string|null,
      *     linkLabel: string|null,
      *     layout: string|null,
@@ -208,6 +220,7 @@ readonly class PageMapper
      *     eventIdentifier: string|null,
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
+     *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     extensionKey: string|null
      * }>
      */
@@ -219,6 +232,7 @@ readonly class PageMapper
                 'content' => $block->content,
                 'mediaUrl' => $block->mediaUrl,
                 'mediaAlt' => $block->mediaAlt,
+                'mediaSource' => $block->mediaSource,
                 'linkUrl' => $block->linkUrl,
                 'linkLabel' => $block->linkLabel,
                 'layout' => $block->layout,
@@ -233,6 +247,10 @@ readonly class PageMapper
                 'eventIdentifier' => $block->eventIdentifier,
                 'eventHelpEnabled' => $block->eventHelpEnabled,
                 'eventHelpButtonLabel' => $block->eventHelpButtonLabel,
+                'eventActivities' => array_map(
+                    static fn (EventActivityAssignment $activity): array => ['activityId' => $activity->activityId, 'requiredHelpers' => $activity->requiredHelpers],
+                    $block->eventActivities,
+                ),
                 'extensionKey' => $block->extensionKey,
             ],
             $page->blocks,

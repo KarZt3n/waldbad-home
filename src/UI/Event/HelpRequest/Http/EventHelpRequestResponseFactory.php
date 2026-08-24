@@ -4,6 +4,7 @@ namespace App\UI\Event\HelpRequest\Http;
 
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestResponse;
 use App\Logic\Event\HelpRequest\Model\ParticipationInterval;
+use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
 
 readonly class EventHelpRequestResponseFactory
 {
@@ -41,6 +42,14 @@ readonly class EventHelpRequestResponseFactory
                     'minutes' => $interval->minutes,
                 ],
                 $request->participationIntervals,
+            ),
+            'selectedActivities' => array_map(
+                static fn (SelectedEventActivity $activity): array => [
+                    'id' => $activity->id,
+                    'activityId' => $activity->activityId,
+                    'name' => $activity->activityName,
+                ],
+                $request->selectedActivities,
             ),
             'submittedAt' => $request->submittedAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $request->updatedAt->format(\DateTimeInterface::ATOM),

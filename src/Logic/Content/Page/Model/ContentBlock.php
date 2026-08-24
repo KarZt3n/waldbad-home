@@ -11,6 +11,7 @@ readonly class ContentBlock
         public string $content,
         public ?string $mediaUrl = null,
         public ?string $mediaAlt = null,
+        public ?string $mediaSource = null,
         public ?string $linkUrl = null,
         public ?string $linkLabel = null,
         public ?string $layout = null,
@@ -25,9 +26,11 @@ readonly class ContentBlock
         public ?string $eventIdentifier = null,
         public bool $eventHelpEnabled = false,
         public ?string $eventHelpButtonLabel = null,
+        /** @var list<EventActivityAssignment> */
+        public array $eventActivities = [],
         public ?string $extensionKey = null,
     ) {
-        if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
+        if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
             && trim($this->content) === ''
             && $this->mediaUrl === null
             && $this->embeddedPageId === null) {
@@ -36,6 +39,10 @@ readonly class ContentBlock
 
         if ($this->type === ContentBlockType::EmbeddedPage && $this->embeddedPageId === null) {
             throw new BusinessRuleViolationException('Eine eingebettete Seite muss ausgewählt werden.');
+        }
+
+        if ($this->type === ContentBlockType::PageTeaser && $this->embeddedPageId === null) {
+            throw new BusinessRuleViolationException('Ein Seitenteaser benötigt eine Zielseite.');
         }
 
         if ($this->type === ContentBlockType::EventReference
@@ -57,12 +64,22 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Die Beschriftung der Helferanmeldung ist zu lang.');
         }
 
+        $activityIds = array_map(static fn (EventActivityAssignment $assignment): string => $assignment->activityId, $this->eventActivities);
+        if (count($activityIds) !== count(array_unique($activityIds))) {
+            throw new BusinessRuleViolationException('Eine Aktivität darf einer Veranstaltung nur einmal zugeordnet werden.');
+        }
+
+        if ($this->mediaSource !== null && mb_strlen(trim($this->mediaSource)) > 300) {
+            throw new BusinessRuleViolationException('Die Bildquelle darf höchstens 300 Zeichen lang sein.');
+        }
+
         if (in_array($this->type, [ContentBlockType::Image, ContentBlockType::ImageText], true)
             && $this->mediaUrl === null) {
             throw new BusinessRuleViolationException('Ein Bildblock benötigt eine Bild-URL.');
         }
 
-        if ($this->type === ContentBlockType::ImageText && !in_array($this->layout, ['image_left', 'image_right'], true)) {
+        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser], true)
+            && !in_array($this->layout, ['image_left', 'image_right'], true)) {
             throw new BusinessRuleViolationException('Für Bild und Text muss die Bildposition gewählt werden.');
         }
 
@@ -82,7 +99,7 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Die Bildbreite muss zwischen 20 und 100 Prozent liegen.');
         }
 
-        if ($this->type === ContentBlockType::ImageText
+        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser], true)
             && ($this->imageWidthPercent !== null && ($this->imageWidthPercent < 20 || $this->imageWidthPercent > 80))) {
             throw new BusinessRuleViolationException('Die Bildbreite muss zwischen 20 und 80 Prozent liegen.');
         }
@@ -94,17 +111,17 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Die Bildbreite ist für die gewählte Anordnung ungültig.');
         }
 
-        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::EventReference], true)
+        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser, ContentBlockType::EventReference], true)
             && ($this->verticalAlignment !== null && !in_array($this->verticalAlignment, ['top', 'center', 'bottom'], true))) {
             throw new BusinessRuleViolationException('Die vertikale Textausrichtung ist ungültig.');
         }
 
-        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::EventReference], true)
+        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser, ContentBlockType::EventReference], true)
             && ($this->textAlignment !== null && !in_array($this->textAlignment, ['left', 'center', 'right'], true))) {
             throw new BusinessRuleViolationException('Die horizontale Textausrichtung ist ungültig.');
         }
 
-        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::EventReference], true)
+        if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser, ContentBlockType::EventReference], true)
             && ($this->imageFit !== null && !in_array($this->imageFit, ['cover', 'contain'], true))) {
             throw new BusinessRuleViolationException('Die Bilddarstellung ist ungültig.');
         }

@@ -56,6 +56,21 @@ readonly class PageManager implements PageManagerInterface
         }
     }
 
+    public function hierarchicalSlug(string $slug, ?string $parentId): string
+    {
+        $segments = explode('/', $slug);
+        $leafSlug = end($segments);
+        if ($leafSlug === '') {
+            return $slug;
+        }
+
+        if ($parentId === null) {
+            return $leafSlug;
+        }
+
+        return $this->get($parentId)->slug.'/'.$leafSlug;
+    }
+
     public function ensureParentAllowed(?string $parentId, ?string $pageId = null): void
     {
         if ($parentId === null) {
@@ -85,7 +100,8 @@ readonly class PageManager implements PageManagerInterface
     public function ensureEmbeddedPagesAllowed(array $blocks, string $pageId): void
     {
         foreach ($blocks as $block) {
-            if ($block->type === ContentBlockType::EmbeddedPage && $block->embeddedPageId !== null) {
+            if (in_array($block->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser], true)
+                && $block->embeddedPageId !== null) {
                 $this->validateEmbeddedPage($block->embeddedPageId, $pageId, []);
             }
         }
@@ -114,9 +130,10 @@ readonly class PageManager implements PageManagerInterface
                 throw new BusinessRuleViolationException('Die Seite besitzt Unterseiten. Verschiebe oder lösche diese zuerst.');
             }
             foreach ($candidate->blocks as $block) {
-                if ($block->type === ContentBlockType::EmbeddedPage && $block->embeddedPageId === $page->id) {
+                if (in_array($block->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser], true)
+                    && $block->embeddedPageId === $page->id) {
                     throw new BusinessRuleViolationException(sprintf(
-                        'Die Seite wird in „%s“ eingebettet. Entferne dort zuerst den eingebetteten Seitenblock.',
+                        'Die Seite wird in „%s“ eingebettet oder als Teaser verlinkt. Entferne dort zuerst den entsprechenden Inhaltsblock.',
                         $candidate->title,
                     ));
                 }

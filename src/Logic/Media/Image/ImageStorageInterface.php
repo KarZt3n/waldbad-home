@@ -13,4 +13,6 @@ interface ImageStorageInterface
      * @return list<StoredImage>
      */
     public function all(): array;
+
+    public function updateSource(string $url, ?string $source): StoredImage;
 }
