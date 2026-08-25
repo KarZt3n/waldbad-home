@@ -6,7 +6,9 @@ use App\Data\Content\Page\Entity\PageEntity;
 use App\Data\Content\Page\Entity\PublishedPageEntity;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
+use App\Logic\Content\Page\Model\ContentCollectionItem;
 use App\Logic\Content\Page\Model\EventActivityAssignment;
+use App\Logic\Content\Page\Model\EventCallToAction;
 use App\Logic\Content\Page\Model\Page;
 use App\Logic\Content\Page\Model\PageStatus;
 
@@ -45,7 +47,22 @@ readonly class PageMapper
                         static fn (array $activity): EventActivityAssignment => new EventActivityAssignment($activity['activityId'], $activity['requiredHelpers']),
                         $block['eventActivities'] ?? [],
                     ),
+                    eventCallToActions: array_map(
+                        static fn (array $action): EventCallToAction => new EventCallToAction($action['label'], $action['url'], $action['pageId']),
+                        $block['eventCallToActions'] ?? [],
+                    ),
                     extensionKey: $block['extensionKey'] ?? null,
+                    collectionColumns: $block['collectionColumns'] ?? null,
+                    collectionItems: array_map(
+                        static fn (array $item): ContentCollectionItem => new ContentCollectionItem(
+                            $item['title'],
+                            $item['content'],
+                            $item['mediaUrl'],
+                            $item['mediaAlt'],
+                            $item['mediaSource'],
+                        ),
+                        $block['collectionItems'] ?? [],
+                    ),
                 ),
                 $entity->getBlocks(),
             ),
@@ -118,7 +135,22 @@ readonly class PageMapper
                         static fn (array $activity): EventActivityAssignment => new EventActivityAssignment($activity['activityId'], $activity['requiredHelpers']),
                         $block['eventActivities'] ?? [],
                     ),
+                    eventCallToActions: array_map(
+                        static fn (array $action): EventCallToAction => new EventCallToAction($action['label'], $action['url'], $action['pageId']),
+                        $block['eventCallToActions'] ?? [],
+                    ),
                     extensionKey: $block['extensionKey'] ?? null,
+                    collectionColumns: $block['collectionColumns'] ?? null,
+                    collectionItems: array_map(
+                        static fn (array $item): ContentCollectionItem => new ContentCollectionItem(
+                            $item['title'],
+                            $item['content'],
+                            $item['mediaUrl'],
+                            $item['mediaAlt'],
+                            $item['mediaSource'],
+                        ),
+                        $block['collectionItems'] ?? [],
+                    ),
                 ),
                 $entity->getBlocks(),
             ),
@@ -221,7 +253,10 @@ readonly class PageMapper
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
-     *     extensionKey: string|null
+     *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     extensionKey: string|null,
+     *     collectionColumns: int|null,
+     *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
      */
     private function mapBlocks(Page $page): array
@@ -251,7 +286,22 @@ readonly class PageMapper
                     static fn (EventActivityAssignment $activity): array => ['activityId' => $activity->activityId, 'requiredHelpers' => $activity->requiredHelpers],
                     $block->eventActivities,
                 ),
+                'eventCallToActions' => array_map(
+                    static fn (EventCallToAction $action): array => ['label' => $action->label, 'url' => $action->url, 'pageId' => $action->pageId],
+                    $block->eventCallToActions,
+                ),
                 'extensionKey' => $block->extensionKey,
+                'collectionColumns' => $block->collectionColumns,
+                'collectionItems' => array_map(
+                    static fn (ContentCollectionItem $item): array => [
+                        'title' => $item->title,
+                        'content' => $item->content,
+                        'mediaUrl' => $item->mediaUrl,
+                        'mediaAlt' => $item->mediaAlt,
+                        'mediaSource' => $item->mediaSource,
+                    ],
+                    $block->collectionItems,
+                ),
             ],
             $page->blocks,
         );

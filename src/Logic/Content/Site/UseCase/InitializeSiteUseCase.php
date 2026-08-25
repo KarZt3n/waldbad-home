@@ -43,7 +43,9 @@ readonly class InitializeSiteUseCase
                 visible: true,
                 showInNavigation: $definition['showInNavigation'] ?? true,
                 navigationPosition: $definition['position'],
-                seoTitle: $definition['title'],
+                seoTitle: $definition['slug'] === OpeningHoursPageDefinition::SLUG
+                    ? OpeningHoursPageDefinition::SEO_TITLE
+                    : $definition['title'],
                 seoDescription: $definition['description'],
                 version: 0,
                 createdAt: $now,

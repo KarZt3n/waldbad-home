@@ -21,7 +21,7 @@ final class AdminImageController extends AbstractController
     #[Route('', name: 'api_admin_media_images_list', methods: ['GET'])]
     public function list(ListStoredImagesQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::CmsRead->value);
+        $this->denyAccessUnlessGranted(Permission::PagesView->value);
 
         return new JsonResponse([
             'items' => array_map($this->response(...), $query->execute()),
@@ -31,7 +31,7 @@ final class AdminImageController extends AbstractController
     #[Route('', name: 'api_admin_media_image_upload', methods: ['POST'])]
     public function upload(Request $request, UploadImageUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
         $file = $request->files->get('image');
         if (!$file instanceof UploadedFile || !$file->isValid()) {
             throw new BadRequestHttpException('Bitte wählen Sie eine gültige Bilddatei aus.');
@@ -55,7 +55,7 @@ final class AdminImageController extends AbstractController
     #[Route('/source', name: 'api_admin_media_image_source_update', methods: ['PATCH'])]
     public function updateSource(Request $request, UpdateImageSourceUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
         $data = $request->getPayload();
         $url = trim($data->getString('url'));
         if ($url === '') {

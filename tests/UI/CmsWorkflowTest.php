@@ -4,6 +4,9 @@ namespace App\Tests\UI;
 
 use App\Logic\Content\Site\UseCase\InitializeSiteUseCase;
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
+use App\Logic\IdentityAccess\User\Model\CmsModule;
+use App\Logic\IdentityAccess\User\Model\ModuleAccess;
+use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
 use Doctrine\ORM\EntityManagerInterface;
@@ -96,6 +99,158 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
+    public function testAdminModulesRestrictNavigationAreasAndApiEndpoints(): void
+    {
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        if (!$createUser instanceof CreateUserUseCase) {
+            throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
+        }
+        $createUser->execute(new CreateUserRequest(
+            email: 'module-super-admin@example.test',
+            displayName: 'Module Super Admin',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [Role::SuperAdmin],
+            moduleAccess: self::allModuleAccess(),
+        ));
+        $limitedUser = $createUser->execute(new CreateUserRequest(
+            email: 'page-admin@example.test',
+            displayName: 'Page Admin',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [Role::Admin],
+            moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
+        ));
+
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'module-super-admin@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsString($login['csrfToken']);
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/users/'.$limitedUser->id.'/access', [
+            'roles' => ['admin'],
+            'moduleAccess' => ['pages' => 'viewer'],
+        ], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseIsSuccessful();
+        $updatedUser = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($updatedUser);
+        self::assertSame(['pages' => 'viewer'], $updatedUser['moduleAccess']);
+
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'page-admin@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $limitedLogin = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($limitedLogin);
+        self::assertIsArray($limitedLogin['user']);
+        self::assertSame(['pages' => 'viewer'], $limitedLogin['user']['moduleAccess']);
+        self::assertIsString($limitedLogin['csrfToken']);
+
+        $this->client->request('GET', '/api/admin/v1/pages');
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/event-activities');
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
+            'name' => 'Nicht erlaubt',
+            'description' => '',
+            'active' => true,
+        ], ['HTTP_X_CSRF_TOKEN' => $limitedLogin['csrfToken']]);
+        self::assertResponseStatusCodeSame(403);
+        $this->client->request('GET', '/api/admin/v1/guestbook-entries');
+        self::assertResponseStatusCodeSame(403);
+        $this->client->request('GET', '/api/admin/v1/users');
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testAdminCannotEditOrSuspendSuperAdmin(): void
+    {
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        if (!$createUser instanceof CreateUserUseCase) {
+            throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
+        }
+        $superAdmin = $createUser->execute(new CreateUserRequest(
+            email: 'protected-super-admin@example.test',
+            displayName: 'Protected Super Admin',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [Role::SuperAdmin],
+            moduleAccess: [new ModuleAccess(CmsModule::UserManagement, ModuleRole::Editor)],
+        ));
+        $createUser->execute(new CreateUserRequest(
+            email: 'restricted-admin@example.test',
+            displayName: 'Restricted Admin',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [Role::Admin],
+            moduleAccess: [new ModuleAccess(CmsModule::UserManagement, ModuleRole::Viewer)],
+        ));
+
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'restricted-admin@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsString($login['csrfToken']);
+        $headers = ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']];
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/users/'.$superAdmin->id.'/access', [
+            'roles' => ['super_admin'],
+            'moduleAccess' => ['user_management' => 'editor'],
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $editError = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($editError);
+        self::assertIsArray($editError['error']);
+        self::assertIsString($editError['error']['message']);
+        self::assertStringContainsString('ausschließlich von einem Super-Administrator bearbeitet', $editError['error']['message']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/users/'.$superAdmin->id.'/suspend', [], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $suspendError = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($suspendError);
+        self::assertIsArray($suspendError['error']);
+        self::assertIsString($suspendError['error']['message']);
+        self::assertStringContainsString('ausschließlich von einem Super-Administrator gesperrt', $suspendError['error']['message']);
+    }
+
+    public function testModuleRolesSeparateReadAndEditAccess(): void
+    {
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        if (!$createUser instanceof CreateUserUseCase) {
+            throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
+        }
+        $createUser->execute(new CreateUserRequest(
+            email: 'module-editor@example.test',
+            displayName: 'Module Editor',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [],
+            moduleAccess: [
+                new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer),
+                new ModuleAccess(CmsModule::Guestbook, ModuleRole::Editor),
+            ],
+        ));
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'module-editor@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsString($login['csrfToken']);
+
+        $this->client->request('GET', '/api/admin/v1/pages');
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages/preview', [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseStatusCodeSame(403);
+        $this->client->request('GET', '/api/admin/v1/guestbook-entries');
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/contact-requests');
+        self::assertResponseStatusCodeSame(403);
+    }
+
     public function testPublishedGuestbookImportIsImmediatelyVisibleAndIdempotent(): void
     {
         $importCommand = self::getContainer()->get(ImportPublishedGuestbookEntriesCommand::class);
@@ -162,6 +317,7 @@ final class CmsWorkflowTest extends WebTestCase
             displayName: 'Admin',
             plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
+            moduleAccess: self::allModuleAccess(),
         ));
 
         $this->client->jsonRequest('POST', '/api/auth/v1/login', [
@@ -219,6 +375,18 @@ final class CmsWorkflowTest extends WebTestCase
                     'imageWidthPercent' => 65,
                 ],
                 [
+                    'type' => 'feature_collection',
+                    'content' => 'Wir bieten unseren Besuchern',
+                    'collectionColumns' => 3,
+                    'collectionItems' => [[
+                        'title' => '1000 m² Badeteich',
+                        'content' => '<p>Viel Platz zum <strong>Schwimmen</strong>.<script>alert(1)</script></p>',
+                        'mediaUrl' => 'https://example.test/badeteich.jpg',
+                        'mediaAlt' => 'Badeteich im Waldbad',
+                        'mediaSource' => 'Foto: <strong>Naturbad Borkheide e.V.</strong>',
+                    ]],
+                ],
+                [
                     'type' => 'event',
                     'content' => '',
                     'eventTitle' => '<strong>Sommerfest</strong>',
@@ -230,6 +398,11 @@ final class CmsWorkflowTest extends WebTestCase
                     'eventActivities' => [[
                         'activityId' => $createdActivity['id'],
                         'requiredHelpers' => 1,
+                    ]],
+                    'eventCallToActions' => [[
+                        'label' => 'Weitere Informationen',
+                        'url' => 'https://example.test/sommerfest',
+                        'pageId' => null,
                     ]],
                     'mediaUrl' => null,
                     'mediaAlt' => null,
@@ -265,11 +438,16 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertStringContainsString('"mediaSource":"Foto: Waldbad-Team"', $responseContent);
         self::assertStringContainsString('"layout":"right"', $responseContent);
         self::assertStringContainsString('"imageWidthPercent":65', $responseContent);
+        self::assertStringContainsString('"type":"feature_collection"', $responseContent);
+        self::assertStringContainsString('"collectionColumns":3', $responseContent);
+        self::assertStringContainsString('"title":"1000 m\\u00b2 Badeteich"', $responseContent);
+        self::assertStringContainsString('"mediaSource":"Foto: Naturbad Borkheide e.V."', $responseContent);
         self::assertStringContainsString('"eventTitle":"Sommerfest"', $responseContent);
         self::assertStringContainsString('"eventDate":"2026-08-15"', $responseContent);
         self::assertStringContainsString('"eventTime":"14:00"', $responseContent);
         self::assertStringContainsString('"eventIdentifier":"event-sommerfest-2026"', $responseContent);
         self::assertStringContainsString('"eventHelpEnabled":true', $responseContent);
+        self::assertStringContainsString('"eventCallToActions":[{"label":"Weitere Informationen","url":"https:\/\/example.test\/sommerfest","pageId":null}]', $responseContent);
         $createdPage = json_decode($responseContent, true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($createdPage);
         self::assertIsString($createdPage['id']);
@@ -350,6 +528,9 @@ final class CmsWorkflowTest extends WebTestCase
         $draftPayload['slug'] = 'testseite-neu';
         $draftPayload['navigationLabel'] = 'Neuer Navigationstitel';
         $draftPayload['blocks'][0]['content'] = '<p>Noch nicht veröffentlichter Inhalt</p>';
+        $draftPayload['blocks'][5]['eventTitle'] = 'Sommerfest verschoben';
+        $draftPayload['blocks'][5]['eventDate'] = '2026-08-22';
+        $draftPayload['blocks'][5]['eventTime'] = '16:30';
         $draftPayload['version'] = $publishedPage['version'];
         $this->client->jsonRequest('PUT', '/api/admin/v1/pages/'.$createdPage['id'], $draftPayload, ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
         self::assertResponseIsSuccessful();
@@ -383,6 +564,16 @@ final class CmsWorkflowTest extends WebTestCase
         $helperResponse = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($helperResponse);
         self::assertIsString($helperResponse['id']);
+
+        $this->client->request('GET', '/api/admin/v1/event-help-requests');
+        self::assertResponseIsSuccessful();
+        $helpersWithCurrentEvent = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($helpersWithCurrentEvent);
+        self::assertIsArray($helpersWithCurrentEvent['items']);
+        self::assertIsArray($helpersWithCurrentEvent['items'][0]);
+        self::assertSame('Sommerfest verschoben', $helpersWithCurrentEvent['items'][0]['eventTitle']);
+        self::assertSame('2026-08-22', $helpersWithCurrentEvent['items'][0]['eventDate']);
+        self::assertSame('16:30', $helpersWithCurrentEvent['items'][0]['eventTime']);
 
         $this->client->request('GET', '/api/public/v1/event-activities/event-sommerfest-2026');
         self::assertResponseIsSuccessful();
@@ -430,7 +621,9 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertCount(1, $helpers['items']);
         self::assertIsArray($helpers['items'][0]);
         $helper = $helpers['items'][0];
-        self::assertSame('Sommerfest', $helper['eventTitle']);
+        self::assertSame('Sommerfest verschoben', $helper['eventTitle']);
+        self::assertSame('2026-08-22', $helper['eventDate']);
+        self::assertSame('16:30', $helper['eventTime']);
         self::assertSame('<b>Ich helfe beim Aufbau.</b>', $helper['message']);
         self::assertSame('new', $helper['status']);
         self::assertIsArray($helper['selectedActivities']);
@@ -618,6 +811,7 @@ final class CmsWorkflowTest extends WebTestCase
             displayName: 'Struktur-Admin',
             plainPassword: 'Ein-sicheres-Strukturpasswort-2026',
             roles: [Role::SuperAdmin],
+            moduleAccess: self::allModuleAccess(),
         ));
         $this->client->jsonRequest('POST', '/api/auth/v1/login', [
             'email' => 'structure-admin@example.test',
@@ -740,5 +934,19 @@ final class CmsWorkflowTest extends WebTestCase
         }
 
         return $content;
+    }
+
+    /**
+     * @return list<ModuleAccess>
+     */
+    private static function allModuleAccess(): array
+    {
+        return array_map(
+            static fn (CmsModule $module): ModuleAccess => new ModuleAccess(
+                $module,
+                $module === CmsModule::Pages ? ModuleRole::Publisher : ModuleRole::Editor,
+            ),
+            CmsModule::cases(),
+        );
     }
 }

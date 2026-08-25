@@ -6,6 +6,7 @@ use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\ParticipationInterval;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
+use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
 
 readonly class EventHelpRequestResponse
 {
@@ -29,14 +30,14 @@ readonly class EventHelpRequestResponse
     ) {
     }
 
-    public static function fromRequest(EventHelpRequest $request): self
+    public static function fromRequest(EventHelpRequest $request, ?VolunteerEvent $currentEvent = null): self
     {
         return new self(
             id: $request->id,
             eventIdentifier: $request->eventIdentifier,
-            eventTitle: $request->eventTitle,
-            eventDate: $request->eventDate,
-            eventTime: $request->eventTime,
+            eventTitle: $currentEvent === null ? $request->eventTitle : $currentEvent->title,
+            eventDate: $currentEvent === null ? $request->eventDate : $currentEvent->date,
+            eventTime: $currentEvent === null ? $request->eventTime : $currentEvent->time,
             firstName: $request->firstName,
             lastName: $request->lastName,
             message: $request->message,

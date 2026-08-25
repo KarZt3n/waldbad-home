@@ -21,6 +21,7 @@ readonly class GetAuthenticationIdentityQuery
             displayName: $user->displayName,
             passwordHash: $user->passwordHash,
             roles: $user->roles,
+            moduleAccess: $user->moduleAccess,
             active: $user->active,
         );
     }

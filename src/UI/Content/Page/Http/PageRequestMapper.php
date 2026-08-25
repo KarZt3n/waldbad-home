@@ -7,7 +7,9 @@ use App\Logic\Content\Page\Dto\UpdatePageRequest;
 use App\Logic\Content\Page\HtmlSanitizerInterface;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
+use App\Logic\Content\Page\Model\ContentCollectionItem;
 use App\Logic\Content\Page\Model\EventActivityAssignment;
+use App\Logic\Content\Page\Model\EventCallToAction;
 use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -93,7 +95,10 @@ readonly class PageRequestMapper
             $eventHelpEnabled = $block['eventHelpEnabled'] ?? $typeValue === ContentBlockType::Event->value;
             $eventHelpButtonLabel = $block['eventHelpButtonLabel'] ?? null;
             $eventActivities = $block['eventActivities'] ?? [];
+            $eventCallToActions = $block['eventCallToActions'] ?? [];
             $extensionKey = $block['extensionKey'] ?? null;
+            $collectionColumns = $block['collectionColumns'] ?? null;
+            $collectionItems = $block['collectionItems'] ?? [];
 
             if (!is_string($typeValue) || trim($typeValue) === '') {
                 throw new BadRequestHttpException('Jeder Inhaltsblock benötigt einen Typ.');
@@ -162,8 +167,36 @@ readonly class PageRequestMapper
                 }
                 $mappedActivities[] = new EventActivityAssignment(trim($activity['activityId']), $activity['requiredHelpers']);
             }
+            if (!is_array($eventCallToActions) || !array_is_list($eventCallToActions)) {
+                throw new BadRequestHttpException('Die zusätzlichen Aktionsbuttons müssen als Liste angegeben werden.');
+            }
+            $mappedEventCallToActions = [];
+            foreach ($eventCallToActions as $eventCallToAction) {
+                $actionLabel = is_array($eventCallToAction) ? ($eventCallToAction['label'] ?? null) : null;
+                $actionUrlValue = is_array($eventCallToAction) ? ($eventCallToAction['url'] ?? null) : null;
+                $actionPageIdValue = is_array($eventCallToAction) ? ($eventCallToAction['pageId'] ?? null) : null;
+                if (!is_array($eventCallToAction)
+                    || !is_string($actionLabel)
+                    || ($actionUrlValue !== null && !is_string($actionUrlValue))
+                    || ($actionPageIdValue !== null && !is_string($actionPageIdValue))) {
+                    throw new BadRequestHttpException('Ein zusätzlicher Aktionsbutton benötigt Beschriftung und ein gültiges Ziel.');
+                }
+                $actionUrl = $actionUrlValue === null ? '' : trim($actionUrlValue);
+                $actionPageId = $actionPageIdValue === null ? '' : trim($actionPageIdValue);
+                $mappedEventCallToActions[] = new EventCallToAction(
+                    label: trim(strip_tags($actionLabel)),
+                    url: $actionUrl === '' ? null : $actionUrl,
+                    pageId: $actionPageId === '' ? null : $actionPageId,
+                );
+            }
             if ($extensionKey !== null && !is_string($extensionKey)) {
                 throw new BadRequestHttpException('Der Erweiterungsschlüssel muss eine Zeichenkette sein.');
+            }
+            if ($collectionColumns !== null && !is_int($collectionColumns)) {
+                throw new BadRequestHttpException('Die Spaltenzahl der Collection muss eine ganze Zahl sein.');
+            }
+            if (!is_array($collectionItems) || !array_is_list($collectionItems)) {
+                throw new BadRequestHttpException('Die Collection-Einträge müssen als Liste angegeben werden.');
             }
 
             $type = trim($typeValue);
@@ -174,7 +207,7 @@ readonly class PageRequestMapper
             }
 
             $content = trim($contentValue);
-            $content = in_array($blockType, [ContentBlockType::Heading, ContentBlockType::Image], true)
+            $content = in_array($blockType, [ContentBlockType::Heading, ContentBlockType::Image, ContentBlockType::FeatureCollection], true)
                 ? $this->htmlSanitizer->sanitizeInline($content)
                 : $this->htmlSanitizer->sanitize($content);
             $normalizedEventTitle = $eventTitle === null ? null : trim(strip_tags($eventTitle));
@@ -216,7 +249,54 @@ readonly class PageRequestMapper
                 eventHelpEnabled: $eventHelpEnabled,
                 eventHelpButtonLabel: $eventHelpButtonLabel === null || trim($eventHelpButtonLabel) === '' ? null : trim($eventHelpButtonLabel),
                 eventActivities: $mappedActivities,
+                eventCallToActions: $mappedEventCallToActions,
                 extensionKey: $extensionKey === null || trim($extensionKey) === '' ? null : trim($extensionKey),
+                collectionColumns: $collectionColumns,
+                collectionItems: $this->collectionItems($collectionItems),
+            );
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param list<mixed> $items
+     * @return list<ContentCollectionItem>
+     */
+    private function collectionItems(array $items): array
+    {
+        $mapped = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                throw new BadRequestHttpException('Jeder Collection-Eintrag muss ein Objekt sein.');
+            }
+            $title = $item['title'] ?? null;
+            $content = $item['content'] ?? '';
+            $mediaUrl = $item['mediaUrl'] ?? null;
+            $mediaAlt = $item['mediaAlt'] ?? null;
+            $mediaSource = $item['mediaSource'] ?? null;
+            if (!is_string($title) || trim($title) === '') {
+                throw new BadRequestHttpException('Jeder Collection-Eintrag benötigt eine Überschrift.');
+            }
+            if (!is_string($content)) {
+                throw new BadRequestHttpException('Der Text eines Collection-Eintrags muss eine Zeichenkette sein.');
+            }
+            if ($mediaUrl !== null && !is_string($mediaUrl)) {
+                throw new BadRequestHttpException('Die Bild-URL eines Collection-Eintrags muss eine Zeichenkette sein.');
+            }
+            if ($mediaAlt !== null && !is_string($mediaAlt)) {
+                throw new BadRequestHttpException('Der Alternativtext eines Collection-Eintrags muss eine Zeichenkette sein.');
+            }
+            if ($mediaSource !== null && !is_string($mediaSource)) {
+                throw new BadRequestHttpException('Die Bildquelle eines Collection-Eintrags muss eine Zeichenkette sein.');
+            }
+
+            $mapped[] = new ContentCollectionItem(
+                title: $this->htmlSanitizer->sanitizeInline(trim($title)),
+                content: $this->htmlSanitizer->sanitize(trim($content)),
+                mediaUrl: $mediaUrl === null || trim($mediaUrl) === '' ? null : trim($mediaUrl),
+                mediaAlt: $mediaAlt === null || trim($mediaAlt) === '' ? null : trim($mediaAlt),
+                mediaSource: $mediaSource === null || trim(strip_tags($mediaSource)) === '' ? null : trim(strip_tags($mediaSource)),
             );
         }
 

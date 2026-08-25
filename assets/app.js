@@ -3,12 +3,24 @@ import './styles/app.css';
 const app = document.querySelector('#app');
 let csrfToken = null;
 let currentRoles = [];
+let currentModuleAccess = {};
+
+const CMS_MODULES = [
+    ['pages', 'Seiten'],
+    ['activities', 'Aktivitäten'],
+    ['guestbook', 'Gästebuch'],
+    ['contact_requests', 'Kontaktanfragen'],
+    ['event_helpers', 'Veranstaltungshelfer'],
+    ['membership_applications', 'Mitgliedsanträge'],
+    ['user_management', 'Benutzerverwaltung'],
+];
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
     rich_text: 'Text',
     image: 'Bild',
     image_text: 'Bild + Text',
+    feature_collection: 'Collection: Bild + Text',
     alert: 'Hinweis',
     call_to_action: 'Handlungsaufruf',
     custom_html: 'Eigenes HTML',
@@ -18,6 +30,14 @@ const BLOCK_TYPES = {
     event_reference: 'Veranstaltung einbetten',
     extension: 'Erweiterung',
 };
+
+const createCollectionItem = (title = '') => ({
+    title,
+    content: '',
+    mediaUrl: null,
+    mediaAlt: null,
+    mediaSource: null,
+});
 
 const createBlock = (type) => ({
     type,
@@ -40,15 +60,23 @@ const createBlock = (type) => ({
     eventHelpEnabled: type === 'event',
     eventHelpButtonLabel: type === 'event' ? 'Ich möchte helfen!' : null,
     eventActivities: [],
+    eventCallToActions: [],
     extensionKey: type === 'extension' ? 'membership_application' : null,
+    collectionColumns: type === 'feature_collection' ? 3 : null,
+    collectionItems: [],
 });
 
 const hasAnyRole = (...roles) => currentRoles.some((role) => roles.includes(role));
-const canEdit = () => hasAnyRole('editor', 'publisher', 'admin', 'super_admin');
-const canPublish = () => hasAnyRole('publisher', 'admin', 'super_admin');
-const canModerate = () => hasAnyRole('moderator', 'admin', 'super_admin');
-const canManageUsers = () => hasAnyRole('admin', 'super_admin');
-const canManageMembership = () => hasAnyRole('admin', 'super_admin');
+const isGlobalAdministrator = () => hasAnyRole('admin', 'super_admin');
+const hasModule = (module) => typeof currentModuleAccess[module] === 'string';
+const moduleRole = (module) => currentModuleAccess[module] || null;
+const canEditModule = (module) => hasModule(module)
+    && (isGlobalAdministrator() || moduleRole(module) === 'editor');
+const canViewPages = () => hasModule('pages');
+const canEditPages = () => canViewPages()
+    && (isGlobalAdministrator() || ['editor', 'publisher', 'moderator'].includes(moduleRole('pages')));
+const canPublishPages = () => canViewPages()
+    && (isGlobalAdministrator() || moduleRole('pages') === 'publisher');
 
 const buildPageTree = (pages, includeOrphans = true) => {
     const nodes = new Map(pages.map((page) => [page.id, {...page, children: []}]));
@@ -694,6 +722,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             title,
             ...(block.content ? [details] : []),
         ]});
+        const actionRow = element('div', {className: 'event-action-row'});
         if (block.eventHelpEnabled && block.eventIdentifier) {
             const help = element('button', {
                 className: 'button event-help-button',
@@ -707,8 +736,32 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                     toast(error.message, 'error');
                 }
             });
-            copy.append(help);
+            actionRow.append(help);
         }
+        (Array.isArray(block.eventCallToActions) ? block.eventCallToActions : []).forEach((action) => {
+            if (!action?.label || (!action.url && !action.pageId)) return;
+            const link = element('a', {className: 'button secondary-button event-call-action', text: action.label});
+            const setHref = (href) => {
+                link.href = href;
+                link.hidden = false;
+                if (/^https?:\/\//i.test(href)) {
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                }
+            };
+            if (action.url) {
+                setHref(action.url);
+            } else {
+                link.hidden = true;
+                const localPage = context.pagesById?.get(action.pageId);
+                const pageRequest = localPage
+                    ? Promise.resolve(localPage)
+                    : request('/api/public/v1/pages/id/' + encodeURIComponent(action.pageId));
+                pageRequest.then((targetPage) => setHref(pageHref(targetPage.slug))).catch(() => link.remove());
+            }
+            actionRow.append(link);
+        });
+        if (actionRow.childElementCount > 0) copy.append(actionRow);
         const layout = ['image_left', 'image_right', 'image_top'].includes(block.layout) ? block.layout : 'image_left';
         const imageWidth = Number.isInteger(block.imageWidthPercent) ? block.imageWidthPercent : 32;
         const verticalAlignment = ['top', 'center', 'bottom'].includes(block.verticalAlignment) ? block.verticalAlignment : 'center';
@@ -724,6 +777,38 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             children: [
             ...(media ? [media] : []),
             copy,
+        ]});
+    }
+    if (block.type === 'feature_collection') {
+        const columns = Number.isInteger(block.collectionColumns)
+            ? Math.min(4, Math.max(1, block.collectionColumns))
+            : 3;
+        const heading = element('h2', {className: 'feature-collection-heading'});
+        heading.innerHTML = block.content;
+        const items = Array.isArray(block.collectionItems) ? block.collectionItems : [];
+
+        return element('section', {className: 'feature-collection', children: [
+            heading,
+            element('div', {
+                className: 'feature-collection-grid',
+                attributes: {style: `--collection-columns: ${columns}`},
+                children: items.map((item) => {
+                    const title = element('h3');
+                    title.innerHTML = item.title || '';
+                    const copy = element('div', {className: 'feature-collection-copy'});
+                    copy.innerHTML = item.content || '';
+                    return element('article', {className: `feature-collection-item${item.mediaUrl ? ' has-image' : ''}`, children: [
+                        ...(item.mediaUrl ? [element('figure', {className: 'feature-collection-media', children: [
+                            element('img', {attributes: {src: item.mediaUrl, alt: item.mediaAlt || '', loading: 'lazy'}}),
+                            ...(item.mediaSource ? [renderImageSource(item.mediaSource)] : []),
+                        ]})] : []),
+                        element('div', {className: 'feature-collection-body', children: [
+                            title,
+                            ...(item.content ? [copy] : []),
+                        ]}),
+                    ]});
+                }),
+            }),
         ]});
     }
     if (block.type === 'heading') {
@@ -804,6 +889,17 @@ const renderContentCard = (page, context) => element('article', {
     children: page.blocks.map((block) => renderPublicBlock(block, context)),
 });
 
+const updateDocumentMetadata = (page) => {
+    document.title = `${page.seoTitle || page.title} – Waldbad Borkheide`;
+    let description = document.querySelector('meta[name="description"]');
+    if (!description) {
+        description = document.createElement('meta');
+        description.setAttribute('name', 'description');
+        document.head.append(description);
+    }
+    description.setAttribute('content', page.seoDescription || 'Natürlich baden ohne Chlor im Waldbad Borkheide.');
+};
+
 const renderPublic = async () => {
     try {
         const slug = app.dataset.pageSlug;
@@ -811,7 +907,7 @@ const renderPublic = async () => {
             request('/api/public/v1/navigation'),
             request('/api/public/v1/pages/' + encodePageSlug(slug)),
         ]);
-        document.title = (page.seoTitle || page.title) + ' – Waldbad Borkheide';
+        updateDocumentMetadata(page);
 
         const renderNavigationItem = (item, nested = false) => {
             const active = treeContainsSlug(item, slug);
@@ -1200,6 +1296,84 @@ const openImagePicker = async (onSelect) => {
     }
 };
 
+const collectionItemMediaEditor = (item, key) => {
+    const media = field('Bild-URL (optional)', `collection-media-${key}`, item.mediaUrl || '');
+    const alt = field('Alternativtext (optional; leer = dekorativ)', `collection-alt-${key}`, item.mediaAlt || '');
+    const source = field('Bildquelle (optional)', `collection-source-${key}`, item.mediaSource || '');
+    const mediaInput = media.querySelector('input');
+    const altInput = alt.querySelector('input');
+    const sourceInput = source.querySelector('input');
+    sourceInput.maxLength = 300;
+    let storedSource = item.mediaSource || null;
+    mediaInput.addEventListener('input', () => item.mediaUrl = mediaInput.value || null);
+    altInput.addEventListener('input', () => item.mediaAlt = altInput.value || null);
+    sourceInput.addEventListener('input', () => item.mediaSource = sourceInput.value || null);
+    sourceInput.addEventListener('blur', async () => {
+        const normalizedSource = sourceInput.value.trim() || null;
+        if (!item.mediaUrl?.startsWith('/uploads/media/') || normalizedSource === storedSource) return;
+        try {
+            const updated = await request('/api/admin/v1/media/images/source', {
+                method: 'PATCH',
+                body: JSON.stringify({url: item.mediaUrl, source: normalizedSource}),
+            });
+            storedSource = updated.source;
+            item.mediaSource = updated.source;
+            sourceInput.value = updated.source || '';
+            toast('Die Bildquelle wurde in der Medienbibliothek aktualisiert.');
+        } catch (error) {
+            toast(error.message, 'error');
+        }
+    });
+
+    const uploadInput = element('input', {attributes: {type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: 'hidden'}});
+    const uploadButton = element('button', {className: 'secondary-button', text: 'Bild hochladen', attributes: {type: 'button'}});
+    const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen', attributes: {type: 'button'}});
+    const uploadMessage = element('small', {className: 'upload-message', attributes: {'aria-live': 'polite'}});
+    uploadButton.addEventListener('click', () => uploadInput.click());
+    selectButton.addEventListener('click', () => openImagePicker((image) => {
+        item.mediaUrl = image.url;
+        item.mediaSource = image.source || null;
+        mediaInput.value = image.url;
+        sourceInput.value = image.source || '';
+        storedSource = image.source || null;
+        uploadMessage.textContent = `${image.originalName} wurde ausgewählt.`;
+        toast(`${image.originalName} wurde ausgewählt.`);
+    }));
+    uploadInput.addEventListener('change', async () => {
+        const image = uploadInput.files?.[0];
+        if (!image) return;
+        const body = new FormData();
+        body.append('image', image);
+        body.append('source', sourceInput.value.trim());
+        uploadButton.disabled = true;
+        uploadMessage.textContent = 'Bild wird hochgeladen …';
+        try {
+            const stored = await request('/api/admin/v1/media/images', {method: 'POST', body});
+            item.mediaUrl = stored.url;
+            item.mediaSource = stored.source || null;
+            mediaInput.value = stored.url;
+            sourceInput.value = stored.source || '';
+            storedSource = stored.source || null;
+            uploadMessage.textContent = `${stored.originalName} wurde hochgeladen (${stored.width} × ${stored.height} px).`;
+            toast(`${stored.originalName} wurde hochgeladen.`);
+        } catch (error) {
+            uploadMessage.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            uploadButton.disabled = false;
+            uploadInput.value = '';
+        }
+    });
+
+    return element('div', {className: 'collection-media-editor', children: [
+        element('div', {className: 'media-input-row', children: [media, selectButton, uploadButton, uploadInput]}),
+        uploadMessage,
+        alt,
+        source,
+        element('small', {text: 'Bei Bibliotheksbildern wird die gespeicherte Quelle automatisch übernommen.'}),
+    ]});
+};
+
 const blockEditor = (block, index, handlers) => {
     const card = element('section', {className: 'block-editor'});
     const moveUp = element('button', {className: 'editor-tool', text: '↑', attributes: {type: 'button', title: 'Block nach oben', 'aria-label': 'Block nach oben'}});
@@ -1235,7 +1409,89 @@ const blockEditor = (block, index, handlers) => {
         dragLabel,
         element('div', {className: 'block-move-actions', children: [moveUp, moveDown]}),
     ]}));
-    if (block.type === 'event') {
+    if (block.type === 'feature_collection') {
+        block.collectionColumns = Number.isInteger(block.collectionColumns) ? block.collectionColumns : 3;
+        block.collectionItems = Array.isArray(block.collectionItems) ? block.collectionItems : [];
+        const heading = field('Collection-Überschrift', `block-collection-heading-${index}`, block.content || '');
+        const headingInput = heading.querySelector('input');
+        headingInput.required = true;
+        headingInput.addEventListener('input', () => block.content = headingInput.value);
+        const columns = element('select', {
+            attributes: {id: `block-collection-columns-${index}`},
+            children: [1, 2, 3, 4].map((count) => element('option', {
+                text: `${count} ${count === 1 ? 'Spalte' : 'Spalten'}`,
+                attributes: {value: String(count)},
+            })),
+        });
+        columns.value = String(block.collectionColumns);
+        columns.addEventListener('change', () => block.collectionColumns = Number.parseInt(columns.value, 10));
+        const itemList = element('div', {className: 'collection-item-editor-list'});
+        const renderItems = () => {
+            if (block.collectionItems.length === 0) {
+                itemList.replaceChildren(emptyState('Noch keine Einträge vorhanden. Füge den ersten Eintrag hinzu.'));
+                return;
+            }
+            itemList.replaceChildren(...block.collectionItems.map((item, itemIndex) => {
+                const title = field('Überschrift', `collection-title-${index}-${itemIndex}`, item.title || '');
+                const titleInput = title.querySelector('input');
+                titleInput.required = true;
+                titleInput.maxLength = 160;
+                titleInput.addEventListener('input', () => item.title = titleInput.value);
+                const moveUp = element('button', {className: 'tree-icon-button', text: '↑', attributes: {type: 'button', title: 'Eintrag nach oben', 'aria-label': 'Eintrag nach oben'}});
+                const moveDown = element('button', {className: 'tree-icon-button', text: '↓', attributes: {type: 'button', title: 'Eintrag nach unten', 'aria-label': 'Eintrag nach unten'}});
+                const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Eintrag entfernen', 'aria-label': 'Eintrag entfernen'}});
+                moveUp.disabled = itemIndex === 0;
+                moveDown.disabled = itemIndex === block.collectionItems.length - 1;
+                moveUp.addEventListener('click', () => {
+                    [block.collectionItems[itemIndex - 1], block.collectionItems[itemIndex]] = [block.collectionItems[itemIndex], block.collectionItems[itemIndex - 1]];
+                    renderItems();
+                });
+                moveDown.addEventListener('click', () => {
+                    [block.collectionItems[itemIndex], block.collectionItems[itemIndex + 1]] = [block.collectionItems[itemIndex + 1], block.collectionItems[itemIndex]];
+                    renderItems();
+                });
+                remove.addEventListener('click', async () => {
+                    const itemLabel = item.title || `Eintrag ${itemIndex + 1}`;
+                    const confirmed = await confirmAction(
+                        `„${itemLabel}“ entfernen?`,
+                        'Der Collection-Eintrag mit Bild und Text wird entfernt. Die Änderung wird mit dem nächsten Speichern dauerhaft.',
+                        'Eintrag entfernen',
+                    );
+                    if (!confirmed) return;
+                    block.collectionItems.splice(itemIndex, 1);
+                    renderItems();
+                    toast('Collection-Eintrag wurde entfernt.');
+                });
+
+                return element('section', {className: 'collection-item-editor', children: [
+                    element('header', {className: 'collection-item-editor-heading', children: [
+                        element('strong', {text: `Eintrag ${itemIndex + 1}`}),
+                        element('div', {className: 'block-move-actions', children: [moveUp, moveDown, remove]}),
+                    ]}),
+                    title,
+                    element('div', {className: 'field', children: [
+                        element('span', {text: 'Text (optional)'}),
+                        richTextEditor(item, `${index}-collection-${itemIndex}`, null, `Text für ${item.title || `Eintrag ${itemIndex + 1}`}`),
+                    ]}),
+                    collectionItemMediaEditor(item, `${index}-${itemIndex}`),
+                ]});
+            }));
+        };
+        const addItem = element('button', {className: 'secondary-button', text: '＋ Eintrag hinzufügen', attributes: {type: 'button'}});
+        addItem.addEventListener('click', () => {
+            block.collectionItems.push(createCollectionItem());
+            renderItems();
+            itemList.lastElementChild?.querySelector('input')?.focus();
+        });
+        renderItems();
+        card.append(
+            heading,
+            element('label', {className: 'field collection-columns-field', children: [element('span', {text: 'Spalten im Desktop-Grid'}), columns]}),
+            element('small', {text: 'Auf kleinen Bildschirmen werden die Karten automatisch untereinander dargestellt.'}),
+            itemList,
+            addItem,
+        );
+    } else if (block.type === 'event') {
         const title = field('Veranstaltungsüberschrift', 'block-event-title-' + index, block.eventTitle || '');
         const date = field('Veranstaltungsdatum', 'block-event-date-' + index, block.eventDate || '', 'date');
         const time = field('Uhrzeit', 'block-event-time-' + index, block.eventTime || '14:00', 'time');
@@ -1260,19 +1516,12 @@ const blockEditor = (block, index, handlers) => {
         helpEnabled.checked = block.eventHelpEnabled === true;
         const helpLabel = field('Beschriftung des Buttons', 'block-event-help-label-' + index, block.eventHelpButtonLabel || 'Ich möchte helfen!');
         const helpLabelInput = helpLabel.querySelector('input');
-        helpLabel.hidden = !helpEnabled.checked;
-        helpEnabled.addEventListener('change', () => {
-            block.eventHelpEnabled = helpEnabled.checked;
-            if (helpEnabled.checked && !block.eventIdentifier) block.eventIdentifier = crypto.randomUUID();
-            helpLabel.hidden = !helpEnabled.checked;
-        });
         helpLabelInput.addEventListener('input', () => block.eventHelpButtonLabel = helpLabelInput.value || 'Ich möchte helfen!');
         card.append(
             element('label', {className: 'check-field event-help-option', children: [
                 helpEnabled,
                 element('span', {text: 'Im Frontend den Button „Ich möchte helfen!“ mit Anmeldeformular anzeigen'}),
             ]}),
-            helpLabel,
         );
         const activityList = element('div', {className: 'event-activity-editor-list'});
         const renderAssignments = () => {
@@ -1324,7 +1573,7 @@ const blockEditor = (block, index, handlers) => {
             renderAssignments();
         });
         renderAssignments();
-        card.append(element('fieldset', {className: 'event-activity-editor', children: [
+        const activityEditor = element('fieldset', {className: 'event-activity-editor', children: [
             element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
             element('small', {text: 'Die benötigte Helferzahl gilt nur für diese Veranstaltung.'}),
             element('div', {className: 'event-activity-editor-head', children: [
@@ -1333,6 +1582,93 @@ const blockEditor = (block, index, handlers) => {
             ]}),
             activityList,
             addActivity,
+        ]});
+        const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
+        helpConfiguration.hidden = !helpEnabled.checked;
+        helpEnabled.addEventListener('change', () => {
+            block.eventHelpEnabled = helpEnabled.checked;
+            if (helpEnabled.checked && !block.eventIdentifier) block.eventIdentifier = crypto.randomUUID();
+            helpConfiguration.hidden = !helpEnabled.checked;
+        });
+        card.append(helpConfiguration);
+
+        block.eventCallToActions = Array.isArray(block.eventCallToActions) ? block.eventCallToActions : [];
+        const actionList = element('div', {className: 'event-call-action-editor-list'});
+        const renderActions = () => {
+            actionList.replaceChildren(...block.eventCallToActions.map((action, actionIndex) => {
+                const label = field('Button-Beschriftung', `block-event-action-label-${index}-${actionIndex}`, action.label || 'Mehr erfahren');
+                const labelInput = label.querySelector('input');
+                labelInput.maxLength = 80;
+                labelInput.required = true;
+                labelInput.addEventListener('input', () => action.label = labelInput.value);
+
+                const targetType = element('select', {attributes: {'aria-label': 'Art des Linkziels'}, children: [
+                    element('option', {text: 'URL verlinken', attributes: {value: 'url'}}),
+                    element('option', {text: 'CMS-Seite verlinken', attributes: {value: 'page'}}),
+                ]});
+                targetType.value = action.pageId ? 'page' : 'url';
+                const targetField = element('div', {className: 'event-call-action-target'});
+                const renderTarget = () => {
+                    if (targetType.value === 'page') {
+                        const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
+                        pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
+                        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
+                            if (candidate.id === handlers.currentPageId) return;
+                            pageSelect.append(element('option', {
+                                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
+                                attributes: {value: candidate.id},
+                            }));
+                        });
+                        pageSelect.value = action.pageId || '';
+                        pageSelect.required = true;
+                        pageSelect.addEventListener('change', () => action.pageId = pageSelect.value || null);
+                        targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                        return;
+                    }
+                    const url = field('URL', `block-event-action-url-${index}-${actionIndex}`, action.url || '/');
+                    const urlInput = url.querySelector('input');
+                    urlInput.maxLength = 2048;
+                    urlInput.required = true;
+                    urlInput.addEventListener('input', () => action.url = urlInput.value);
+                    targetField.replaceChildren(url);
+                };
+                targetType.addEventListener('change', () => {
+                    if (targetType.value === 'page') {
+                        action.url = null;
+                    } else {
+                        action.pageId = null;
+                        action.url = '/';
+                    }
+                    renderTarget();
+                });
+                renderTarget();
+                const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Aktionsbutton entfernen', 'aria-label': 'Aktionsbutton entfernen'}});
+                remove.addEventListener('click', async () => {
+                    const confirmed = await confirmAction('Aktionsbutton entfernen?', 'Der zusätzliche Aktionsbutton wird aus dieser Veranstaltung entfernt.', 'Entfernen');
+                    if (!confirmed) return;
+                    block.eventCallToActions.splice(actionIndex, 1);
+                    renderActions();
+                });
+                return element('div', {className: 'event-call-action-editor-row', children: [
+                    label,
+                    element('label', {className: 'field', children: [element('span', {text: 'Linkziel'}), targetType]}),
+                    targetField,
+                    remove,
+                ]});
+            }));
+        };
+        const addAction = element('button', {className: 'secondary-button', text: '＋ Aktionsbutton hinzufügen', attributes: {type: 'button'}});
+        addAction.addEventListener('click', () => {
+            block.eventCallToActions.push({label: 'Mehr erfahren', url: '/', pageId: null});
+            renderActions();
+            actionList.lastElementChild?.querySelector('input')?.focus();
+        });
+        renderActions();
+        card.append(element('fieldset', {className: 'event-call-action-editor', children: [
+            element('legend', {text: 'Weitere Aktionsbuttons'}),
+            element('small', {text: 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.'}),
+            actionList,
+            addAction,
         ]}));
     } else if (block.type === 'page_teaser') {
         const select = element('select', {attributes: {id: 'block-page-teaser-' + index}});
@@ -1835,17 +2171,17 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         }
     };
     const statusActions = element('div', {className: 'status-actions'});
-    if (page && canEdit() && page.status === 'draft') {
+    if (page && canEditPages() && page.status === 'draft') {
         const review = element('button', {className: 'secondary-button', text: 'Zur Prüfung', attributes: {type: 'button'}});
         review.addEventListener('click', () => runStatusAction('request-review', true));
         statusActions.append(review);
     }
-    if (page && canPublish() && page.status !== 'published' && page.status !== 'archived') {
+    if (page && canPublishPages() && page.status !== 'published' && page.status !== 'archived') {
         const publish = element('button', {className: 'button', text: 'Veröffentlichen', attributes: {type: 'button'}});
         publish.addEventListener('click', () => runStatusAction('publish', true));
         statusActions.append(publish);
     }
-    if (page && canPublish() && page.publishedAt && page.status !== 'archived') {
+    if (page && canPublishPages() && page.publishedAt && page.status !== 'archived') {
         const unpublish = element('button', {className: 'secondary-button', text: 'Zurückziehen', attributes: {type: 'button'}});
         unpublish.addEventListener('click', () => runStatusAction('unpublish'));
         statusActions.append(unpublish);
@@ -1862,7 +2198,7 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         }
     });
     const saveButton = element('button', {className: 'button', text: 'Entwurf speichern', attributes: {type: 'submit'}});
-    if (!canEdit() || page?.status === 'archived') saveButton.disabled = true;
+    if (!canEditPages() || page?.status === 'archived') saveButton.disabled = true;
     const form = element('form', {
         className: 'editor-form',
         children: [
@@ -1962,6 +2298,7 @@ const renderAdmin = async () => {
 
     csrfToken = session.csrfToken;
     currentRoles = session.user.roles;
+    currentModuleAccess = session.user.moduleAccess || {};
     const workspace = element('section', {className: 'admin-workspace'});
     const sidebarTitle = element('h1', {text: 'Redaktion'});
     const menu = element('nav', {className: 'admin-menu', attributes: {'aria-label': 'Redaktionsbereiche'}});
@@ -2035,7 +2372,7 @@ const renderAdmin = async () => {
 
             return zone;
         };
-        if (canEdit()) {
+        if (canEditPages()) {
             const create = element('button', {className: 'secondary-button full', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
             create.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, null, activities)));
             list.append(create);
@@ -2057,7 +2394,7 @@ const renderAdmin = async () => {
             title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
 
             const actions = [];
-            if (canEdit()) {
+            if (canEditPages()) {
                 const runPageAction = async (button, url, method, success) => {
                     button.disabled = true;
                     try {
@@ -2159,7 +2496,7 @@ const renderAdmin = async () => {
             dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
             const row = element('div', {
                 className: 'page-tree-row',
-                children: [...(canEdit() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
+                children: [...(canEditPages() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
             });
             const item = element('li', {className: `page-tree-node${page.visible ? '' : ' is-hidden'}`, children: [row]});
             const childDropZone = element('div', {
@@ -2207,9 +2544,37 @@ const renderAdmin = async () => {
 
     const showGuestbook = async () => {
         const data = await request('/api/admin/v1/guestbook-entries');
-        workspace.replaceChildren(sectionHeading('Gästebuch', 'Neue Einträge prüfen und moderieren'), element('div', {
-            className: 'card-list', children: data.items.length ? data.items.map((entry) => moderationCard(entry, showGuestbook)) : [emptyState('Keine Gästebucheinträge vorhanden.')],
-        }));
+        const pendingEntries = data.items.filter((entry) => entry.status === 'pending');
+        const publishedEntries = data.items.filter((entry) => entry.status === 'published');
+        const otherEntries = data.items.filter((entry) => !['pending', 'published'].includes(entry.status));
+        const archive = (title, entries) => element('details', {className: 'guestbook-archive', children: [
+            element('summary', {children: [
+                element('strong', {text: title}),
+                element('span', {className: 'status-badge', text: String(entries.length)}),
+            ]}),
+            element('div', {
+                className: 'card-list guestbook-archive-list',
+                children: entries.map((entry) => moderationCard(entry, showGuestbook)),
+            }),
+        ]});
+
+        workspace.replaceChildren(
+            sectionHeading('Gästebuch', 'Neue Einträge prüfen und moderieren'),
+            element('section', {className: 'guestbook-admin', children: [
+                element('div', {className: 'guestbook-pending-heading', children: [
+                    element('h3', {text: 'Neue Einträge'}),
+                    element('span', {className: 'status-badge status-pending', text: String(pendingEntries.length)}),
+                ]}),
+                element('div', {
+                    className: 'card-list',
+                    children: pendingEntries.length
+                        ? pendingEntries.map((entry) => moderationCard(entry, showGuestbook))
+                        : [emptyState('Keine neuen Gästebucheinträge vorhanden.')],
+                }),
+                ...(publishedEntries.length ? [archive('Veröffentlichte Einträge', publishedEntries)] : []),
+                ...(otherEntries.length ? [archive('Abgelehnte Einträge und Spam', otherEntries)] : []),
+            ]}),
+        );
     };
 
     const showContact = async () => {
@@ -2334,13 +2699,7 @@ const renderAdmin = async () => {
             if (!groups.has(item.eventIdentifier)) groups.set(item.eventIdentifier, {event: item, requests: []});
             groups.get(item.eventIdentifier).requests.push(item);
         });
-        const sortedGroups = [...groups.values()].sort((first, second) => {
-            const dateComparison = second.event.eventDate.localeCompare(first.event.eventDate);
-            if (dateComparison !== 0) return dateComparison;
-
-            return second.event.eventTime.localeCompare(first.event.eventTime);
-        });
-        const cards = sortedGroups.map(({event, requests}) => {
+        const renderEventHelperGroup = ({event, requests}) => {
             const participatedCount = requests.filter((requestItem) => requestItem.status === 'participated').length;
             return element('section', {className: 'event-helper-group', children: [
             element('header', {children: [
@@ -2355,7 +2714,7 @@ const renderAdmin = async () => {
             ]}),
             element('div', {className: 'event-helper-list', children: requests.map((requestItem) => {
                 const actionButtons = [];
-                if (requestItem.status !== 'resolved') {
+                if (canEditModule('event_helpers') && requestItem.status !== 'resolved') {
                     const participated = element('button', {
                         className: 'button',
                         text: requestItem.status === 'participated' ? 'Zeiten bearbeiten' : 'Hat teilgenommen',
@@ -2396,10 +2755,68 @@ const renderAdmin = async () => {
                 ]});
             })}),
             ]});
+        };
+        const compareAscending = (first, second) => {
+            const dateComparison = first.event.eventDate.localeCompare(second.event.eventDate);
+            if (dateComparison !== 0) return dateComparison;
+
+            return first.event.eventTime.localeCompare(second.event.eventTime);
+        };
+        const compareDescending = (first, second) => compareAscending(second, first);
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const today = [currentYear, now.getMonth() + 1, now.getDate()]
+            .map((part, index) => index === 0 ? String(part) : String(part).padStart(2, '0'))
+            .join('-');
+        const allGroups = [...groups.values()];
+        const todayGroups = allGroups
+            .filter(({event}) => event.eventDate === today)
+            .sort(compareAscending);
+        const upcomingGroups = allGroups
+            .filter(({event}) => event.eventDate > today)
+            .sort(compareAscending);
+        const completedCurrentYearGroups = allGroups
+            .filter(({event}) => event.eventDate < today && Number.parseInt(event.eventDate.slice(0, 4), 10) === currentYear)
+            .sort(compareDescending);
+        const archiveGroups = allGroups
+            .filter(({event}) => event.eventDate < today && Number.parseInt(event.eventDate.slice(0, 4), 10) < currentYear)
+            .reduce((years, group) => {
+                const year = Number.parseInt(group.event.eventDate.slice(0, 4), 10);
+                if (!years.has(year)) years.set(year, []);
+                years.get(year).push(group);
+
+                return years;
+            }, new Map());
+        const eventSection = (title, eventGroups, modifier = '') => element('section', {
+            className: `event-helper-section ${modifier}`.trim(),
+            children: [
+                element('div', {className: 'event-helper-section-heading', children: [
+                    element('h3', {text: title}),
+                    element('span', {className: 'status-badge', text: String(eventGroups.length)}),
+                ]}),
+                element('div', {className: 'event-helper-section-list', children: eventGroups.map(renderEventHelperGroup)}),
+            ],
         });
+        const eventArchive = (title, eventGroups) => element('details', {className: 'event-helper-archive', children: [
+            element('summary', {children: [
+                element('strong', {text: title}),
+                element('span', {className: 'status-badge', text: String(eventGroups.length)}),
+            ]}),
+            element('div', {className: 'event-helper-archive-list', children: eventGroups.map(renderEventHelperGroup)}),
+        ]});
+        const sections = [
+            ...(todayGroups.length ? [eventSection('Heute', todayGroups, 'event-helper-section-today')] : []),
+            ...(upcomingGroups.length ? [eventSection('Kommende Veranstaltungen', upcomingGroups)] : []),
+            ...(completedCurrentYearGroups.length
+                ? [eventArchive(`Abgeschlossene Veranstaltungen ${currentYear}`, completedCurrentYearGroups)]
+                : []),
+            ...[...archiveGroups.entries()]
+                .sort(([firstYear], [secondYear]) => secondYear - firstYear)
+                .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups.sort(compareDescending))),
+        ];
         workspace.replaceChildren(
             sectionHeading('Veranstaltungshelfer', 'Anmeldungen nach Veranstaltung gruppiert verwalten'),
-            element('div', {className: 'event-helper-groups', children: cards.length ? cards : [emptyState('Noch keine Helferanmeldungen vorhanden.')]}),
+            element('div', {className: 'event-helper-groups', children: sections.length ? sections : [emptyState('Noch keine Helferanmeldungen vorhanden.')]}),
         );
     };
 
@@ -2421,12 +2838,12 @@ const renderAdmin = async () => {
             const primary = application.applicants[0];
             const people = application.applicants.map((person) => element('li', {children: [
                 element('strong', {text: `${person.firstName} ${person.lastName}`}),
-                element('span', {text: ` · ${new Date(`${person.birthDate}T00:00:00`).toLocaleDateString('de-DE')} · ${person.street} ${person.houseNumber}, ${person.postalCode} ${person.city}`}),
-                ...(person.email ? [element('a', {text: ` · ${person.email}`, attributes: {href: `mailto:${person.email}`}})] : []),
-                ...(person.phone ? [element('a', {text: ` · ${person.phone}`, attributes: {href: `tel:${person.phone}`}})] : []),
+                element('span', {text: ` · ${new Date(`${person.birthDate}T00:00:00`).toLocaleDateString('de-DE')} · ${person.street} ${person.houseNumber}, ${person.postalCode} ${person.city} · `}),
+                ...(person.email ? [element('a', {text: `${person.email}`, attributes: {href: `mailto:${person.email} · `}})] : []),
+                ...(person.phone ? [element('a', {text: `${person.phone}`, attributes: {href: `tel:${person.phone}`}})] : []),
             ]}));
             const actions = [];
-            if (application.status === 'failed') {
+            if (canEditModule('membership_applications') && application.status === 'failed') {
                 actions.push(actionButton('Erneut zur Übertragung freigeben', `/api/admin/v1/membership-applications/${application.id}/retry`, showMembership, 'button', {
                     success: 'Der Antrag steht erneut zur Übertragung bereit.',
                 }));
@@ -2463,9 +2880,11 @@ const renderAdmin = async () => {
 
     const showUsers = async () => {
         const data = await request('/api/admin/v1/users');
-        workspace.replaceChildren(sectionHeading('Benutzer', 'Zugänge und Rollen verwalten'), userCreationForm(showUsers), element('div', {
-            className: 'card-list', children: data.items.map(userCard),
-        }));
+        workspace.replaceChildren(
+            sectionHeading('Benutzer', 'Zugänge und Rollen verwalten'),
+            ...(canEditModule('user_management') ? [userCreationForm(showUsers)] : []),
+            element('div', {className: 'card-list', children: data.items.map((user) => userCard(user, showUsers))}),
+        );
     };
 
     const showActivities = async () => {
@@ -2525,7 +2944,7 @@ const renderAdmin = async () => {
         };
 
         const heading = sectionHeading('Aktivitäten', 'Wiederverwendbare Tätigkeiten für Veranstaltungen und gemeinsame Arbeitseinsätze');
-        if (canEdit()) {
+        if (canEditModule('activities')) {
             const create = element('button', {className: 'button', text: '＋ Neue Aktivität', attributes: {type: 'button'}});
             create.addEventListener('click', () => openActivityDialog());
             heading.append(create);
@@ -2533,17 +2952,17 @@ const renderAdmin = async () => {
         const rows = data.items.map((activity) => {
             const row = element('button', {
                 className: `activity-list-row${activity.active ? '' : ' is-inactive'}`,
-                attributes: {type: 'button', ...(canEdit() ? {} : {disabled: 'disabled'})},
+                attributes: {type: 'button', ...(canEditModule('activities') ? {} : {disabled: 'disabled'})},
                 children: [
                     element('span', {className: 'activity-list-copy', children: [
                         element('strong', {text: activity.name}),
                         element('small', {text: activity.description || 'Keine Beschreibung hinterlegt.'}),
                     ]}),
                     element('span', {className: `status-badge ${activity.active ? 'status-active' : 'status-inactive'}`, text: activity.active ? 'Aktiv' : 'Inaktiv'}),
-                    ...(canEdit() ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
+                    ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
             });
-            if (canEdit()) row.addEventListener('click', () => openActivityDialog(activity));
+            if (canEditModule('activities')) row.addEventListener('click', () => openActivityDialog(activity));
             return row;
         });
         workspace.replaceChildren(
@@ -2567,20 +2986,20 @@ const renderAdmin = async () => {
         menu.append(button);
         return button;
     };
-    const first = addMenu('Seiten', showPages);
-    addMenu('Aktivitäten', showActivities);
-    if (canModerate()) {
-        addMenu('Gästebuch', showGuestbook);
-        addMenu('Kontaktanfragen', showContact);
-        addMenu('Veranstaltungshelfer', showEventHelpers);
-    }
-    if (canManageMembership()) addMenu('Mitgliedsanträge', showMembership);
-    if (canManageUsers()) addMenu('Benutzer', showUsers);
+    const menuItems = [];
+    if (hasModule('pages')) menuItems.push(addMenu('Seiten', showPages));
+    if (hasModule('activities')) menuItems.push(addMenu('Aktivitäten', showActivities));
+    if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', showGuestbook));
+    if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', showContact));
+    if (hasModule('event_helpers')) menuItems.push(addMenu('Veranstaltungshelfer', showEventHelpers));
+    if (hasModule('membership_applications')) menuItems.push(addMenu('Mitgliedsanträge', showMembership));
+    if (hasModule('user_management')) menuItems.push(addMenu('Benutzer', showUsers));
     const logout = element('button', {className: 'text-button', text: 'Abmelden', attributes: {type: 'button'}});
     logout.addEventListener('click', async () => {
         await request('/api/auth/v1/logout', {method: 'POST'});
         csrfToken = null;
         currentRoles = [];
+        currentModuleAccess = {};
         toast('Du wurdest abgemeldet.', 'info');
         renderLogin();
     });
@@ -2601,7 +3020,11 @@ const renderAdmin = async () => {
             workspace,
         ]}),
     );
-    first.click();
+    if (menuItems.length) {
+        menuItems[0].click();
+    } else {
+        workspace.replaceChildren(emptyState('Für diesen Zugang ist kein Redaktionsmodul freigeschaltet.'));
+    }
 };
 
 const sectionHeading = (title, description) => element('header', {className: 'section-heading', children: [
@@ -2630,57 +3053,219 @@ const actionButton = (label, url, refresh, className = 'secondary-button', optio
     return button;
 };
 
-const moderationCard = (entry, refresh) => element('article', {className: 'management-card', children: [
-    element('header', {children: [element('strong', {text: entry.displayName}), element('small', {text: entry.status + ' · ' + new Date(entry.submittedAt).toLocaleString('de-DE')})]}),
+const guestbookStatusLabel = (status) => ({
+    pending: 'Neu',
+    published: 'Veröffentlicht',
+    rejected: 'Abgelehnt',
+    spam: 'Spam',
+}[status] || status);
+
+const moderationCard = (entry, refresh) => element('article', {className: `management-card guestbook-card status-${entry.status}`, children: [
+    element('header', {children: [element('strong', {text: entry.displayName}), element('small', {text: guestbookStatusLabel(entry.status) + ' · ' + new Date(entry.submittedAt).toLocaleString('de-DE')})]}),
     element('p', {text: entry.message}),
     ...(entry.email ? [element('a', {text: entry.email, attributes: {href: 'mailto:' + entry.email}})] : []),
-    element('div', {className: 'card-actions', children: [
-        actionButton('Freigeben', `/api/admin/v1/guestbook-entries/${entry.id}/approve`, refresh, 'button', {success: 'Gästebucheintrag wurde freigegeben.'}),
-        actionButton('Ablehnen', `/api/admin/v1/guestbook-entries/${entry.id}/reject`, refresh, 'secondary-button', {
+    ...(canEditModule('guestbook') ? [element('div', {className: 'card-actions', children: [
+        ...(entry.status !== 'published' ? [actionButton('Freigeben', `/api/admin/v1/guestbook-entries/${entry.id}/approve`, refresh, 'button', {success: 'Gästebucheintrag wurde freigegeben.'})] : []),
+        ...(entry.status !== 'rejected' ? [actionButton('Ablehnen', `/api/admin/v1/guestbook-entries/${entry.id}/reject`, refresh, 'secondary-button', {
             success: 'Gästebucheintrag wurde abgelehnt.',
             confirm: {title: 'Eintrag ablehnen?', description: 'Der Eintrag wird nicht im öffentlichen Gästebuch angezeigt.', label: 'Ablehnen'},
-        }),
-        actionButton('Spam', `/api/admin/v1/guestbook-entries/${entry.id}/mark-spam`, refresh, 'text-button danger', {
+        })] : []),
+        ...(entry.status !== 'spam' ? [actionButton('Spam', `/api/admin/v1/guestbook-entries/${entry.id}/mark-spam`, refresh, 'text-button danger', {
             success: 'Gästebucheintrag wurde als Spam markiert.',
             confirm: {title: 'Als Spam markieren?', description: 'Der Eintrag wird als Spam eingestuft und nicht veröffentlicht.', label: 'Als Spam markieren'},
-        }),
-    ]}),
+        })] : []),
+    ]})] : []),
 ]});
 
 const contactCard = (item, refresh) => element('article', {className: 'management-card', children: [
     element('header', {children: [element('strong', {text: item.subject || 'Kontaktanfrage'}), element('small', {text: item.status + ' · ' + new Date(item.submittedAt).toLocaleString('de-DE')})]}),
     element('p', {text: item.message}),
     element('a', {text: item.name + ' · ' + item.email, attributes: {href: 'mailto:' + item.email}}),
-    element('div', {className: 'card-actions', children: [
+    ...(canEditModule('contact_requests') ? [element('div', {className: 'card-actions', children: [
         actionButton('In Bearbeitung', `/api/admin/v1/contact-requests/${item.id}/status/in_progress`, refresh, 'secondary-button', {success: 'Kontaktanfrage ist jetzt in Bearbeitung.'}),
         actionButton('Erledigt', `/api/admin/v1/contact-requests/${item.id}/status/resolved`, refresh, 'button', {success: 'Kontaktanfrage wurde als erledigt markiert.'}),
-    ]}),
+    ]})] : []),
 ]});
 
-const userCard = (user) => element('article', {className: 'management-card', children: [
-    element('header', {children: [element('strong', {text: user.displayName}), element('small', {text: user.active ? 'aktiv' : 'gesperrt'})]}),
-    element('a', {text: user.email, attributes: {href: 'mailto:' + user.email}}),
-    element('p', {className: 'tag-line', text: user.roles.join(' · ')}),
-]});
+const MODULE_ROLE_LABELS = {
+    viewer: 'Viewer',
+    editor: 'Editor',
+    publisher: 'Publisher',
+    moderator: 'Moderator',
+};
+
+const globalRoleOptions = () => [
+    ['', 'Keine globale Administratorrolle'],
+    ...(hasAnyRole('admin', 'super_admin') ? [['admin', 'Admin']] : []),
+    ...(hasAnyRole('super_admin') ? [['super_admin', 'Super-Admin']] : []),
+];
+
+const globalRoleField = (selectedRole = '') => {
+    const select = element('select', {
+        attributes: {name: 'globalRole'},
+        children: globalRoleOptions().map(([value, label]) => element('option', {text: label, attributes: {value}})),
+    });
+    select.value = selectedRole;
+
+    return element('label', {children: [element('span', {text: 'Globale Rolle'}), select]});
+};
+
+const moduleAccessFields = (selectedAccess = {}) => element('div', {
+    className: 'module-access-list',
+    children: CMS_MODULES.map(([module, label]) => {
+        const roles = module === 'pages'
+            ? ['viewer', 'editor', 'publisher', 'moderator']
+            : ['viewer', 'editor'];
+        const currentRole = selectedAccess[module] || 'viewer';
+        const enabled = typeof selectedAccess[module] === 'string';
+        const checkbox = element('input', {attributes: {type: 'checkbox', ...(enabled ? {checked: 'checked'} : {})}});
+        const select = element('select', {
+            attributes: {'aria-label': `Rolle für ${label}`, ...(enabled ? {} : {disabled: 'disabled'})},
+            children: roles.map((role) => element('option', {text: MODULE_ROLE_LABELS[role], attributes: {value: role}})),
+        });
+        select.value = roles.includes(currentRole) ? currentRole : 'viewer';
+        checkbox.addEventListener('change', () => select.disabled = !checkbox.checked);
+
+        return element('div', {
+            className: 'module-access-row',
+            attributes: {'data-module': module},
+            children: [
+                element('label', {className: 'check-field', children: [checkbox, element('span', {text: label})]}),
+                select,
+            ],
+        });
+    }),
+});
+
+const readModuleAccess = (form) => Object.fromEntries(
+    [...form.querySelectorAll('[data-module]')]
+        .filter((row) => row.querySelector('input[type="checkbox"]').checked)
+        .map((row) => [row.dataset.module, row.querySelector('select').value]),
+);
+
+const canEditUser = (user) => {
+    if (!canEditModule('user_management')) return false;
+    if (user.roles.includes('super_admin')) return hasAnyRole('super_admin');
+    if (user.roles.includes('admin')) return hasAnyRole('admin', 'super_admin');
+
+    return true;
+};
+
+const openUserAccessDialog = (user, refresh) => {
+    const dialog = element('dialog', {className: 'activity-dialog'});
+    const message = formMessage();
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'Zugriffsrechte speichern', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'activity-dialog-content', children: [
+        element('header', {children: [
+            element('p', {className: 'eyebrow', text: 'Rechtemanagement'}),
+            element('h2', {text: user.displayName}),
+            element('p', {text: user.email}),
+        ]}),
+        element('fieldset', {children: [
+            element('legend', {text: 'Globale Administratorrolle'}),
+            globalRoleField(user.roles[0] || ''),
+            element('small', {className: 'field-hint', text: 'Admin und Super-Admin erhalten innerhalb der freigeschalteten Module alle Rechte.'}),
+        ]}),
+        element('fieldset', {children: [
+            element('legend', {text: 'Module und Rollen'}),
+            moduleAccessFields(user.moduleAccess || {}),
+        ]}),
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        const data = new FormData(form);
+        const globalRole = data.get('globalRole');
+        try {
+            await request(`/api/admin/v1/users/${user.id}/access`, {method: 'PUT', body: JSON.stringify({
+                roles: globalRole ? [globalRole] : [],
+                moduleAccess: readModuleAccess(form),
+            })});
+            toast('Globale Rolle und Modulrechte wurden gespeichert.');
+            dialog.close();
+            await refresh();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            submit.disabled = false;
+        }
+    });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+};
+
+const userCard = (user, refresh) => {
+    const roleLabel = user.roles[0] === 'super_admin' ? 'Super-Admin' : (user.roles[0] === 'admin' ? 'Admin' : 'Keine');
+    const moduleLabels = Object.entries(user.moduleAccess || {}).map(([module, role]) => {
+        const label = CMS_MODULES.find(([value]) => value === module)?.[1] || module;
+        return `${label}: ${MODULE_ROLE_LABELS[role] || role}`;
+    });
+    const children = [
+        element('header', {children: [element('strong', {text: user.displayName}), element('small', {text: user.active ? 'aktiv' : 'gesperrt'})]}),
+        element('a', {text: user.email, attributes: {href: 'mailto:' + user.email}}),
+        element('p', {className: 'tag-line', text: `Globale Rolle: ${roleLabel}`}),
+        element('p', {className: 'tag-line', text: `Module: ${moduleLabels.join(' · ')}`}),
+    ];
+    if (canEditUser(user)) {
+        const actions = [];
+        const edit = element('button', {className: 'secondary-button', text: 'Zugriff bearbeiten', attributes: {type: 'button'}});
+        edit.addEventListener('click', () => openUserAccessDialog(user, refresh));
+        actions.push(edit);
+        if (user.active) {
+            const suspend = element('button', {className: 'text-button danger', text: 'Benutzer sperren', attributes: {type: 'button'}});
+            suspend.addEventListener('click', async () => {
+                const confirmed = await confirmAction(
+                    `„${user.displayName}“ sperren?`,
+                    'Der Benutzer kann sich danach nicht mehr im Backend anmelden.',
+                    'Benutzer sperren',
+                );
+                if (!confirmed) return;
+                suspend.disabled = true;
+                try {
+                    await request(`/api/admin/v1/users/${user.id}/suspend`, {method: 'POST'});
+                    toast('Benutzer wurde gesperrt.');
+                    await refresh();
+                } catch (error) {
+                    toast(error.message, 'error');
+                    suspend.disabled = false;
+                }
+            });
+            actions.push(suspend);
+        }
+        children.push(element('div', {className: 'card-actions', children: actions}));
+    }
+
+    return element('article', {className: 'management-card', children});
+};
 
 const userCreationForm = (refresh) => {
-    const roles = ['viewer', 'editor', 'publisher', 'moderator', 'admin', 'super_admin'];
     const message = formMessage();
     const form = element('form', {className: 'compact-form', children: [
         element('h3', {text: 'Benutzer anlegen'}),
         element('div', {className: 'form-grid', children: [field('Name', 'displayName'), field('E-Mail', 'email', '', 'email'), field('Initialpasswort', 'password', '', 'password')]}),
-        element('div', {className: 'role-options', children: roles.map((role) => element('label', {className: 'check-field', children: [
-            element('input', {attributes: {type: 'checkbox', name: 'roles', value: role}}), element('span', {text: role}),
-        ]}))}),
+        element('fieldset', {children: [
+            element('legend', {text: 'Globale Administratorrolle'}),
+            globalRoleField(),
+            element('small', {className: 'field-hint', text: 'Optional. Die Modulfreigaben bleiben auch für Administratoren verbindlich.'}),
+        ]}),
+        element('fieldset', {children: [element('legend', {text: 'Module und Rollen'}), moduleAccessFields()]}),
         message,
         element('button', {className: 'button', text: 'Zugang anlegen', attributes: {type: 'submit'}}),
     ]});
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const data = new FormData(form);
+        const globalRole = data.get('globalRole');
         try {
             await request('/api/admin/v1/users', {method: 'POST', body: JSON.stringify({
-                displayName: data.get('displayName'), email: data.get('email'), password: data.get('password'), roles: data.getAll('roles'),
+                displayName: data.get('displayName'), email: data.get('email'), password: data.get('password'),
+                roles: globalRole ? [globalRole] : [], moduleAccess: readModuleAccess(form),
             })});
             toast('Benutzerzugang wurde angelegt.');
             await refresh();

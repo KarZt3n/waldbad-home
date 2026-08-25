@@ -33,7 +33,10 @@ class PublishedPageEntity
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
      *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
-     *     extensionKey?: string|null
+     *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     extensionKey?: string|null,
+     *     collectionColumns?: int|null,
+     *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
      */
     #[ORM\Column(type: Types::JSON)]
@@ -120,7 +123,10 @@ class PublishedPageEntity
      *     eventHelpEnabled?: bool,
      *     eventHelpButtonLabel?: string|null,
      *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
-     *     extensionKey?: string|null
+     *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     extensionKey?: string|null,
+     *     collectionColumns?: int|null,
+     *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
      */
     public function getBlocks(): array
@@ -195,7 +201,10 @@ class PublishedPageEntity
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
-     *     extensionKey: string|null
+     *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     extensionKey: string|null,
+     *     collectionColumns: int|null,
+     *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }> $blocks
      */
     public function update(
@@ -252,7 +261,10 @@ class PublishedPageEntity
      *     eventHelpEnabled: bool,
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
-     *     extensionKey: string|null
+     *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     extensionKey: string|null,
+     *     collectionColumns: int|null,
+     *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }> $blocks
      */
     public function setBlocks(array $blocks): void

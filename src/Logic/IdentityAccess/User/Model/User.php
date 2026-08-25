@@ -8,6 +8,7 @@ readonly class User
 {
     /**
      * @param list<Role> $roles
+     * @param list<ModuleAccess> $moduleAccess
      */
     public function __construct(
         public string $id,
@@ -15,6 +16,7 @@ readonly class User
         public string $displayName,
         public string $passwordHash,
         public array $roles,
+        public array $moduleAccess,
         public bool $active,
         public int $version,
         public \DateTimeImmutable $createdAt,
@@ -29,15 +31,25 @@ readonly class User
             throw new BusinessRuleViolationException('Der Anzeigename darf nicht leer sein.');
         }
 
-        if ($this->roles === []) {
-            throw new BusinessRuleViolationException('Ein Benutzer benötigt mindestens eine Rolle.');
+        if ($this->moduleAccess === []) {
+            throw new BusinessRuleViolationException('Ein Benutzer benötigt Zugriff auf mindestens ein Modul.');
+        }
+
+        if (count($this->roles) > 1) {
+            throw new BusinessRuleViolationException('Ein Benutzer darf höchstens eine globale Administratorrolle besitzen.');
+        }
+
+        $moduleNames = array_map(static fn (ModuleAccess $access): string => $access->module->value, $this->moduleAccess);
+        if (count($moduleNames) !== count(array_unique($moduleNames))) {
+            throw new BusinessRuleViolationException('Ein Modul darf einem Benutzer nur einmal zugewiesen werden.');
         }
     }
 
     /**
      * @param list<Role> $roles
+     * @param list<ModuleAccess> $moduleAccess
      */
-    public function changeRoles(array $roles, \DateTimeImmutable $updatedAt): self
+    public function changeAccess(array $roles, array $moduleAccess, \DateTimeImmutable $updatedAt): self
     {
         return new self(
             id: $this->id,
@@ -45,6 +57,7 @@ readonly class User
             displayName: $this->displayName,
             passwordHash: $this->passwordHash,
             roles: $roles,
+            moduleAccess: $moduleAccess,
             active: $this->active,
             version: $this->version,
             createdAt: $this->createdAt,
@@ -61,6 +74,7 @@ readonly class User
             displayName: $this->displayName,
             passwordHash: $this->passwordHash,
             roles: $this->roles,
+            moduleAccess: $this->moduleAccess,
             active: false,
             version: $this->version,
             createdAt: $this->createdAt,

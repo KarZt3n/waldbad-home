@@ -7,4 +7,6 @@ use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
 interface VolunteerEventProviderInterface
 {
     public function findPublished(string $eventIdentifier): ?VolunteerEvent;
+
+    public function findCurrent(string $eventIdentifier): ?VolunteerEvent;
 }

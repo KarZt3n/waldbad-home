@@ -40,6 +40,7 @@ readonly class CreateUserUseCase
             displayName: trim($request->displayName),
             passwordHash: $this->passwordHasher->hash($request->plainPassword),
             roles: $request->roles,
+            moduleAccess: $request->moduleAccess,
             active: true,
             version: 0,
             createdAt: $now,

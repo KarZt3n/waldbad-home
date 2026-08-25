@@ -28,7 +28,7 @@ readonly class RefreshOpeningHoursPageUseCase
             visible: true,
             showInNavigation: true,
             navigationPosition: $page->navigationPosition,
-            seoTitle: OpeningHoursPageDefinition::TITLE,
+            seoTitle: OpeningHoursPageDefinition::SEO_TITLE,
             seoDescription: OpeningHoursPageDefinition::SEO_DESCRIPTION,
             updatedAt: $this->clock->now(),
         );

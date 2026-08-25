@@ -34,7 +34,7 @@ class AdminPageController extends AbstractController
     #[Route('', name: 'api_admin_pages_list', methods: ['GET'])]
     public function list(ListPagesQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::CmsRead->value);
+        $this->denyAccessUnlessGranted(Permission::PagesView->value);
 
         return $this->responseFactory->pages($query->execute());
     }
@@ -42,7 +42,7 @@ class AdminPageController extends AbstractController
     #[Route('', name: 'api_admin_pages_create', methods: ['POST'])]
     public function create(Request $request, CreatePageUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page(
             $useCase->execute($this->requestMapper->create($request)),
@@ -53,7 +53,7 @@ class AdminPageController extends AbstractController
     #[Route('/preview', name: 'api_admin_pages_preview', methods: ['POST'])]
     public function preview(Request $request, PreviewPageUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page($useCase->execute($this->requestMapper->create($request)));
     }
@@ -61,7 +61,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}', name: 'api_admin_pages_update', methods: ['PUT'])]
     public function update(string $id, Request $request, UpdatePageUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page($useCase->execute($this->requestMapper->update($id, $request)));
     }
@@ -69,7 +69,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}/duplicate', name: 'api_admin_pages_duplicate', methods: ['POST'])]
     public function duplicate(string $id): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page($this->duplicatePage->execute($id), JsonResponse::HTTP_CREATED);
     }
@@ -77,7 +77,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}/move/{direction}', name: 'api_admin_pages_move', requirements: ['direction' => 'up|down'], methods: ['POST'])]
     public function move(string $id, string $direction): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page($this->movePage->execute($id, $direction));
     }
@@ -85,7 +85,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}/position', name: 'api_admin_pages_position', methods: ['PUT'])]
     public function position(string $id, Request $request, ReorderPageUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
 
         return $this->responseFactory->page($useCase->execute($this->structureRequestMapper->reorder($id, $request)));
     }
@@ -93,7 +93,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}', name: 'api_admin_pages_delete', methods: ['DELETE'])]
     public function delete(string $id): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
         $this->deletePage->execute($id);
 
         return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
@@ -102,7 +102,7 @@ class AdminPageController extends AbstractController
     #[Route('/{id}/{action}', name: 'api_admin_pages_status', requirements: ['action' => 'request-review|publish|unpublish|archive'], methods: ['POST'])]
     public function status(string $id, string $action, ChangePageStatusUseCase $useCase): JsonResponse
     {
-        $permission = $action === 'request-review' ? Permission::ContentEdit : Permission::ContentPublish;
+        $permission = $action === 'request-review' ? Permission::PagesEdit : Permission::PagesPublish;
         $this->denyAccessUnlessGranted($permission->value);
 
         return $this->responseFactory->page($useCase->execute($id, $action));

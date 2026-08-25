@@ -8,9 +8,10 @@ use App\Logic\Content\Page\Model\ContentBlockType;
 final class OpeningHoursPageDefinition
 {
     public const TITLE = 'Öffnungszeiten und Eintritt';
+    public const SEO_TITLE = 'Öffnungszeiten & Eintrittspreise';
     public const SLUG = 'oeffnungszeiten-und-eintritt';
     public const NAVIGATION_LABEL = 'Öffnungszeiten & Preise';
-    public const SEO_DESCRIPTION = 'Tägliche Öffnungszeiten, letzter Einlass, Eintrittspreise und Hinweise zum Kassenautomaten.';
+    public const SEO_DESCRIPTION = 'Aktuelle Öffnungszeiten, Eintrittspreise, Wochenkarten und Hinweise zum Kassenautomaten und Einlass im Waldbad Borkheide.';
 
     /**
      * @return list<ContentBlock>

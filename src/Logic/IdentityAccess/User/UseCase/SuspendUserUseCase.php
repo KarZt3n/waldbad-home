@@ -16,9 +16,20 @@ readonly class SuspendUserUseCase
     ) {
     }
 
-    public function execute(string $id): UserResponse
+    /**
+     * @param list<Role> $actorRoles
+     */
+    public function execute(string $id, array $actorRoles): UserResponse
     {
         $user = $this->manager->get($id);
+        $actorIsSuperAdmin = in_array(Role::SuperAdmin, $actorRoles, true);
+        $actorIsAdmin = $actorIsSuperAdmin || in_array(Role::Admin, $actorRoles, true);
+        if (in_array(Role::SuperAdmin, $user->roles, true) && !$actorIsSuperAdmin) {
+            throw new BusinessRuleViolationException('Super-Administratoren dürfen ausschließlich von einem Super-Administrator gesperrt werden.');
+        }
+        if (in_array(Role::Admin, $user->roles, true) && !$actorIsAdmin) {
+            throw new BusinessRuleViolationException('Administratoren dürfen ausschließlich von einem Administrator gesperrt werden.');
+        }
         if (in_array(Role::SuperAdmin, $user->roles, true) && $this->manager->countActiveSuperAdmins() <= 1) {
             throw new BusinessRuleViolationException('Der letzte aktive Super-Administrator kann nicht gesperrt werden.');
         }

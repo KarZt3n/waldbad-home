@@ -24,7 +24,9 @@ final class AdminEventActivityController extends AbstractController
     #[Route('', name: 'api_admin_event_activity_list', methods: ['GET'])]
     public function list(ListEventActivitiesQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::CmsRead->value);
+        if (!$this->isGranted(Permission::ActivitiesView->value) && !$this->isGranted(Permission::PagesView->value)) {
+            $this->denyAccessUnlessGranted(Permission::ActivitiesView->value);
+        }
 
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
@@ -32,7 +34,7 @@ final class AdminEventActivityController extends AbstractController
     #[Route('', name: 'api_admin_event_activity_create', methods: ['POST'])]
     public function create(Request $request, CreateEventActivityUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::ActivitiesEdit->value);
         $data = $request->getPayload();
 
         return new JsonResponse($this->responseFactory->activity($useCase->execute(new CreateEventActivityRequest(
@@ -45,7 +47,7 @@ final class AdminEventActivityController extends AbstractController
     #[Route('/{id}', name: 'api_admin_event_activity_update', methods: ['PUT'])]
     public function update(string $id, Request $request, UpdateEventActivityUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContentEdit->value);
+        $this->denyAccessUnlessGranted(Permission::ActivitiesEdit->value);
         $data = $request->getPayload();
 
         return new JsonResponse($this->responseFactory->activity($useCase->execute(new UpdateEventActivityRequest(

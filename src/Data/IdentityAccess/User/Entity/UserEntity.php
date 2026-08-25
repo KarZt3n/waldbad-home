@@ -16,12 +16,19 @@ class UserEntity
     #[ORM\Column(type: Types::JSON)]
     private array $roles;
 
+    /**
+     * @var array<string, string>
+     */
+    #[ORM\Column(type: Types::JSON)]
+    private array $modules;
+
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
     private int $version = 1;
 
     /**
      * @param list<string> $roles
+     * @param array<string, string> $modules
      */
     public function __construct(
         #[ORM\Id]
@@ -34,6 +41,7 @@ class UserEntity
         #[ORM\Column(type: Types::STRING, length: 255)]
         private string $passwordHash,
         array $roles,
+        array $modules,
         #[ORM\Column(type: Types::BOOLEAN)]
         private bool $active,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
@@ -44,6 +52,7 @@ class UserEntity
         private ?\DateTimeImmutable $lastLoginAt,
     ) {
         $this->roles = $roles;
+        $this->modules = $modules;
     }
 
     public function getId(): string
@@ -74,6 +83,14 @@ class UserEntity
         return $this->roles;
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function getModules(): array
+    {
+        return $this->modules;
+    }
+
     public function isActive(): bool
     {
         return $this->active;
@@ -101,11 +118,13 @@ class UserEntity
 
     /**
      * @param list<string> $roles
+     * @param array<string, string> $modules
      */
     public function update(
         string $displayName,
         string $passwordHash,
         array $roles,
+        array $modules,
         bool $active,
         \DateTimeImmutable $updatedAt,
         ?\DateTimeImmutable $lastLoginAt,
@@ -113,6 +132,7 @@ class UserEntity
         $this->displayName = $displayName;
         $this->passwordHash = $passwordHash;
         $this->roles = $roles;
+        $this->modules = $modules;
         $this->active = $active;
         $this->updatedAt = $updatedAt;
         $this->lastLoginAt = $lastLoginAt;

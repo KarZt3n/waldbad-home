@@ -3,6 +3,7 @@
 namespace App\UI\IdentityAccess\Http;
 
 use App\Logic\IdentityAccess\User\Model\Role;
+use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
 use App\UI\IdentityAccess\Security\AdminCsrfSubscriber;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -39,8 +40,23 @@ class AuthenticationController extends AbstractController
                 'email' => $user->getUserIdentifier(),
                 'displayName' => $user->getDisplayName(),
                 'roles' => array_map(static fn (Role $role): string => $role->value, $user->getDomainRoles()),
+                'moduleAccess' => $this->moduleAccess($user->getModuleAccess()),
             ],
             'csrfToken' => $csrfTokenManager->getToken(AdminCsrfSubscriber::TOKEN_ID)->getValue(),
         ]);
+    }
+
+    /**
+     * @param list<ModuleAccess> $moduleAccess
+     * @return array<string, string>
+     */
+    private function moduleAccess(array $moduleAccess): array
+    {
+        $result = [];
+        foreach ($moduleAccess as $access) {
+            $result[$access->module->value] = $access->role->value;
+        }
+
+        return $result;
     }
 }

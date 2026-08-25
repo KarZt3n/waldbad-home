@@ -28,7 +28,12 @@ readonly class ContentBlock
         public ?string $eventHelpButtonLabel = null,
         /** @var list<EventActivityAssignment> */
         public array $eventActivities = [],
+        /** @var list<EventCallToAction> */
+        public array $eventCallToActions = [],
         public ?string $extensionKey = null,
+        public ?int $collectionColumns = null,
+        /** @var list<ContentCollectionItem> */
+        public array $collectionItems = [],
     ) {
         if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
             && trim($this->content) === ''
@@ -62,6 +67,10 @@ readonly class ContentBlock
 
         if ($this->eventHelpButtonLabel !== null && mb_strlen(trim($this->eventHelpButtonLabel)) > 80) {
             throw new BusinessRuleViolationException('Die Beschriftung der Helferanmeldung ist zu lang.');
+        }
+
+        if ($this->type !== ContentBlockType::Event && $this->eventCallToActions !== []) {
+            throw new BusinessRuleViolationException('Zusätzliche Aktionsbuttons sind nur bei Veranstaltungen erlaubt.');
         }
 
         $activityIds = array_map(static fn (EventActivityAssignment $assignment): string => $assignment->activityId, $this->eventActivities);
@@ -132,6 +141,15 @@ readonly class ContentBlock
 
         if ($this->type === ContentBlockType::Extension && $this->extensionKey !== 'membership_application') {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
+        }
+
+        if ($this->type === ContentBlockType::FeatureCollection
+            && ($this->collectionColumns === null || $this->collectionColumns < 1 || $this->collectionColumns > 4)) {
+            throw new BusinessRuleViolationException('Die Collection muss zwischen einer und vier Spalten besitzen.');
+        }
+
+        if ($this->type === ContentBlockType::FeatureCollection && $this->collectionItems === []) {
+            throw new BusinessRuleViolationException('Die Collection benötigt mindestens einen Eintrag.');
         }
     }
 }

@@ -8,6 +8,7 @@ use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\IdentityAccess\User\Dto\UserResponse;
 use App\Logic\IdentityAccess\User\Model\Role;
+use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
 readonly class ApiResponseFactory
@@ -76,7 +77,10 @@ readonly class ApiResponseFactory
      *         eventHelpEnabled: bool,
      *         eventHelpButtonLabel: string|null,
      *         eventActivities: list<array{activityId: string, requiredHelpers: int}>,
-     *         extensionKey: string|null
+     *         eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *         extensionKey: string|null,
+     *         collectionColumns: int|null,
+     *         collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      *     }>,
      *     status: string,
      *     visible: bool,
@@ -123,7 +127,22 @@ readonly class ApiResponseFactory
                         static fn (\App\Logic\Content\Page\Model\EventActivityAssignment $activity): array => ['activityId' => $activity->activityId, 'requiredHelpers' => $activity->requiredHelpers],
                         $block->eventActivities,
                     ),
+                    'eventCallToActions' => array_map(
+                        static fn (\App\Logic\Content\Page\Model\EventCallToAction $action): array => ['label' => $action->label, 'url' => $action->url, 'pageId' => $action->pageId],
+                        $block->eventCallToActions,
+                    ),
                     'extensionKey' => $block->extensionKey,
+                    'collectionColumns' => $block->collectionColumns,
+                    'collectionItems' => array_map(
+                        fn (\App\Logic\Content\Page\Model\ContentCollectionItem $item): array => [
+                            'title' => $this->htmlSanitizer->sanitizeInline($item->title),
+                            'content' => $this->htmlSanitizer->sanitize($item->content),
+                            'mediaUrl' => $item->mediaUrl,
+                            'mediaAlt' => $item->mediaAlt,
+                            'mediaSource' => $item->mediaSource,
+                        ],
+                        $block->collectionItems,
+                    ),
                 ],
                 $page->blocks,
             ),
@@ -142,7 +161,7 @@ readonly class ApiResponseFactory
 
     private function sanitizedContent(ContentBlock $block): string
     {
-        return in_array($block->type, [ContentBlockType::Heading, ContentBlockType::Image], true)
+        return in_array($block->type, [ContentBlockType::Heading, ContentBlockType::Image, ContentBlockType::FeatureCollection], true)
             ? $this->htmlSanitizer->sanitizeInline($block->content)
             : $this->htmlSanitizer->sanitize($block->content);
     }
@@ -153,6 +172,7 @@ readonly class ApiResponseFactory
      *     email: string,
      *     displayName: string,
      *     roles: list<string>,
+     *     moduleAccess: array<string, string>,
      *     active: bool,
      *     version: int,
      *     createdAt: string,
@@ -167,11 +187,26 @@ readonly class ApiResponseFactory
             'email' => $user->email,
             'displayName' => $user->displayName,
             'roles' => array_map(static fn (Role $role): string => $role->value, $user->roles),
+            'moduleAccess' => $this->moduleAccess($user->moduleAccess),
             'active' => $user->active,
             'version' => $user->version,
             'createdAt' => $user->createdAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $user->updatedAt->format(\DateTimeInterface::ATOM),
             'lastLoginAt' => $user->lastLoginAt?->format(\DateTimeInterface::ATOM),
         ];
+    }
+
+    /**
+     * @param list<ModuleAccess> $moduleAccess
+     * @return array<string, string>
+     */
+    private function moduleAccess(array $moduleAccess): array
+    {
+        $result = [];
+        foreach ($moduleAccess as $access) {
+            $result[$access->module->value] = $access->role->value;
+        }
+
+        return $result;
     }
 }

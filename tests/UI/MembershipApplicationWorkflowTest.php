@@ -3,6 +3,9 @@
 namespace App\Tests\UI;
 
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
+use App\Logic\IdentityAccess\User\Model\CmsModule;
+use App\Logic\IdentityAccess\User\Model\ModuleAccess;
+use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
 use App\Logic\Membership\Application\UseCase\ClaimMembershipApplicationsUseCase;
@@ -154,6 +157,10 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
             displayName: 'Membership Admin',
             plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
+            moduleAccess: [
+                new ModuleAccess(CmsModule::MembershipApplications, ModuleRole::Editor),
+                new ModuleAccess(CmsModule::Pages, ModuleRole::Publisher),
+            ],
         ));
         $this->client->jsonRequest('POST', '/api/auth/v1/login', [
             'email' => 'membership-admin@example.test',

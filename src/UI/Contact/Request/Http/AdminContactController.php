@@ -20,7 +20,7 @@ class AdminContactController extends AbstractController
     #[Route('', name: 'api_admin_contact_list', methods: ['GET'])]
     public function list(ListContactRequestsQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContactManage->value);
+        $this->denyAccessUnlessGranted(Permission::ContactRequestsView->value);
 
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
@@ -28,7 +28,7 @@ class AdminContactController extends AbstractController
     #[Route('/{id}/status/{status}', name: 'api_admin_contact_status', requirements: ['status' => 'new|in_progress|resolved'], methods: ['POST'])]
     public function status(string $id, ContactRequestStatus $status, ChangeContactRequestStatusUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::ContactManage->value);
+        $this->denyAccessUnlessGranted(Permission::ContactRequestsEdit->value);
 
         return new JsonResponse($this->responseFactory->request($useCase->execute($id, $status)));
     }

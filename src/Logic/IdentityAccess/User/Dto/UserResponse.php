@@ -4,17 +4,20 @@ namespace App\Logic\IdentityAccess\User\Dto;
 
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\Model\User;
+use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 
 readonly class UserResponse
 {
     /**
      * @param list<Role> $roles
+     * @param list<ModuleAccess> $moduleAccess
      */
     public function __construct(
         public string $id,
         public string $email,
         public string $displayName,
         public array $roles,
+        public array $moduleAccess,
         public bool $active,
         public int $version,
         public \DateTimeImmutable $createdAt,
@@ -30,6 +33,7 @@ readonly class UserResponse
             email: $user->email,
             displayName: $user->displayName,
             roles: $user->roles,
+            moduleAccess: $user->moduleAccess,
             active: $user->active,
             version: $user->version,
             createdAt: $user->createdAt,

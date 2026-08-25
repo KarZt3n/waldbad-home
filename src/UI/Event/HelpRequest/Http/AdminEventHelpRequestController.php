@@ -22,7 +22,7 @@ class AdminEventHelpRequestController extends AbstractController
     #[Route('', name: 'api_admin_event_help_list', methods: ['GET'])]
     public function list(ListEventHelpRequestsQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::EventHelpManage->value);
+        $this->denyAccessUnlessGranted(Permission::EventHelpersView->value);
 
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
@@ -30,7 +30,7 @@ class AdminEventHelpRequestController extends AbstractController
     #[Route('/{id}/participation', name: 'api_admin_event_help_participation', methods: ['POST'])]
     public function participation(string $id, Request $request, RecordEventHelpParticipationUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::EventHelpManage->value);
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
         $data = $request->getPayload();
         $participated = $data->getBoolean('participated');
         $intervals = [];

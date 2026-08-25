@@ -8,6 +8,7 @@ enum ContentBlockType: string
     case RichText = 'rich_text';
     case Image = 'image';
     case ImageText = 'image_text';
+    case FeatureCollection = 'feature_collection';
     case Alert = 'alert';
     case CallToAction = 'call_to_action';
     case CustomHtml = 'custom_html';

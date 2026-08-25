@@ -148,8 +148,10 @@ Eine Inhaltsseite besteht aus geordneten Inhaltsblöcken. Für das MVP werden be
 - Download-Liste
 - Kontakt-/Personenkarte
 - Unterstützerkarte
+- Bild-Text-Collection mit gemeinsamer Überschrift, frei wählbaren ein bis vier Spalten und beliebig vielen Karten aus Überschrift, optionalem Rich Text und optionalem Bild
 - Veranstaltungsliste
 - Veranstaltungsblock mit einfacher Überschrift, Datum, Uhrzeit, optionalen Rich-Text-Zusatzinformationen und optionalem Bild per URL, Medienauswahl oder Upload
+- optionale zusätzliche Aktionsbuttons je Veranstaltung mit frei wählbarer Beschriftung und Ziel als URL oder interne CMS-Seite
 - Preis-/Öffnungszeiten-Tabelle
 - externer Inhalt mit Einwilligungssperre
 
@@ -162,6 +164,8 @@ Beim Einfügen aus der Zwischenablage übernimmt der visuelle Editor ausschließ
 Bild-Text-Blöcke erlauben zusätzlich eine Bildbreite zwischen 20 und 80 Prozent, Bildposition links oder rechts, vertikale Textausrichtung oben/zentriert/unten, horizontale Textausrichtung sowie die Bilddarstellung zugeschnitten oder vollständig. Auf kleinen Viewports werden Bild und Text unabhängig von diesen Einstellungen zugänglich untereinander angeordnet.
 
 Reine Bild-Blöcke erlauben eine Bildbreite zwischen 20 und 100 Prozent sowie eine linksbündige, zentrierte oder rechtsbündige Ausrichtung.
+
+Bild-Text-Collections stellen zusammengehörige Angebote oder Merkmale als responsives Kartenraster dar. Die Redakteurin oder der Redakteur wählt für Desktop ein bis vier Spalten. Jede Karte besitzt eine Überschrift sowie optional Rich Text, Bild, Alternativtext und Bildquelle; Karten können ergänzt, entfernt und umsortiert werden. Auf kleinen Viewports wird das Raster automatisch einspaltig. Der Block „Collection: Bild + Text“ wird ohne Überschrift und Einträge angelegt, damit er für unterschiedliche Inhalte neutral verwendet werden kann.
 
 Für jede veröffentlichte Seite wird ein eigener Veröffentlichungsstand gespeichert. Wird die Seite anschließend bearbeitet und als Entwurf gespeichert, bleiben die zuletzt veröffentlichten Inhalte, der veröffentlichte Slug und die veröffentlichte Navigation im Frontend aktiv. Erst ein erneutes Veröffentlichen ersetzt diesen Stand; „Zurückziehen“ entfernt ihn ausdrücklich aus dem Frontend.
 
@@ -303,6 +307,8 @@ Das CMS stellt eigene Verwaltungsbereiche bereit für:
 
 Fachlich strukturierte Daten werden nicht als unstrukturierter Rich Text gespeichert.
 
+In der Gästebuchverwaltung werden neue Einträge mit dem Status `pending` als primäre Arbeitsliste dargestellt. Bereits veröffentlichte Einträge erscheinen gesammelt in einem standardmäßig geschlossenen Archivbereich und können dort nachträglich abgelehnt oder als Spam markiert werden. Abgelehnte Einträge und Spam bleiben in einem separaten aufklappbaren Bereich erreichbar und können erneut veröffentlicht werden.
+
 ### 7.6 Vorschau und Veröffentlichungsworkflow
 
 Inhalte verwenden mindestens folgende Zustände:
@@ -322,38 +328,28 @@ Zusätzlich sind zeitgesteuerte Veröffentlichungen und das Zurückziehen veröf
 - Das Prinzip der geringsten Berechtigung gilt standardmäßig.
 - Der letzte aktive Super-Administrator darf nicht gelöscht oder gesperrt werden.
 
-### 8.2 Vorgesehene Rollen
+### 8.2 Globale und modulbezogene Rollen
+
+Ein Benutzer besitzt optional genau eine globale Rolle:
 
 | Rolle | Zweck |
 |---|---|
-| SuperAdmin | Vollzugriff, Rollen- und Systemverwaltung |
-| Admin | Benutzerverwaltung und alle redaktionellen Funktionen, aber keine geschützten Systemeinstellungen |
-| Publisher | Inhalte prüfen, veröffentlichen, zurückziehen und wiederherstellen |
-| Editor | Inhalte, Veranstaltungen, Medien und strukturierte Fachmodule als Entwurf bearbeiten |
-| Moderator | Gästebuch und Kontaktanfragen bearbeiten |
-| Viewer | CMS-Inhalte und Historie nur lesen |
+| SuperAdmin | Vollzugriff innerhalb der explizit freigeschalteten Module sowie Verwaltung von SuperAdmins und geschützten Systemeinstellungen |
+| Admin | Vollzugriff innerhalb der explizit freigeschalteten Module; keine Bearbeitung oder Sperrung von SuperAdmins |
 
-Eine Person kann mehrere Rollen besitzen. Die effektiven Berechtigungen ergeben sich aus der Vereinigung der zugewiesenen Rollen.
+Die fachlichen Rechte werden pro Modul zugewiesen. Das Modul `pages` kennt `Viewer`, `Editor`, `Publisher` und `Moderator`. Alle anderen Module kennen `Viewer` und `Editor`. Admin und SuperAdmin heben eine zugewiesene Modulrolle innerhalb des Moduls auf Vollzugriff an, schalten aber keine weiteren Module frei.
 
 ### 8.3 Berechtigungsmatrix
 
-| Fähigkeit | SuperAdmin | Admin | Publisher | Editor | Moderator | Viewer |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| CMS lesen | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Entwürfe erstellen und bearbeiten | ✓ | ✓ | ✓ | ✓ | – | – |
-| Medien verwalten | ✓ | ✓ | ✓ | ✓ | – | – |
-| Review anfordern | ✓ | ✓ | ✓ | ✓ | – | – |
-| Inhalte veröffentlichen/zurückziehen | ✓ | ✓ | ✓ | – | – | – |
-| Navigation bearbeiten | ✓ | ✓ | ✓ | – | – | – |
-| Rechtliche Inhalte bearbeiten | ✓ | ✓ | ✓ | – | – | – |
-| Gästebuch moderieren | ✓ | ✓ | optional | – | ✓ | – |
-| Kontaktanfragen bearbeiten | ✓ | ✓ | optional | – | ✓ | – |
-| Benutzer verwalten | ✓ | ✓ | – | – | – | – |
-| Rollen und Berechtigungen verwalten | ✓ | – | – | – | – | – |
-| Systemeinstellungen verwalten | ✓ | – | – | – | – | – |
-| Audit-Log lesen | ✓ | ✓ | ✓ | eigene Änderungen | Moderation | ✓ |
-
-Die mit optional gekennzeichneten Rechte werden nicht standardmäßig vergeben, können aber über eine zusätzliche Rolle gebündelt werden.
+| Modul | Rollen |
+|---|---|
+| Seiten | Viewer: lesen; Editor: bearbeiten; Publisher: bearbeiten und veröffentlichen; Moderator: bearbeiten und redaktionell prüfen |
+| Aktivitäten | Viewer: lesen; Editor: bearbeiten |
+| Gästebuch | Viewer: lesen; Editor: moderieren |
+| Kontaktanfragen | Viewer: lesen; Editor: Status bearbeiten |
+| Veranstaltungshelfer | Viewer: lesen; Editor: Teilnahme und Zeiten bearbeiten |
+| Mitgliedsanträge | Viewer: lesen; Editor: fachliche Aktionen ausführen |
+| Benutzerverwaltung | Viewer: lesen; Editor: Benutzer und Zugriffe gemäß globaler Schutzstufe verwalten |
 
 ### 8.4 Benutzerverwaltung
 
@@ -672,14 +668,24 @@ Die digitale Bestätigung besteht aus dem ausgeschriebenen Namen der unterzeichn
 
 ## 20. Fachliche Erweiterung: Veranstaltungshelfer
 
-Ein Veranstaltungsblock kann optional die Helferanmeldung aktivieren. Aktivierte Veranstaltungen erhalten eine stabile Kennung und zeigen im öffentlichen Frontend den konfigurierbaren Button „Ich möchte helfen!“. Dieser öffnet ein Dialogformular mit Vorname, Nachname, optionaler Freitextnachricht und Datenschutzbestätigung.
+Ein Veranstaltungsblock kann optional die Helferanmeldung aktivieren. Die zugehörige Button-Beschriftung und Aktivitätszuordnung werden im Editor nur bei aktivierter Helferanmeldung angezeigt. Aktivierte Veranstaltungen erhalten eine stabile Kennung und zeigen im öffentlichen Frontend den konfigurierbaren Button „Ich möchte helfen!“. Dieser öffnet ein Dialogformular mit Vorname, Nachname, optionaler Freitextnachricht und Datenschutzbestätigung. Unabhängig davon kann eine Veranstaltung mehrere weitere Aktionsbuttons erhalten, die wahlweise auf eine sichere URL oder eine interne CMS-Seite verweisen.
 
-Die öffentliche API akzeptiert ausschließlich reinen Text. Jede Anmeldung wird mit der stabilen Veranstaltungskennung sowie einer Momentaufnahme aus Titel, Datum und Uhrzeit gespeichert. Dadurch bleibt die fachliche Zuordnung erhalten, wenn eine Veranstaltung später umbenannt, verschoben oder archiviert wird.
+Die öffentliche API akzeptiert ausschließlich reinen Text. Jede Anmeldung wird mit der stabilen Veranstaltungskennung sowie einer Momentaufnahme aus Titel, Datum und Uhrzeit gespeichert. Dadurch bleibt die fachliche Zuordnung erhalten, wenn eine Veranstaltung später umbenannt, verschoben oder archiviert wird. In der Verwaltungsansicht werden Titel, Datum und Uhrzeit anhand der stabilen Kennung aus dem aktuellen CMS-Stand ergänzt, damit Terminänderungen unmittelbar sichtbar sind. Ist die Veranstaltung nicht mehr vorhanden, dient die gespeicherte Momentaufnahme als Rückfallanzeige.
 
 Moderatoren und Administratoren sehen die Anmeldungen im Redaktionsbereich „Veranstaltungshelfer“, gruppiert nach Veranstaltung. Nach der Veranstaltung wird je Anmeldung „Hat teilgenommen“ mit einem oder mehreren Von-bis-Zeiträumen oder „Nicht teilgenommen“ ohne Teilnahmezeit erfasst. Zeiträume können nachträglich ergänzt, bearbeitet oder entfernt werden und dürfen sich nicht überschneiden. Aus allen Zeiträumen wird die Gesamtzeit minutengenau berechnet. Für die öffentliche Übermittlung gilt im Produktivbetrieb ein Rate-Limit; in der DDEV- und Testumgebung ist es deaktiviert.
+
+Die Arbeitsliste priorisiert Veranstaltungen nach ihrem Datum: heutige Termine stehen an erster Stelle, anschließend folgen zukünftige Termine chronologisch. Bereits vergangene Veranstaltungen des laufenden Jahres befinden sich in einem geschlossenen Bereich „Abgeschlossene Veranstaltungen“. Ältere Veranstaltungen bleiben nach Jahren absteigend gruppiert in separaten Archiv-Accordions erreichbar.
 
 ### Wiederverwendbare Aktivitäten
 
 Im Redaktionsbereich „Aktivitäten“ werden Tätigkeiten wie „Aufbau“, „Abbau“, „Bierwagen“ oder „Wasserbecken entmoosen“ zentral angelegt, beschrieben und bei Bedarf deaktiviert. Dieselbe Aktivität kann mehreren Veranstaltungen zugeordnet werden. Die benötigte Helferzahl gehört zur jeweiligen Zuordnung und kann deshalb je Veranstaltung unterschiedlich sein.
 
 Das gilt sowohl für reguläre Veranstaltungen als auch für Arbeitseinsätze auf „Gemeinsam anpacken“: Beide werden als Veranstaltungsblock gepflegt und erhalten die passenden Aktivitäten. Im öffentlichen Helferformular werden die Tätigkeiten als Checkboxen mit Soll- und Anmeldezahl angezeigt. Bei konfigurierten Aktivitäten muss mindestens eine ausgewählt werden. Die Auswahl wird an der Helferanmeldung als historischer Snapshot gespeichert und in „Veranstaltungshelfer“ bei der jeweiligen Person angezeigt.
+
+## 21. Modulbezogenes Rechtemanagement
+
+Jeder CMS-Benutzer erhält mindestens ein fachliches Modul mit einer darin geltenden Rolle. Dadurch lassen sich beispielsweise `pages: editor` und `activities: viewer` unabhängig kombinieren.
+
+Verfügbare Module sind Seiten, Aktivitäten, Gästebuch, Kontaktanfragen, Veranstaltungshelfer, Mitgliedsanträge und Benutzerverwaltung. Nicht freigeschaltete Module werden in der Redaktionsnavigation nicht angezeigt und ihre Admin-API-Endpunkte antworten mit HTTP 403. Das Seitenmodul darf Aktivitäten lesend laden, damit bestehende Aktivitätszuordnungen in Veranstaltungsblöcken dargestellt werden können; das Anlegen und Bearbeiten von Aktivitäten benötigt weiterhin das Modul Aktivitäten.
+
+Admin und SuperAdmin erhalten innerhalb ihrer freigeschalteten Module alle fachlichen Rechte. Auch diese globalen Rollen erhalten keinen Zugriff auf nicht zugewiesene Module. Admins dürfen keine SuperAdmins bearbeiten oder sperren; nur SuperAdmins dürfen die globale Rolle SuperAdmin vergeben. Die vollständige Matrix und die serverseitigen Schutzregeln stehen in [benutzer-konzept.md](./benutzer-konzept.md).

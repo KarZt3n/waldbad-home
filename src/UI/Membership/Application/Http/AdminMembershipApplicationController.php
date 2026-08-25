@@ -23,7 +23,7 @@ class AdminMembershipApplicationController extends AbstractController
     #[Route('', name: 'api_admin_membership_application_list', methods: ['GET'])]
     public function list(Request $request, ListMembershipApplicationsQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::MembershipManage->value);
+        $this->denyAccessUnlessGranted(Permission::MembershipApplicationsView->value);
         $statusValue = trim((string) $request->query->get('status', ''));
         try {
             $status = $statusValue === '' ? null : ApplicationStatus::from($statusValue);
@@ -37,7 +37,7 @@ class AdminMembershipApplicationController extends AbstractController
     #[Route('/{id}', name: 'api_admin_membership_application_get', methods: ['GET'])]
     public function get(string $id, GetMembershipApplicationQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::MembershipManage->value);
+        $this->denyAccessUnlessGranted(Permission::MembershipApplicationsView->value);
 
         return new JsonResponse($this->responseFactory->application($query->execute($id)));
     }
@@ -45,7 +45,7 @@ class AdminMembershipApplicationController extends AbstractController
     #[Route('/{id}/retry', name: 'api_admin_membership_application_retry', methods: ['POST'])]
     public function retry(string $id, RetryMembershipApplicationUseCase $useCase): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::MembershipManage->value);
+        $this->denyAccessUnlessGranted(Permission::MembershipApplicationsEdit->value);
 
         return new JsonResponse($this->responseFactory->application($useCase->execute($id)));
     }

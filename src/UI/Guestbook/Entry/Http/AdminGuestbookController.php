@@ -21,7 +21,7 @@ class AdminGuestbookController extends AbstractController
     #[Route('', name: 'api_admin_guestbook_list', methods: ['GET'])]
     public function list(ListGuestbookEntriesQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::GuestbookModerate->value);
+        $this->denyAccessUnlessGranted(Permission::GuestbookView->value);
 
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
@@ -33,7 +33,7 @@ class AdminGuestbookController extends AbstractController
         ModerateGuestbookEntryUseCase $useCase,
         #[CurrentUser] AuthenticatedUser $user,
     ): JsonResponse {
-        $this->denyAccessUnlessGranted(Permission::GuestbookModerate->value);
+        $this->denyAccessUnlessGranted(Permission::GuestbookEdit->value);
         $entry = $useCase->execute($id, $action, $user->getId());
 
         return new JsonResponse($this->responseFactory->entry($entry));
