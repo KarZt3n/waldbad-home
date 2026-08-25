@@ -2688,11 +2688,11 @@ const renderAdmin = async () => {
         const participationStatus = (requestItem) => {
             if (requestItem.status === 'participated') {
                 const hours = new Intl.NumberFormat('de-DE', {maximumFractionDigits: 2}).format(requestItem.participationMinutes / 60);
-                return `hat teilgenommen · gesamt ${hours} Stunden`;
+                return `Teilgenommen · ${hours} Std.`;
             }
-            if (requestItem.status === 'not_participated') return 'nicht teilgenommen · 0 Stunden';
-            if (requestItem.status === 'resolved') return 'erledigt';
-            return 'neu';
+            if (requestItem.status === 'not_participated') return 'Nicht teilgenommen';
+            if (requestItem.status === 'resolved') return 'Erledigt';
+            return 'Neu';
         };
         const groups = new Map();
         data.items.forEach((item) => {
@@ -2716,14 +2716,22 @@ const renderAdmin = async () => {
                 const actionButtons = [];
                 if (canEditModule('event_helpers') && requestItem.status !== 'resolved') {
                     const participated = element('button', {
-                        className: 'button',
-                        text: requestItem.status === 'participated' ? 'Zeiten bearbeiten' : 'Hat teilgenommen',
-                        attributes: {type: 'button'},
+                        className: 'participant-icon-button participant-icon-button-confirm',
+                        text: requestItem.status === 'participated' ? '✎' : '✓',
+                        attributes: {
+                            type: 'button',
+                            title: requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
+                            'aria-label': requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
+                        },
                     });
                     participated.addEventListener('click', () => openParticipationDialog(requestItem));
                     actionButtons.push(participated);
                     if (requestItem.status !== 'not_participated') {
-                        const absent = element('button', {className: 'secondary-button', text: 'Nicht teilgenommen', attributes: {type: 'button'}});
+                        const absent = element('button', {
+                            className: 'participant-icon-button participant-icon-button-absent',
+                            text: '⊘',
+                            attributes: {type: 'button', title: 'Als nicht teilgenommen markieren', 'aria-label': 'Als nicht teilgenommen markieren'},
+                        });
                         absent.addEventListener('click', async () => {
                             absent.disabled = true;
                             try {
@@ -2738,20 +2746,48 @@ const renderAdmin = async () => {
                 }
                 const intervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
                 const selectedActivities = Array.isArray(requestItem.selectedActivities) ? requestItem.selectedActivities : [];
-                return element('article', {className: `management-card status-${requestItem.status}`, children: [
-                element('header', {children: [
+                const hasMessage = typeof requestItem.message === 'string' && requestItem.message.trim() !== '';
+                const hasDetails = hasMessage || selectedActivities.length > 0 || intervals.length > 0;
+                const detailsId = `event-helper-details-${requestItem.id}`;
+                const identity = element('div', {className: 'event-helper-participant-identity', children: [
                     element('strong', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
-                    element('small', {text: `${participationStatus(requestItem)} · ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
+                    element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
+                ]});
+                const detailsBody = hasDetails ? element('div', {className: 'event-helper-participant-details', attributes: {id: detailsId, hidden: 'hidden'}, children: [
+                    ...(hasMessage ? [element('p', {className: 'event-helper-participant-message', text: requestItem.message})] : []),
+                    ...((selectedActivities.length || intervals.length) ? [element('div', {className: 'event-helper-participant-meta', children: [
+                        ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
+                            element('strong', {text: 'Aktivitäten'}),
+                            ...selectedActivities.map((activity) => element('span', {className: 'activity-chip', text: activity.name})),
+                        ]})] : []),
+                        ...(intervals.length ? [element('div', {className: 'participation-times', children: [
+                            element('strong', {text: 'Zeiten'}),
+                            element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))}),
+                        ]})] : []),
+                    ]})] : []),
+                ]}) : null;
+                let identityControl = identity;
+                if (detailsBody) {
+                    identityControl = element('button', {
+                        className: 'event-helper-participant-toggle',
+                        attributes: {type: 'button', 'aria-expanded': 'false', 'aria-controls': detailsId},
+                        children: [identity],
+                    });
+                    identityControl.addEventListener('click', () => {
+                        const expanded = identityControl.getAttribute('aria-expanded') === 'true';
+                        identityControl.setAttribute('aria-expanded', String(!expanded));
+                        detailsBody.hidden = expanded;
+                    });
+                }
+                return element('article', {className: `event-helper-participant status-${requestItem.status}`, children: [
+                element('header', {className: 'event-helper-participant-header', children: [
+                    identityControl,
+                    element('div', {className: 'event-helper-participant-side', children: [
+                        element('span', {className: `participant-status status-${requestItem.status}`, text: participationStatus(requestItem)}),
+                        ...(actionButtons.length ? [element('div', {className: 'participant-actions', children: actionButtons})] : []),
+                    ]}),
                 ]}),
-                ...(typeof requestItem.message === 'string' && requestItem.message.trim() !== ''
-                    ? [element('p', {text: requestItem.message})]
-                    : []),
-                ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
-                    element('strong', {text: 'Angemeldet für:'}),
-                    ...selectedActivities.map((activity) => element('span', {className: 'activity-chip', text: activity.name})),
-                ]})] : []),
-                ...(intervals.length ? [element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))})] : []),
-                ...(actionButtons.length ? [element('div', {className: 'card-actions', children: actionButtons})] : []),
+                ...(detailsBody ? [detailsBody] : []),
                 ]});
             })}),
             ]});
