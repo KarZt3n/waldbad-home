@@ -1,0 +1,119 @@
+name: waldbad-home
+
+services:
+  database:
+    image: mariadb:11.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+    environment:
+      MARIADB_DATABASE_FILE: /run/secrets/db_name
+      MARIADB_USER_FILE: /run/secrets/db_user
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+      - db_root_password
+    volumes:
+      - database_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root --password=$$(cat /run/secrets/db_root_password) --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 512m
+    networks:
+      - internal
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: waldbad-home:stage
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      DEFAULT_URI: http://web-apps-stage.fritz.box:8083
+      MAILER_DSN: null://null
+      MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
+      RUN_MIGRATIONS: "1"
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+      - app_secret
+      - membership_integration_token
+    volumes:
+      - media_data:/var/www/html/public/uploads/media
+    ports:
+      - "8083:80"
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1/api/public/v1/navigation') === false ? 1 : 0);"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    mem_limit: 512m
+    networks:
+      - internal
+      - web
+
+  worker:
+    image: waldbad-home:stage
+    restart: unless-stopped
+    command: ["php", "bin/console", "messenger:consume", "async", "--time-limit=3600", "--memory-limit=192M", "--no-interaction"]
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      DEFAULT_URI: http://web-apps-stage.fritz.box:8083
+      MAILER_DSN: null://null
+      MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
+      RUN_MIGRATIONS: "0"
+      DROP_TO_WWW_DATA: "1"
+    secrets:
+      - db_name
+      - db_user
+      - db_password
+      - app_secret
+      - membership_integration_token
+    volumes:
+      - media_data:/var/www/html/public/uploads/media
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 256m
+    networks:
+      - internal
+
+secrets:
+  db_name:
+    file: /srv/webapps/waldbad-home/secrets/db_name
+  db_user:
+    file: /srv/webapps/waldbad-home/secrets/db_user
+  db_password:
+    file: /srv/webapps/waldbad-home/secrets/db_password
+  db_root_password:
+    file: /srv/webapps/waldbad-home/secrets/db_root_password
+  app_secret:
+    file: /srv/webapps/waldbad-home/secrets/app_secret
+  membership_integration_token:
+    file: /srv/webapps/waldbad-home/secrets/membership_integration_token
+
+volumes:
+  database_data:
+  media_data:
+
+networks:
+  internal:
+    internal: true
+  web:
+    external: true

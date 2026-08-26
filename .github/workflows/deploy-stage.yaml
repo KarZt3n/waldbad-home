@@ -1,0 +1,31 @@
+name: Stage deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: waldbad-home-stage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy waldbad-home stage
+    runs-on: [self-hosted, linux, x64, waldbad-stage]
+    timeout-minutes: 30
+    environment: stage
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Stage bereitstellen
+        run: ./deploy/stage-deploy.sh
+
+      - name: Healthcheck
+        run: curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8083/api/public/v1/navigation >/dev/null
+

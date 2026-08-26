@@ -1,0 +1,16 @@
+.git
+.github
+.ddev
+.idea
+.phpunit.cache
+.env*
+config/secrets
+deployment.md
+phpstan.neon
+phpunit.dist.xml
+tests
+var
+vendor
+public/uploads/media/*
+!public/uploads/media/.gitkeep
+

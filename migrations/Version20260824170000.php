@@ -28,6 +28,9 @@ final class Version20260824170000 extends AbstractMigration
             'SELECT blocks, page_version FROM cms_page_publication WHERE page_id = :id',
             ['id' => self::HOME_PAGE_ID],
         );
+        if ($homePage === false && $homePublication === false) {
+            return;
+        }
         if ($homePage === false || $homePublication === false) {
             throw new \RuntimeException('Die veröffentlichte Startseite wurde nicht gefunden.');
         }
@@ -122,6 +125,9 @@ final class Version20260824170000 extends AbstractMigration
         $homePublication = $this->connection->fetchAssociative('SELECT blocks FROM cms_page_publication WHERE page_id = :id', ['id' => self::HOME_PAGE_ID]);
         $offerPage = $this->connection->fetchAssociative('SELECT blocks FROM cms_page WHERE id = :id', ['id' => self::OFFER_PAGE_ID]);
         $offerPublication = $this->connection->fetchAssociative('SELECT blocks FROM cms_page_publication WHERE page_id = :id', ['id' => self::OFFER_PAGE_ID]);
+        if ($offerPage === false && $offerPublication === false) {
+            return;
+        }
         if ($homePage === false || $homePublication === false || $offerPage === false || $offerPublication === false) {
             throw new \RuntimeException('Die Seitenstruktur für das Zurücksetzen ist unvollständig.');
         }
