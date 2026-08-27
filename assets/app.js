@@ -948,33 +948,69 @@ const renderPublic = async () => {
         if (slug === 'kontakt') article.append(renderContactForm());
         if (slug === 'gaestebuch') article.append(await renderGuestbook());
 
+        const mainNav = element('nav', {
+            className: 'main-nav',
+            attributes: {id: 'main-nav', 'aria-label': 'Hauptnavigation'},
+            children: links,
+        });
+        const navToggle = element('button', {
+            className: 'nav-toggle',
+            attributes: {type: 'button', 'aria-controls': 'main-nav', 'aria-expanded': 'false', 'aria-label': 'Menü öffnen'},
+            children: [
+                element('span', {className: 'nav-toggle-bar'}),
+                element('span', {className: 'nav-toggle-bar'}),
+                element('span', {className: 'nav-toggle-bar'}),
+            ],
+        });
+        const header = element('header', {
+            className: 'site-header',
+            children: [
+                element('a', {
+                    className: 'brand',
+                    attributes: {href: '/', 'aria-label': 'Waldbad Borkheide – Startseite'},
+                    children: [
+                        element('img', {
+                            className: 'brand-logo',
+                            attributes: {
+                                src: '/downloads/waldbad-borkheide-logo.svg',
+                                alt: '',
+                                width: '96',
+                                height: '72',
+                                fetchpriority: 'high',
+                            },
+                        }),
+                        element('span', {children: [
+                            element('strong', {text: 'Waldbad Borkheide'}),
+                            element('small', {text: '… natürlich baden!'}),
+                        ]}),
+                    ],
+                }),
+                navToggle,
+                mainNav,
+            ],
+        });
+        const closeNav = () => {
+            header.classList.remove('nav-open');
+            navToggle.setAttribute('aria-expanded', 'false');
+            navToggle.setAttribute('aria-label', 'Menü öffnen');
+        };
+        navToggle.addEventListener('click', () => {
+            const open = header.classList.toggle('nav-open');
+            navToggle.setAttribute('aria-expanded', String(open));
+            navToggle.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
+        });
+        mainNav.addEventListener('click', (event) => {
+            if (event.target.closest('a')) closeNav();
+        });
+        document.addEventListener('click', (event) => {
+            if (header.classList.contains('nav-open') && !header.contains(event.target)) closeNav();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && header.classList.contains('nav-open')) closeNav();
+        });
+
         app.replaceChildren(
-            element('header', {
-                className: 'site-header',
-                children: [
-                    element('a', {
-                        className: 'brand',
-                        attributes: {href: '/', 'aria-label': 'Waldbad Borkheide – Startseite'},
-                        children: [
-                            element('img', {
-                                className: 'brand-logo',
-                                attributes: {
-                                    src: '/downloads/waldbad-borkheide-logo.svg',
-                                    alt: '',
-                                    width: '96',
-                                    height: '72',
-                                    fetchpriority: 'high',
-                                },
-                            }),
-                            element('span', {children: [
-                                element('strong', {text: 'Waldbad Borkheide'}),
-                                element('small', {text: '… natürlich baden!'}),
-                            ]}),
-                        ],
-                    }),
-                    element('nav', {className: 'main-nav', attributes: {'aria-label': 'Hauptnavigation'}, children: links}),
-                ],
-            }),
+            header,
             element('main', {
                 className: 'page-shell',
                 children: [

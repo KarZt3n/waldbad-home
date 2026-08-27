@@ -64,6 +64,32 @@ a { color: var(--forest-700); }
 .brand strong, .brand small { display: block; }
 .brand small { margin-top: .1rem; color: var(--lime-400); }
 
+.nav-toggle {
+    display: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .32rem;
+    padding: 0;
+    border: 0;
+    border-radius: .6rem;
+    background: transparent;
+    cursor: pointer;
+}
+.nav-toggle-bar {
+    width: 1.5rem;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--white);
+    transition: transform .2s ease, opacity .2s ease;
+}
+.site-header.nav-open .nav-toggle-bar:nth-child(1) { transform: translateY(.42rem) rotate(45deg); }
+.site-header.nav-open .nav-toggle-bar:nth-child(2) { opacity: 0; }
+.site-header.nav-open .nav-toggle-bar:nth-child(3) { transform: translateY(-.42rem) rotate(-45deg); }
+
 .main-nav {
     display: flex;
     flex-wrap: wrap;
@@ -340,7 +366,7 @@ a { color: var(--forest-700); }
     border-radius: 999px;
     color: var(--forest-950);
     background: var(--lime-400);
-    font-size: .92rem;
+    font-size: .82rem;
     font-weight: 850;
     letter-spacing: .01em;
 }
@@ -1143,8 +1169,19 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .preview-frame.mobile .feature-collection-grid { grid-template-columns: 1fr; }
 
 @media (max-width: 760px) {
-    .site-header { position: static; display: grid; }
-    .main-nav { justify-content: flex-start; }
+    .site-header { position: static; flex-wrap: wrap; }
+    .nav-toggle { display: flex; }
+    .main-nav {
+        display: none;
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        margin-top: .75rem;
+        padding-top: .75rem;
+        border-top: 1px solid rgb(255 255 255 / 14%);
+    }
+    .site-header.nav-open .main-nav { display: flex; }
     .main-nav-item { flex-wrap: wrap; }
     .submenu { position: static; width: 100%; margin-left: .75rem; border: 0; box-shadow: none; }
     .submenu .submenu { position: static; margin-left: .75rem; }
