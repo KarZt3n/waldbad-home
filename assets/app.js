@@ -2176,9 +2176,9 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         review.addEventListener('click', () => runStatusAction('request-review', true));
         statusActions.append(review);
     }
-    if (page && canPublishPages() && page.status !== 'published' && page.status !== 'archived') {
+    if (canPublishPages() && page?.status !== 'archived') {
         const publish = element('button', {className: 'button', text: 'Veröffentlichen', attributes: {type: 'button'}});
-        publish.addEventListener('click', () => runStatusAction('publish', true));
+        publish.addEventListener('click', () => page ? runStatusAction('publish', true) : savePage(true));
         statusActions.append(publish);
     }
     if (page && canPublishPages() && page.publishedAt && page.status !== 'archived') {
@@ -2266,21 +2266,30 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
     });
     form.querySelector('[name="visible"]').checked = page?.visible ?? true;
     form.querySelector('[name="showInNavigation"]').checked = page?.showInNavigation ?? true;
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
+    const savePage = async (publishAfterSave = false) => {
         const payload = pagePayload(form, blocks, page);
         try {
-            await request(page ? '/api/admin/v1/pages/' + page.id : '/api/admin/v1/pages', {
+            const savedPage = await request(page ? '/api/admin/v1/pages/' + page.id : '/api/admin/v1/pages', {
                 method: page ? 'PUT' : 'POST',
                 body: JSON.stringify(payload),
             });
-            message.textContent = 'Entwurf gespeichert.';
-            toast(page ? 'Entwurf wurde gespeichert.' : 'Seite wurde angelegt.');
+            if (publishAfterSave) {
+                await request(`/api/admin/v1/pages/${savedPage.id}/publish`, {method: 'POST'});
+                message.textContent = 'Seite veröffentlicht.';
+                toast('Seite wurde gespeichert und veröffentlicht.');
+            } else {
+                message.textContent = 'Entwurf gespeichert.';
+                toast(page ? 'Entwurf wurde gespeichert.' : 'Seite wurde angelegt.');
+            }
             await onSaved();
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
         }
+    };
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        await savePage();
     });
     refreshBlocks();
 
