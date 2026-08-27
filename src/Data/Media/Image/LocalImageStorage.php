@@ -2,11 +2,13 @@
 
 namespace App\Data\Media\Image;
 
+use App\Data\Media\Image\Entity\StoredImageEntity;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Media\Image\ImageStorageInterface;
 use App\Logic\Media\Image\Model\ImageUpload;
 use App\Logic\Media\Image\Model\StoredImage;
+use Doctrine\ORM\EntityManagerInterface;
 
 readonly class LocalImageStorage implements ImageStorageInterface
 {
@@ -19,6 +21,7 @@ readonly class LocalImageStorage implements ImageStorageInterface
 
     public function __construct(
         private IdentifierGeneratorInterface $identifierGenerator,
+        private EntityManagerInterface $entityManager,
         private string $mediaUploadDirectory,
     ) {
     }
@@ -41,28 +44,47 @@ readonly class LocalImageStorage implements ImageStorageInterface
             throw new \RuntimeException('Das Medienverzeichnis konnte nicht angelegt werden.');
         }
 
-        $filename = $this->identifierGenerator->generate().'.'.self::EXTENSIONS[$mimeType];
+        $filename = $this->availableFilename($upload->originalName, self::EXTENSIONS[$mimeType]);
         $target = $this->mediaUploadDirectory.DIRECTORY_SEPARATOR.$filename;
         if (!move_uploaded_file($upload->temporaryPath, $target) && !rename($upload->temporaryPath, $target)) {
             throw new \RuntimeException('Das Bild konnte nicht gespeichert werden.');
         }
         $source = $this->normalizeSource($upload->source);
-        if ($source !== null && file_put_contents($this->sourcePath($target), $source, LOCK_EX) === false) {
-            throw new \RuntimeException('Die Bildquelle konnte nicht gespeichert werden.');
-        }
-
-        return new StoredImage(
-            url: '/uploads/media/'.$filename,
-            originalName: $upload->originalName,
+        $url = '/uploads/media/'.$filename;
+        $now = new \DateTimeImmutable();
+        $entity = new StoredImageEntity(
+            id: $this->identifierGenerator->generate(),
+            url: $url,
+            originalName: basename($upload->originalName),
             mimeType: $mimeType,
             size: $upload->size,
             width: $dimensions[0],
             height: $dimensions[1],
             source: $source,
+            createdAt: $now,
+            updatedAt: $now,
         );
+        try {
+            $this->entityManager->persist($entity);
+            $this->entityManager->flush();
+        } catch (\Throwable $exception) {
+            @unlink($target);
+
+            throw $exception;
+        }
+
+        return $this->storedImage($entity);
     }
 
     public function all(): array
+    {
+        return $this->images(200);
+    }
+
+    /**
+     * @return list<StoredImage>
+     */
+    private function images(?int $limit): array
     {
         if (!is_dir($this->mediaUploadDirectory)) {
             return [];
@@ -75,7 +97,10 @@ readonly class LocalImageStorage implements ImageStorageInterface
 
         usort($paths, static fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
         $images = [];
-        foreach (array_slice($paths, 0, 200) as $path) {
+        $legacySourcePaths = [];
+        $metadataImported = false;
+        $selectedPaths = $limit === null ? $paths : array_slice($paths, 0, $limit);
+        foreach ($selectedPaths as $path) {
             if (!is_file($path)) {
                 continue;
             }
@@ -88,15 +113,35 @@ readonly class LocalImageStorage implements ImageStorageInterface
             }
 
             $filename = basename($path);
-            $images[] = new StoredImage(
-                url: '/uploads/media/'.$filename,
-                originalName: $filename,
-                mimeType: $mimeType,
-                size: $size,
-                width: $dimensions[0],
-                height: $dimensions[1],
-                source: $this->readSource($path),
-            );
+            $url = '/uploads/media/'.$filename;
+            $entity = $this->entityManager->getRepository(StoredImageEntity::class)->findOneBy(['url' => $url]);
+            if (!$entity instanceof StoredImageEntity) {
+                $now = new \DateTimeImmutable();
+                $entity = new StoredImageEntity(
+                    id: $this->identifierGenerator->generate(),
+                    url: $url,
+                    originalName: $filename,
+                    mimeType: $mimeType,
+                    size: $size,
+                    width: $dimensions[0],
+                    height: $dimensions[1],
+                    source: $this->readLegacySource($path),
+                    createdAt: $now,
+                    updatedAt: $now,
+                );
+                $this->entityManager->persist($entity);
+                $legacySourcePaths[] = $this->legacySourcePath($path);
+                $metadataImported = true;
+            }
+            $images[] = $this->storedImage($entity);
+        }
+        if ($metadataImported) {
+            $this->entityManager->flush();
+        }
+        foreach ($legacySourcePaths as $legacySourcePath) {
+            if (is_file($legacySourcePath)) {
+                @unlink($legacySourcePath);
+            }
         }
 
         return $images;
@@ -112,19 +157,34 @@ readonly class LocalImageStorage implements ImageStorageInterface
             throw new BusinessRuleViolationException('Das ausgewählte Bibliotheksbild ist ungültig.');
         }
         $normalizedSource = $this->normalizeSource($source);
-        if (file_put_contents($this->sourcePath($path), $normalizedSource ?? '', LOCK_EX) === false) {
-            throw new \RuntimeException('Die Bildquelle konnte nicht gespeichert werden.');
+        $entity = $this->entityManager->getRepository(StoredImageEntity::class)->findOneBy(['url' => $url]);
+        $now = new \DateTimeImmutable();
+        if (!$entity instanceof StoredImageEntity) {
+            $entity = new StoredImageEntity(
+                id: $this->identifierGenerator->generate(),
+                url: $url,
+                originalName: basename($path),
+                mimeType: $mimeType,
+                size: $size,
+                width: $dimensions[0],
+                height: $dimensions[1],
+                source: $normalizedSource,
+                createdAt: $now,
+                updatedAt: $now,
+            );
+            $this->entityManager->persist($entity);
+        } else {
+            $entity->updateFileMetadata($entity->getOriginalName(), $mimeType, $size, $dimensions[0], $dimensions[1], $now);
+            $entity->updateSource($normalizedSource, $now);
         }
+        $this->entityManager->flush();
 
-        return new StoredImage(
-            url: $url,
-            originalName: basename($path),
-            mimeType: $mimeType,
-            size: $size,
-            width: $dimensions[0],
-            height: $dimensions[1],
-            source: $normalizedSource,
-        );
+        return $this->storedImage($entity);
+    }
+
+    public function synchronizeMetadata(): int
+    {
+        return count($this->images(null));
     }
 
     private function imagePathFromUrl(string $url): string
@@ -145,20 +205,55 @@ readonly class LocalImageStorage implements ImageStorageInterface
         return $path;
     }
 
-    private function sourcePath(string $imagePath): string
+    private function availableFilename(string $originalName, string $extension): string
+    {
+        $basename = pathinfo(basename($originalName), PATHINFO_FILENAME);
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $basename);
+        if (is_string($transliterated)) {
+            $basename = $transliterated;
+        }
+        $basename = mb_strtolower($basename);
+        $basename = preg_replace('/[^a-z0-9]+/', '-', $basename);
+        $basename = is_string($basename) ? trim($basename, '-') : '';
+        $basename = mb_substr($basename === '' ? 'bild' : $basename, 0, 180);
+
+        $filename = $basename.'.'.$extension;
+        $suffix = 2;
+        while (is_file($this->mediaUploadDirectory.DIRECTORY_SEPARATOR.$filename)) {
+            $filename = $basename.'-'.$suffix.'.'.$extension;
+            ++$suffix;
+        }
+
+        return $filename;
+    }
+
+    private function legacySourcePath(string $imagePath): string
     {
         return $imagePath.'.source.txt';
     }
 
-    private function readSource(string $imagePath): ?string
+    private function readLegacySource(string $imagePath): ?string
     {
-        $sourcePath = $this->sourcePath($imagePath);
+        $sourcePath = $this->legacySourcePath($imagePath);
         if (!is_file($sourcePath)) {
             return null;
         }
         $source = file_get_contents($sourcePath);
 
         return $source === false ? null : $this->normalizeSource($source);
+    }
+
+    private function storedImage(StoredImageEntity $entity): StoredImage
+    {
+        return new StoredImage(
+            url: $entity->getUrl(),
+            originalName: $entity->getOriginalName(),
+            mimeType: $entity->getMimeType(),
+            size: $entity->getSize(),
+            width: $entity->getWidth(),
+            height: $entity->getHeight(),
+            source: $entity->getSource(),
+        );
     }
 
     private function normalizeSource(?string $source): ?string

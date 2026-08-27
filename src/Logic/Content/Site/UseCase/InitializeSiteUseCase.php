@@ -130,7 +130,7 @@ readonly class InitializeSiteUseCase
             ],
             [
                 'title' => 'Mitglied werden',
-                'slug' => 'mitglied-werden',
+                'slug' => 'mitmachen/mitglied-werden',
                 'navigationLabel' => 'Mitglied werden',
                 'position' => 40,
                 'description' => 'Mitgliedschaft im Naturbad Borkheide e.V.',

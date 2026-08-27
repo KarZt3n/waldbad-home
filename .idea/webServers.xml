@@ -5,7 +5,7 @@
       <webServer id="d36b90d1-cf98-4e13-81c0-1eb06c4373a4" name="waldbad-home-stage">
         <fileTransfer accessType="SFTP" host="192.168.178.119" port="22" sshConfigId="45759721-ebf8-49a7-a211-5a7e50d8645f" sshConfig="deploy@192.168.178.119:22 key" keyPair="true">
           <advancedOptions>
-            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" isUseSudo="true" />
           </advancedOptions>
         </fileTransfer>
       </webServer>

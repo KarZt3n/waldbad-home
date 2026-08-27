@@ -4,9 +4,25 @@ set -eu
 
 project_root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 secret_dir='/srv/webapps/waldbad-home/secrets'
+shared_dir='/srv/webapps/waldbad-home/shared'
+shared_media_dir="$shared_dir/media"
 compose_file="$project_root/deploy/compose.stage.yaml"
 
 install -d -m 0700 "$secret_dir"
+install -d -m 0755 "$shared_dir"
+if [ ! -d "$shared_media_dir" ]; then
+    install -d -m 0775 "$shared_media_dir"
+fi
+
+legacy_media_volume='waldbad-home_media_data'
+legacy_import_marker="$shared_media_dir/.legacy-volume-imported"
+if [ ! -e "$legacy_import_marker" ] && docker volume inspect "$legacy_media_volume" >/dev/null 2>&1; then
+    docker run --rm \
+        -v "$legacy_media_volume:/legacy-media:ro" \
+        -v "$shared_media_dir:/shared-media" \
+        nginx:1.28-alpine \
+        sh -c 'cp -a /legacy-media/. /shared-media/ && touch /shared-media/.legacy-volume-imported'
+fi
 
 ensure_literal_secret() {
     secret_name="$1"
@@ -63,5 +79,8 @@ until curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8083/api/p
     sleep 2
 done
 
-docker compose -f "$compose_file" run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console app:site:initialize --no-interaction
+if [ "${WALDBAD_INITIALIZE_SITE:-0}" = '1' ]; then
+    docker compose -f "$compose_file" run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console app:site:initialize --no-interaction
+fi
+docker compose -f "$compose_file" run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console app:media:synchronize-metadata --no-interaction
 docker compose -f "$compose_file" ps

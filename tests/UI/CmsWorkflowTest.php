@@ -761,6 +761,22 @@ final class CmsWorkflowTest extends WebTestCase
             throw new \RuntimeException('Das Testbild konnte nicht erzeugt werden.');
         }
 
+        $oversizedTemporaryImage = tempnam(sys_get_temp_dir(), 'waldbad-upload-limit-');
+        if ($oversizedTemporaryImage === false || file_put_contents($oversizedTemporaryImage, $imageContents) === false) {
+            throw new \RuntimeException('Das Testbild für das Upload-Limit konnte nicht erzeugt werden.');
+        }
+        $this->client->request(
+            method: 'POST',
+            uri: '/api/admin/v1/media/images',
+            files: ['image' => new UploadedFile($oversizedTemporaryImage, 'zu-gross.png', 'image/png', UPLOAD_ERR_INI_SIZE, true)],
+            server: ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']],
+        );
+        self::assertResponseStatusCodeSame(400);
+        self::assertStringContainsString('maximal 10 MB', $this->responseContent());
+        if (is_file($oversizedTemporaryImage)) {
+            unlink($oversizedTemporaryImage);
+        }
+
         $this->client->request(
             method: 'POST',
             uri: '/api/admin/v1/media/images',
@@ -775,6 +791,8 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame(1, $storedImage['width']);
         self::assertSame(1, $storedImage['height']);
         self::assertIsString($storedImage['url']);
+        self::assertSame('/uploads/media/waldbad.png', $storedImage['url']);
+        self::assertSame('waldbad.png', $storedImage['originalName']);
         self::assertSame('Foto: Waldbad-Team', $storedImage['source']);
         $storedPath = dirname(__DIR__, 2).'/public'.$storedImage['url'];
         self::assertFileExists($storedPath);
@@ -792,12 +810,27 @@ final class CmsWorkflowTest extends WebTestCase
         $updatedImage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($updatedImage);
         self::assertSame('Illustration: Naturbad Borkheide e.V.', $updatedImage['source']);
+        self::assertFileDoesNotExist($storedPath.'.source.txt');
+
+        $secondTemporaryImage = tempnam(sys_get_temp_dir(), 'waldbad-upload-');
+        if ($secondTemporaryImage === false || file_put_contents($secondTemporaryImage, $imageContents) === false) {
+            throw new \RuntimeException('Das zweite Testbild konnte nicht erzeugt werden.');
+        }
+        $this->client->request(
+            method: 'POST',
+            uri: '/api/admin/v1/media/images',
+            files: ['image' => new UploadedFile($secondTemporaryImage, 'waldbad.png', 'image/png', null, true)],
+            server: ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']],
+        );
+        self::assertResponseStatusCodeSame(201);
+        $secondStoredImage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($secondStoredImage);
+        self::assertSame('/uploads/media/waldbad-2.png', $secondStoredImage['url']);
+        $secondStoredPath = dirname(__DIR__, 2).'/public'.$secondStoredImage['url'];
+        self::assertFileExists($secondStoredPath);
 
         unlink($storedPath);
-        $sourcePath = $storedPath.'.source.txt';
-        if (is_file($sourcePath)) {
-            unlink($sourcePath);
-        }
+        unlink($secondStoredPath);
     }
 
     public function testPagesCanBeMovedDuplicatedAndDeletedSafely(): void
@@ -920,6 +953,12 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertIsArray($pages['items']);
         $startPage = array_values(array_filter($pages['items'], static fn (mixed $item): bool => is_array($item) && ($item['slug'] ?? null) === 'startseite'));
         self::assertCount(1, $startPage);
+        $membershipPages = array_values(array_filter(
+            $pages['items'],
+            static fn (mixed $item): bool => is_array($item) && ($item['title'] ?? null) === 'Mitglied werden',
+        ));
+        self::assertCount(1, $membershipPages);
+        self::assertSame('mitmachen/mitglied-werden', $membershipPages[0]['slug']);
         self::assertIsString($startPage[0]['id']);
         $this->client->jsonRequest('DELETE', '/api/admin/v1/pages/'.$startPage[0]['id'], [], $headers);
         self::assertResponseStatusCodeSame(422);

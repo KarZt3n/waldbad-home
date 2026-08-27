@@ -50,7 +50,9 @@ services:
       - app_secret
       - membership_integration_token
     volumes:
-      - media_data:/var/www/html/public/uploads/media
+      - type: bind
+        source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
+        target: /var/www/html/public/uploads/media
     ports:
       - "127.0.0.1:8083:80"
       - "192.168.178.119:8083:80"
@@ -87,7 +89,9 @@ services:
       - app_secret
       - membership_integration_token
     volumes:
-      - media_data:/var/www/html/public/uploads/media
+      - type: bind
+        source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
+        target: /var/www/html/public/uploads/media
     depends_on:
       app:
         condition: service_healthy
@@ -139,7 +143,6 @@ secrets:
 
 volumes:
   database_data:
-  media_data:
 
 networks:
   internal:

@@ -15,4 +15,6 @@ interface ImageStorageInterface
     public function all(): array;
 
     public function updateSource(string $url, ?string $source): StoredImage;
+
+    public function synchronizeMetadata(): int;
 }

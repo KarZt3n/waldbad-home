@@ -26,6 +26,7 @@ WORKDIR /var/www/html
 
 COPY --from=vendor /app ./
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/php-upload.ini /usr/local/etc/php/conf.d/waldbad-upload.ini
 COPY docker/entrypoint.sh /usr/local/bin/waldbad-entrypoint
 
 ENV APP_ENV=prod \

@@ -9,7 +9,7 @@ Die Stage-Anwendung läuft auf der Proxmox-VM `web-apps-stage` als eigener Docke
 - Anwendung: Apache mit PHP 8.4 und Symfony
 - Datenbank: MariaDB 11.4
 - asynchrone Verarbeitung: separater Symfony-Messenger-Worker
-- persistente Volumes: Datenbank und hochgeladene Medien
+- persistentes Datenbank-Volume und releaseunabhängige Medien unter `/srv/webapps/waldbad-home/shared/media`
 - Secrets: ausschließlich auf der VM unter `/srv/webapps/waldbad-home/secrets`
 
 Die Entwicklungsdateien `compose.yaml` und `compose.override.yaml` bleiben davon unabhängig.
@@ -65,6 +65,28 @@ Im ausgecheckten Repository auf der VM:
 ```
 
 Das Skript erzeugt beim ersten Lauf die benötigten Laufzeit-Secrets, baut das Image, startet beziehungsweise aktualisiert den Stack, führt Datenbankmigrationen aus und prüft anschließend die öffentliche API.
+
+Die redaktionellen Startseiten werden bei normalen Deployments bewusst nicht erneut
+angelegt. Nur bei der erstmaligen Einrichtung einer vollständig leeren Instanz wird
+die Initialisierung ausdrücklich aktiviert:
+
+```bash
+WALDBAD_INITIALIZE_SITE=1 ./deploy/stage-deploy.sh
+```
+
+Spätere Deployments laufen ohne diese Variable. Dadurch werden im CMS verschobene
+oder bewusst gelöschte Standardseiten nicht erneut als Hauptseiten angelegt.
+
+Hochgeladene Medien liegen nicht in einem Release. Stage bindet den gemeinsamen
+Ordner `/srv/webapps/waldbad-home/shared/media` in den öffentlichen Anwendungspfad
+`public/uploads/media` ein. Beim ersten Deployment nach der Umstellung übernimmt
+das Skript automatisch den Inhalt des bisherigen Docker-Volumes. DDEV verwendet
+weiterhin direkt `public/uploads/media` im lokalen Projekt. Für eine weitere
+Produktionsinstanz kann der Hostpfad beim Deployment explizit gesetzt werden:
+
+```bash
+WALDBAD_SHARED_MEDIA_DIRECTORY=/srv/webapps/waldbad-home-prod/shared/media ./deploy/stage-deploy.sh
+```
 
 Status und Logs:
 

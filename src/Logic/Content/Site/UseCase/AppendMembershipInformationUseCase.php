@@ -11,7 +11,7 @@ use App\Logic\Content\Site\Definition\MembershipInformationDefinition;
 
 readonly class AppendMembershipInformationUseCase
 {
-    private const PAGE_SLUG = 'mitglied-werden';
+    private const PAGE_SLUG = 'mitmachen/mitglied-werden';
 
     public function __construct(
         private PageManagerInterface $pageManager,

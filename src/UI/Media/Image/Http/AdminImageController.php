@@ -33,8 +33,18 @@ final class AdminImageController extends AbstractController
     {
         $this->denyAccessUnlessGranted(Permission::PagesEdit->value);
         $file = $request->files->get('image');
-        if (!$file instanceof UploadedFile || !$file->isValid()) {
+        if (!$file instanceof UploadedFile) {
+            $contentLength = $request->headers->get('Content-Length');
+            if (is_string($contentLength) && ctype_digit($contentLength) && (int) $contentLength > ImageUpload::MAX_SIZE) {
+                throw new BadRequestHttpException('Das Bild darf maximal 10 MB groß sein.');
+            }
             throw new BadRequestHttpException('Bitte wählen Sie eine gültige Bilddatei aus.');
+        }
+        if (!$file->isValid()) {
+            if (in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                throw new BadRequestHttpException('Das Bild darf maximal 10 MB groß sein.');
+            }
+            throw new BadRequestHttpException('Die Bilddatei konnte nicht vollständig hochgeladen werden.');
         }
 
         $size = $file->getSize();
