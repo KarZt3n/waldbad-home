@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="192.168.178.119" id="45759721-ebf8-49a7-a211-5a7e50d8645f" keyPath="$USER_HOME$/.ssh/id_ed25519_codex_proxmox" port="22" nameFormat="DESCRIPTIVE" username="deploy" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>

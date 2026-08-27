@@ -22,7 +22,6 @@ services:
             $membershipApplicationLimiter: '@limiter.membership_application'
             $eventHelpFormLimiter: '@limiter.event_help_form'
             $mediaUploadDirectory: '%media_upload_directory%'
-            $kernelSecret: '%kernel.secret%'
             $membershipIntegrationToken: '%membership_integration_token%'
 
     # makes classes in src/ available to be used as services

@@ -8,14 +8,9 @@ use App\Logic\Membership\Application\Model\Applicant;
 use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
-use App\Logic\Membership\Application\SensitiveDataCipherInterface;
 
 readonly class MembershipApplicationMapper
 {
-    public function __construct(private SensitiveDataCipherInterface $cipher)
-    {
-    }
-
     public function toModel(MembershipApplicationEntity $entity): MembershipApplication
     {
         return new MembershipApplication(
@@ -38,7 +33,7 @@ readonly class MembershipApplicationMapper
                 $entity->getApplicants(),
             ),
             accountHolder: $entity->getAccountHolder(),
-            iban: $this->cipher->decrypt($entity->getIbanEncrypted()),
+            iban: $entity->getIban(),
             bankName: $entity->getBankName(),
             signerName: $entity->getSignerName(),
             emailConsent: $entity->hasEmailConsent(),
@@ -60,7 +55,7 @@ readonly class MembershipApplicationMapper
             id: $application->id,
             membershipType: $application->membershipType->value,
             accountHolder: $application->accountHolder,
-            ibanEncrypted: $this->cipher->encrypt($application->iban),
+            iban: $application->iban,
             bankName: $application->bankName,
             signerName: $application->signerName,
             emailConsent: $application->emailConsent,
@@ -104,4 +99,5 @@ readonly class MembershipApplicationMapper
             completedAt: $application->completedAt,
         );
     }
+
 }

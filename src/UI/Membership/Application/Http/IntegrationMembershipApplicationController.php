@@ -22,7 +22,7 @@ readonly class IntegrationMembershipApplicationController
     {
         $limit = $request->getPayload()->getInt('limit', 20);
 
-        return new JsonResponse($this->responseFactory->collection($useCase->execute($limit), true));
+        return new JsonResponse($this->responseFactory->collection($useCase->execute($limit)));
     }
 
     #[Route('/{id}/complete', name: 'api_integration_membership_application_complete', methods: ['POST'])]
@@ -33,7 +33,7 @@ readonly class IntegrationMembershipApplicationController
             throw new BadRequestHttpException('Die Fremdsystem-Referenz ist erforderlich oder zu lang.');
         }
 
-        return new JsonResponse($this->responseFactory->application($useCase->execute($id, $externalReference), true));
+        return new JsonResponse($this->responseFactory->application($useCase->execute($id, $externalReference)));
     }
 
     #[Route('/{id}/fail', name: 'api_integration_membership_application_fail', methods: ['POST'])]
@@ -44,6 +44,6 @@ readonly class IntegrationMembershipApplicationController
             throw new BadRequestHttpException('Der Fehlergrund ist erforderlich oder zu lang.');
         }
 
-        return new JsonResponse($this->responseFactory->application($useCase->execute($id, $reason), true));
+        return new JsonResponse($this->responseFactory->application($useCase->execute($id, $reason)));
     }
 }

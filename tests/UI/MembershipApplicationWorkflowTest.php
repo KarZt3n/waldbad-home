@@ -51,8 +51,23 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $adminApplication = $adminList['items'][0];
         self::assertSame('pending', $adminApplication['status']);
         self::assertIsString($adminApplication['iban']);
-        self::assertStringContainsString('•', $adminApplication['iban']);
-        self::assertStringNotContainsString('370400440532013000', $adminApplication['iban']);
+        self::assertSame('DE89370400440532013000', $adminApplication['iban']);
+
+        $entityManager = self::getContainer()->get(EntityManagerInterface::class);
+        if (!$entityManager instanceof EntityManagerInterface) {
+            throw new \LogicException('Der EntityManager ist im Testcontainer nicht verfügbar.');
+        }
+        $connection = $entityManager->getConnection();
+        $storedIban = $connection->fetchOne(
+            'SELECT iban FROM membership_application WHERE id = :id',
+            ['id' => $applicationId],
+        );
+        self::assertSame('DE89370400440532013000', $storedIban);
+        self::assertFalse(in_array(
+            'iban_encrypted',
+            array_keys($connection->createSchemaManager()->listTableColumns('membership_application')),
+            true,
+        ));
 
         $claim = self::getContainer()->get(ClaimMembershipApplicationsUseCase::class);
         if (!$claim instanceof ClaimMembershipApplicationsUseCase) {

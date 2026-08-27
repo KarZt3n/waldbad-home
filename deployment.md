@@ -4,7 +4,8 @@
 
 Die Stage-Anwendung läuft auf der Proxmox-VM `web-apps-stage` als eigener Docker-Compose-Stack `waldbad-home`.
 
-- öffentliche Adresse im lokalen Netz: `http://web-apps-stage.fritz.box:8083`
+- interne Adresse im lokalen Netz: `http://web-apps-stage.fritz.box:8083`
+- private HTTPS-Adresse über Tailscale: `https://waldbad-home-stage.tail183645.ts.net`
 - Anwendung: Apache mit PHP 8.4 und Symfony
 - Datenbank: MariaDB 11.4
 - asynchrone Verarbeitung: separater Symfony-Messenger-Worker
@@ -12,6 +13,48 @@ Die Stage-Anwendung läuft auf der Proxmox-VM `web-apps-stage` als eigener Docke
 - Secrets: ausschließlich auf der VM unter `/srv/webapps/waldbad-home/secrets`
 
 Die Entwicklungsdateien `compose.yaml` und `compose.override.yaml` bleiben davon unabhängig.
+
+## Privater externer Zugriff
+
+Tailscale läuft direkt auf der Stage-VM. `Tailscale Serve` stellt ausschließlich
+innerhalb des Tailnets die HTTPS-Adresse
+`https://waldbad-home-stage.tail183645.ts.net` bereit und leitet Anfragen intern
+an `http://127.0.0.1:8083` weiter. An der FritzBox ist dafür keine Portfreigabe
+eingerichtet. Docker veröffentlicht Port 8083 nur auf `127.0.0.1` und der
+LAN-Adresse `192.168.178.119`; über die Tailscale-IP ist der unverschlüsselte
+Port nicht direkt erreichbar.
+
+Status prüfen:
+
+```bash
+tailscale status
+tailscale serve status
+```
+
+Die Freigabe lässt sich bei Bedarf deaktivieren:
+
+```bash
+tailscale serve --https=443 off
+```
+
+### Browserzugang ohne Tailscale-Installation
+
+Für ausgewählte Stage-Benutzer läuft ein vorgeschaltetes Nginx-Gateway mit
+individueller HTTP-Basic-Authentifizierung. Das Gateway ist ausschließlich auf
+`127.0.0.1:8084` gebunden und wird über Tailscale Funnel veröffentlicht. Das
+Backend auf Port 8083 wird nicht direkt öffentlich freigegeben.
+
+Benutzer verwalten:
+
+```bash
+./deploy/stage-access-user.sh add <benutzername>
+./deploy/stage-access-user.sh list
+./deploy/stage-access-user.sh remove <benutzername>
+```
+
+Passwörter werden ausschließlich als bcrypt-Hash auf dem Server unter
+`/srv/webapps/waldbad-home/secrets/stage_htpasswd` gespeichert. Jeder Benutzer
+erhält einen eigenen Zugang und kann unabhängig widerrufen werden.
 
 ## Manuelles Stage-Deployment
 
@@ -71,3 +114,27 @@ Datenbankmigrationen müssen vor einem Rollback auf Abwärtskompatibilität gepr
 ## Backups
 
 Vor einem Produktivbetrieb müssen automatisierte, extern gespeicherte und regelmäßig wiederhergestellte Backups für beide Docker-Volumes eingerichtet werden. Ein Proxmox-VM-Backup allein ersetzt keine anwendungskonsistente Datenbanksicherung.
+## Datenbank sichern und in Stage importieren
+
+Die lokale DDEV-Datenbank wird als komprimiertes SQL-Backup exportiert:
+
+```bash
+./deploy/export-ddev-db.sh
+```
+
+Optional kann ein expliziter Zielpfad übergeben werden. Backups unter `var/backups/`
+sind lokale Betriebsartefakte und dürfen nicht in Git eingecheckt werden.
+
+Für einen Stage-Import wird das Backup zunächst auf den Webserver übertragen und
+dort aus dem aktuellen Release ausgeführt:
+
+```bash
+./deploy/import-stage-db.sh /pfad/zum/backup.sql.gz --confirm-stage
+```
+
+Das Importskript erstellt vor jeder Änderung automatisch ein Backup der bisherigen
+Stage-Datenbank unter `/srv/webapps/waldbad-home/backups/database`, stoppt App und
+Worker während des Imports und prüft anschließend den Health-Endpunkt. Scheitert der
+Import oder der anschließende Start, wird die vorherige Stage-Datenbank automatisch
+wiederhergestellt. Der Import ersetzt ausschließlich die Datenbank. Medien aus
+`public/uploads/media` müssen bei Bedarf separat synchronisiert werden.

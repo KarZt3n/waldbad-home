@@ -11,10 +11,10 @@ readonly class MembershipApplicationResponseFactory
      * @param list<MembershipApplicationResponse> $applications
      * @return array{items: list<array<string, mixed>>, total: int}
      */
-    public function collection(array $applications, bool $includeSensitive = false): array
+    public function collection(array $applications): array
     {
         return [
-            'items' => array_map(fn (MembershipApplicationResponse $application): array => $this->application($application, $includeSensitive), $applications),
+            'items' => array_map($this->application(...), $applications),
             'total' => count($applications),
         ];
     }
@@ -22,14 +22,14 @@ readonly class MembershipApplicationResponseFactory
     /**
      * @return array<string, mixed>
      */
-    public function application(MembershipApplicationResponse $application, bool $includeSensitive = false): array
+    public function application(MembershipApplicationResponse $application): array
     {
         return [
             'id' => $application->id,
             'membershipType' => $application->membershipType->value,
             'applicants' => array_map($this->applicant(...), $application->applicants),
             'accountHolder' => $application->accountHolder,
-            'iban' => $includeSensitive ? $application->iban : $this->maskedIban($application->iban),
+            'iban' => $application->iban,
             'bankName' => $application->bankName,
             'signerName' => $application->signerName,
             'emailConsent' => $application->emailConsent,
@@ -65,8 +65,4 @@ readonly class MembershipApplicationResponseFactory
         ];
     }
 
-    private function maskedIban(string $iban): string
-    {
-        return substr($iban, 0, 4).str_repeat('•', max(4, strlen($iban) - 8)).substr($iban, -4);
-    }
 }

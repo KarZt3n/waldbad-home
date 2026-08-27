@@ -39,7 +39,7 @@ services:
     environment:
       APP_ENV: prod
       APP_DEBUG: "0"
-      DEFAULT_URI: http://web-apps-stage.fritz.box:8083
+      DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
       MAILER_DSN: null://null
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "1"
@@ -52,7 +52,8 @@ services:
     volumes:
       - media_data:/var/www/html/public/uploads/media
     ports:
-      - "8083:80"
+      - "127.0.0.1:8083:80"
+      - "192.168.178.119:8083:80"
     depends_on:
       database:
         condition: service_healthy
@@ -74,7 +75,7 @@ services:
     environment:
       APP_ENV: prod
       APP_DEBUG: "0"
-      DEFAULT_URI: http://web-apps-stage.fritz.box:8083
+      DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
       MAILER_DSN: null://null
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "0"
@@ -94,6 +95,32 @@ services:
     networks:
       - internal
 
+  access_gateway:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "cp /run/secrets/stage_htpasswd /etc/nginx/stage_htpasswd && chmod 0444 /etc/nginx/stage_htpasswd && exec nginx -g 'daemon off;'"
+    volumes:
+      - ../docker/stage-access-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    secrets:
+      - stage_htpasswd
+    ports:
+      - "127.0.0.1:8084:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --server-response --spider http://127.0.0.1/ 2>&1 | grep -q 'HTTP/1.1 401'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 64m
+    networks:
+      - internal
+      - web
+
 secrets:
   db_name:
     file: /srv/webapps/waldbad-home/secrets/db_name
@@ -107,6 +134,8 @@ secrets:
     file: /srv/webapps/waldbad-home/secrets/app_secret
   membership_integration_token:
     file: /srv/webapps/waldbad-home/secrets/membership_integration_token
+  stage_htpasswd:
+    file: /srv/webapps/waldbad-home/secrets/stage_htpasswd
 
 volumes:
   database_data:

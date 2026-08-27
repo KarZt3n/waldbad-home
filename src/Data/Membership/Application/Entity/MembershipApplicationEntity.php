@@ -33,7 +33,7 @@ class MembershipApplicationEntity
         #[ORM\Column(type: Types::STRING, length: 180)]
         private string $accountHolder,
         #[ORM\Column(type: Types::TEXT)]
-        private string $ibanEncrypted,
+        private string $iban,
         #[ORM\Column(type: Types::STRING, length: 180, nullable: true)]
         private ?string $bankName,
         #[ORM\Column(type: Types::STRING, length: 180)]
@@ -76,7 +76,7 @@ class MembershipApplicationEntity
     public function getId(): string { return $this->id; }
     public function getMembershipType(): string { return $this->membershipType; }
     public function getAccountHolder(): string { return $this->accountHolder; }
-    public function getIbanEncrypted(): string { return $this->ibanEncrypted; }
+    public function getIban(): string { return $this->iban; }
     public function getBankName(): ?string { return $this->bankName; }
     public function getSignerName(): string { return $this->signerName; }
     public function hasEmailConsent(): bool { return $this->emailConsent; }

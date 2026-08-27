@@ -654,7 +654,7 @@ Diese offenen technischen Entscheidungen ändern nicht die verbindliche Vorgabe,
 
 Der digitale Mitgliedsantrag ist als erste gekapselte CMS-Erweiterung umgesetzt. Eine Seite bindet ihn über den Blocktyp `extension` mit dem Schlüssel `membership_application` ein. Das öffentliche Frontend rendert daraus ein Formular für Einzelpersonen oder Familien mit bis zu acht Personen, Kontaktdaten, SEPA-Daten und den erforderlichen Bestätigungen.
 
-Die API speichert Anträge normalisiert mit dem Status `pending`. IBAN-Daten werden verschlüsselt gespeichert und in der Redaktionsoberfläche nur maskiert ausgegeben. Administratoren können den Bearbeitungsstand ansehen und fehlgeschlagene Übertragungen erneut bereitstellen.
+Die API speichert Anträge normalisiert mit dem Status `pending`. IBAN-Daten werden auf ausdrücklichen fachlichen Wunsch im Klartext gespeichert und in der zugriffsgeschützten Redaktionsoberfläche vollständig ausgegeben. Der Zugriff bleibt auf Benutzer mit dem freigeschalteten Modul `membership_applications` beschränkt. Administratoren können den Bearbeitungsstand ansehen und fehlgeschlagene Übertragungen erneut bereitstellen.
 
 Für die Übergabe an ein Fremdsystem steht eine maschinenlesbare Pull-Schnittstelle bereit:
 

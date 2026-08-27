@@ -36,6 +36,12 @@ ensure_random_secret db_root_password
 ensure_random_secret app_secret
 ensure_literal_secret membership_integration_token ''
 
+if [ ! -s "$secret_dir/stage_htpasswd" ]; then
+    printf 'Es ist noch kein Stage-Zugangsbenutzer eingerichtet.\n' >&2
+    printf 'Führen Sie zuerst ./deploy/stage-access-user.sh add <benutzername> aus.\n' >&2
+    exit 1
+fi
+
 chmod 0600 "$secret_dir"/*
 
 if ! docker network inspect web >/dev/null 2>&1; then
