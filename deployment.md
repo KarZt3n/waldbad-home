@@ -9,6 +9,8 @@ Die Stage-Anwendung läuft auf der Proxmox-VM `web-apps-stage` als eigener Docke
 - Anwendung: Apache mit PHP 8.4 und Symfony
 - Datenbank: MariaDB 11.4
 - asynchrone Verarbeitung: separater Symfony-Messenger-Worker
+- Releases: `/srv/webapps/waldbad-home/releases/<zeitstempel>-<commit>-<kennung>`
+- aktives Release: Symlink `/srv/webapps/waldbad-home/current`
 - persistentes Datenbank-Volume und releaseunabhängige Medien unter `/srv/webapps/waldbad-home/shared/media`
 - Secrets: ausschließlich auf der VM unter `/srv/webapps/waldbad-home/secrets`
 
@@ -56,15 +58,33 @@ Passwörter werden ausschließlich als bcrypt-Hash auf dem Server unter
 `/srv/webapps/waldbad-home/secrets/stage_htpasswd` gespeichert. Jeder Benutzer
 erhält einen eigenen Zugang und kann unabhängig widerrufen werden.
 
-## Manuelles Stage-Deployment
+## Neues Release auf Stage deployen
 
-Im ausgecheckten Repository auf der VM:
+Jedes Deployment wird aus einem sauberen Git-Checkout gestartet. Nicht eingecheckte
+Änderungen werden nicht deployt. Für ein manuelles Deployment auf der Stage-VM:
 
 ```bash
+cd /pfad/zum/waldbad-home-checkout
+git switch main
+git pull --ff-only
 ./deploy/stage-deploy.sh
 ```
 
-Das Skript erzeugt beim ersten Lauf die benötigten Laufzeit-Secrets, baut das Image, startet beziehungsweise aktualisiert den Stack, führt Datenbankmigrationen aus und prüft anschließend die öffentliche API.
+Das Skript führt den Release-Wechsel vollständig aus:
+
+1. Es exportiert den aktuellen Git-Commit in ein neues Verzeichnis unter
+   `/srv/webapps/waldbad-home/releases`.
+2. Es erzeugt beim ersten Lauf die benötigten Laufzeit-Secrets, baut das Image,
+   startet beziehungsweise aktualisiert den Stack und führt Datenbankmigrationen aus.
+3. Es prüft die öffentliche API und synchronisiert die Medienmetadaten.
+4. Erst nach erfolgreichem Abschluss setzt es den Symlink
+   `/srv/webapps/waldbad-home/current` atomar auf das neue Release.
+5. Es entfernt ältere Release-Verzeichnisse, sodass einschließlich des aktiven
+   Releases nur die drei neuesten Releases erhalten bleiben. Datenbank, Medien und
+   Secrets liegen außerhalb der Releases und werden dabei nicht gelöscht.
+
+Schlägt ein Schritt fehl, wird `current` nicht auf das neue Release umgeschaltet und
+das Skript endet mit einem Fehlercode.
 
 Die redaktionellen Startseiten werden bei normalen Deployments bewusst nicht erneut
 angelegt. Nur bei der erstmaligen Einrichtung einer vollständig leeren Instanz wird
@@ -91,14 +111,14 @@ WALDBAD_SHARED_MEDIA_DIRECTORY=/srv/webapps/waldbad-home-prod/shared/media ./dep
 Status und Logs:
 
 ```bash
-docker compose -f deploy/compose.stage.yaml ps
-docker compose -f deploy/compose.stage.yaml logs -f --tail=100 app worker database
+docker compose -f /srv/webapps/waldbad-home/current/deploy/compose.stage.yaml ps
+docker compose -f /srv/webapps/waldbad-home/current/deploy/compose.stage.yaml logs -f --tail=100 app worker database
 ```
 
 Symfony-Konsolenbefehle werden als kurzlebiger Container gestartet, damit die Docker Secrets korrekt geladen werden:
 
 ```bash
-docker compose -f deploy/compose.stage.yaml run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console <befehl>
+docker compose -f /srv/webapps/waldbad-home/current/deploy/compose.stage.yaml run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console <befehl>
 ```
 
 ## GitHub Actions
@@ -124,7 +144,9 @@ Der kurzlebige Registrierungstoken darf nicht in das Repository, in ein Skript o
 
 ## Rollback
 
-Ein Rollback erfolgt über den gewünschten Git-Stand und dasselbe Deployment-Skript:
+Ein Rollback erfolgt über den gewünschten Git-Stand und dasselbe Deployment-Skript.
+Dadurch wird auch für den zurückgerollten Stand ein neues, nachvollziehbares Release
+erzeugt und `current` erst nach erfolgreicher Prüfung umgeschaltet:
 
 ```bash
 git checkout <commit-oder-tag>
@@ -148,7 +170,7 @@ Optional kann ein expliziter Zielpfad übergeben werden. Backups unter `var/back
 sind lokale Betriebsartefakte und dürfen nicht in Git eingecheckt werden.
 
 Für einen Stage-Import wird das Backup zunächst auf den Webserver übertragen und
-dort aus dem aktuellen Release ausgeführt:
+dort aus dem Deployment-Checkout ausgeführt:
 
 ```bash
 ./deploy/import-stage-db.sh /pfad/zum/backup.sql.gz --confirm-stage
