@@ -3,10 +3,13 @@
 namespace App\Tests\UI;
 
 use App\Logic\Content\Site\UseCase\InitializeSiteUseCase;
+use App\Logic\Content\Page\Query\ListPagesQuery;
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\ModuleRole;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccessRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
 use Doctrine\ORM\EntityManagerInterface;
@@ -248,6 +251,88 @@ final class CmsWorkflowTest extends WebTestCase
         $this->client->request('GET', '/api/admin/v1/guestbook-entries');
         self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/admin/v1/contact-requests');
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testPageSpecificRightsFilterListAndProtectMutations(): void
+    {
+        $initialize = self::getContainer()->get(InitializeSiteUseCase::class);
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        $listPages = self::getContainer()->get(ListPagesQuery::class);
+        if (!$initialize instanceof InitializeSiteUseCase || !$createUser instanceof CreateUserUseCase || !$listPages instanceof ListPagesQuery) {
+            throw new \LogicException('Die benötigten CMS-Dienste sind im Testcontainer nicht verfügbar.');
+        }
+        $initialize->execute();
+        $allPages = $listPages->execute();
+        self::assertGreaterThanOrEqual(2, count($allPages));
+        $editorPage = $allPages[0];
+        $publisherPage = $allPages[1];
+
+        $createUser->execute(new CreateUserRequest(
+            email: 'scoped-pages@example.test',
+            displayName: 'Scoped Pages',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [],
+            moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
+            pageAccess: [
+                new PageAccess($editorPage->id, PageAccessRole::Editor),
+                new PageAccess($publisherPage->id, PageAccessRole::Publisher),
+            ],
+        ));
+
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'scoped-pages@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsString($login['csrfToken']);
+        self::assertIsArray($login['user']);
+        $loginUser = $login['user'];
+        self::assertIsArray($loginUser['pageAccess']);
+        self::assertSame([
+            $editorPage->id => 'editor',
+            $publisherPage->id => 'publisher',
+        ], $loginUser['pageAccess']);
+        $headers = ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']];
+
+        $this->client->request('GET', '/api/admin/v1/pages');
+        self::assertResponseIsSuccessful();
+        $pages = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($pages);
+        self::assertSame(2, $pages['total']);
+        self::assertIsArray($pages['items']);
+        $pagesById = [];
+        foreach ($pages['items'] as $page) {
+            self::assertIsArray($page);
+            self::assertIsString($page['id']);
+            $pagesById[$page['id']] = $page;
+        }
+        $expectedIds = [$editorPage->id, $publisherPage->id];
+        $actualIds = array_keys($pagesById);
+        sort($expectedIds);
+        sort($actualIds);
+        self::assertSame($expectedIds, $actualIds);
+
+        $editorPayload = $pagesById[$editorPage->id];
+        self::assertIsString($editorPayload['title']);
+        $editorPayload['title'] = $editorPayload['title'].' bearbeitet';
+        $this->client->jsonRequest('PUT', '/api/admin/v1/pages/'.$editorPage->id, $editorPayload, $headers);
+        self::assertResponseIsSuccessful();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages/'.$editorPage->id.'/publish', [], $headers);
+        self::assertResponseStatusCodeSame(403);
+
+        $publisherPayload = $pagesById[$publisherPage->id];
+        self::assertIsString($publisherPayload['title']);
+        $publisherPayload['title'] = $publisherPayload['title'].' veröffentlicht';
+        $this->client->jsonRequest('PUT', '/api/admin/v1/pages/'.$publisherPage->id, $publisherPayload, $headers);
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages/'.$publisherPage->id.'/publish', [], $headers);
+        self::assertResponseIsSuccessful();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages', $publisherPayload, $headers);
         self::assertResponseStatusCodeSame(403);
     }
 

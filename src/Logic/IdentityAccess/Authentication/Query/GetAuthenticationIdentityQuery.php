@@ -23,6 +23,7 @@ readonly class GetAuthenticationIdentityQuery
             roles: $user->roles,
             moduleAccess: $user->moduleAccess,
             active: $user->active,
+            pageAccess: $user->pageAccess,
         );
     }
 }

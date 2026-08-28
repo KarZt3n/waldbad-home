@@ -4,6 +4,7 @@ namespace App\Logic\Content\Page\UseCase;
 
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\ConcurrencyException;
+use App\Logic\Common\Exception\AccessDeniedException;
 use App\Logic\Content\Page\Dto\PageResponse;
 use App\Logic\Content\Page\Dto\UpdatePageRequest;
 use App\Logic\Content\Page\Manager\PageManagerInterface;
@@ -16,9 +17,15 @@ readonly class UpdatePageUseCase
     ) {
     }
 
-    public function execute(UpdatePageRequest $request): PageResponse
+    public function execute(UpdatePageRequest $request, bool $allowStructureChanges = true): PageResponse
     {
         $page = $this->manager->get($request->id);
+        if (!$allowStructureChanges && (
+            $page->parentId !== $request->parentId
+            || $page->navigationPosition !== $request->navigationPosition
+        )) {
+            throw new AccessDeniedException('Eingeschränkte Seitenzugänge dürfen die Seitenstruktur nicht verändern.');
+        }
         if ($page->version !== $request->expectedVersion) {
             throw new ConcurrencyException('Die Seite wurde zwischenzeitlich geändert. Bitte laden Sie die Daten neu.');
         }

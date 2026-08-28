@@ -46,6 +46,7 @@ readonly class CreateUserUseCase
             createdAt: $now,
             updatedAt: $now,
             lastLoginAt: null,
+            pageAccess: $request->pageAccess,
         );
 
         return UserResponse::fromUser($this->manager->save($user));

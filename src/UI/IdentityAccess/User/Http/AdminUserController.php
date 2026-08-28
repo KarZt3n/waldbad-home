@@ -6,8 +6,11 @@ use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\ModuleRole;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccessRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\Query\ListUsersQuery;
+use App\Logic\IdentityAccess\User\Query\ListPageAccessOptionsQuery;
 use App\Logic\IdentityAccess\User\UseCase\ChangeUserAccessUseCase;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
 use App\Logic\IdentityAccess\User\UseCase\SuspendUserUseCase;
@@ -37,6 +40,24 @@ class AdminUserController extends AbstractController
         return $this->responseFactory->users($query->execute());
     }
 
+    #[Route('/page-options', name: 'api_admin_users_page_options', methods: ['GET'])]
+    public function pageOptions(ListPageAccessOptionsQuery $query): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::UserManagementView->value);
+
+        $items = array_map(
+            static fn (\App\Logic\IdentityAccess\User\Dto\PageAccessOption $page): array => [
+                'id' => $page->id,
+                'title' => $page->title,
+                'parentId' => $page->parentId,
+                'navigationPosition' => $page->navigationPosition,
+            ],
+            $query->execute(),
+        );
+
+        return new JsonResponse(['items' => $items, 'total' => count($items)]);
+    }
+
     #[Route('', name: 'api_admin_users_create', methods: ['POST'])]
     public function create(Request $request, CreateUserUseCase $useCase, #[CurrentUser] AuthenticatedUser $actor): JsonResponse
     {
@@ -55,6 +76,7 @@ class AdminUserController extends AbstractController
             plainPassword: $this->requiredString($data, 'password'),
             roles: $roles,
             moduleAccess: $this->parseModuleAccess($data),
+            pageAccess: $this->parsePageAccess($data),
         ));
 
         return $this->responseFactory->user($user, JsonResponse::HTTP_CREATED);
@@ -76,6 +98,7 @@ class AdminUserController extends AbstractController
             $this->parseRoles($data),
             $this->parseModuleAccess($data),
             $actor->getDomainRoles(),
+            $this->parsePageAccess($data),
         ));
     }
 
@@ -142,6 +165,36 @@ class AdminUserController extends AbstractController
         }
 
         return $moduleAccess;
+    }
+
+    /**
+     * @param InputBag<string|int|float|bool|null> $data
+     * @return list<PageAccess>|null
+     */
+    private function parsePageAccess(InputBag $data): ?array
+    {
+        if (!$data->getBoolean('pageAccessRestricted', false)) {
+            return null;
+        }
+
+        $values = $data->all('pageAccess');
+        if ($values === [] || array_is_list($values)) {
+            throw new BadRequestHttpException('Ein eingeschränkter Seitenzugang muss mindestens eine Seite enthalten.');
+        }
+
+        $pageAccess = [];
+        foreach ($values as $pageId => $roleValue) {
+            if (!is_string($pageId) || trim($pageId) === '' || !is_string($roleValue)) {
+                throw new BadRequestHttpException('Seiten-ID und Seitenrolle müssen Zeichenketten sein.');
+            }
+            try {
+                $pageAccess[] = new PageAccess(trim($pageId), PageAccessRole::from($roleValue));
+            } catch (\ValueError) {
+                throw new BadRequestHttpException(sprintf('Die Seitenrolle "%s" ist ungültig.', $roleValue));
+            }
+        }
+
+        return $pageAccess;
     }
 
     private function isAdministrator(AuthenticatedUser $user): bool

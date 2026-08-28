@@ -4,6 +4,7 @@ namespace App\UI\IdentityAccess\Http;
 
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
 use App\UI\IdentityAccess\Security\AdminCsrfSubscriber;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -41,6 +42,7 @@ class AuthenticationController extends AbstractController
                 'displayName' => $user->getDisplayName(),
                 'roles' => array_map(static fn (Role $role): string => $role->value, $user->getDomainRoles()),
                 'moduleAccess' => $this->moduleAccess($user->getModuleAccess()),
+                'pageAccess' => $this->pageAccess($user->getPageAccess()),
             ],
             'csrfToken' => $csrfTokenManager->getToken(AdminCsrfSubscriber::TOKEN_ID)->getValue(),
         ]);
@@ -55,6 +57,24 @@ class AuthenticationController extends AbstractController
         $result = [];
         foreach ($moduleAccess as $access) {
             $result[$access->module->value] = $access->role->value;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param list<PageAccess>|null $pageAccess
+     * @return array<string, string>|null
+     */
+    private function pageAccess(?array $pageAccess): ?array
+    {
+        if ($pageAccess === null) {
+            return null;
+        }
+
+        $result = [];
+        foreach ($pageAccess as $access) {
+            $result[$access->pageId] = $access->role->value;
         }
 
         return $result;

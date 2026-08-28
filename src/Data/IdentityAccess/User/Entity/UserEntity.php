@@ -22,6 +22,12 @@ class UserEntity
     #[ORM\Column(type: Types::JSON)]
     private array $modules;
 
+    /**
+     * @var array<string, string>|null
+     */
+    #[ORM\Column(type: Types::JSON, nullable: true)]
+    private ?array $pageAccess;
+
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
     private int $version = 1;
@@ -29,6 +35,7 @@ class UserEntity
     /**
      * @param list<string> $roles
      * @param array<string, string> $modules
+     * @param array<string, string>|null $pageAccess
      */
     public function __construct(
         #[ORM\Id]
@@ -42,6 +49,7 @@ class UserEntity
         private string $passwordHash,
         array $roles,
         array $modules,
+        ?array $pageAccess,
         #[ORM\Column(type: Types::BOOLEAN)]
         private bool $active,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
@@ -53,6 +61,7 @@ class UserEntity
     ) {
         $this->roles = $roles;
         $this->modules = $modules;
+        $this->pageAccess = $pageAccess;
     }
 
     public function getId(): string
@@ -91,6 +100,14 @@ class UserEntity
         return $this->modules;
     }
 
+    /**
+     * @return array<string, string>|null
+     */
+    public function getPageAccess(): ?array
+    {
+        return $this->pageAccess;
+    }
+
     public function isActive(): bool
     {
         return $this->active;
@@ -119,12 +136,14 @@ class UserEntity
     /**
      * @param list<string> $roles
      * @param array<string, string> $modules
+     * @param array<string, string>|null $pageAccess
      */
     public function update(
         string $displayName,
         string $passwordHash,
         array $roles,
         array $modules,
+        ?array $pageAccess,
         bool $active,
         \DateTimeImmutable $updatedAt,
         ?\DateTimeImmutable $lastLoginAt,
@@ -133,6 +152,7 @@ class UserEntity
         $this->passwordHash = $passwordHash;
         $this->roles = $roles;
         $this->modules = $modules;
+        $this->pageAccess = $pageAccess;
         $this->active = $active;
         $this->updatedAt = $updatedAt;
         $this->lastLoginAt = $lastLoginAt;

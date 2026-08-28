@@ -10,6 +10,7 @@ readonly class CreateUserRequest
     /**
      * @param list<Role> $roles
      * @param list<ModuleAccess> $moduleAccess
+     * @param list<\App\Logic\IdentityAccess\User\Model\PageAccess>|null $pageAccess
      */
     public function __construct(
         public string $email,
@@ -17,6 +18,7 @@ readonly class CreateUserRequest
         public string $plainPassword,
         public array $roles,
         public array $moduleAccess,
+        public ?array $pageAccess = null,
     ) {
     }
 }

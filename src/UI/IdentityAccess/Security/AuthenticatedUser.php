@@ -3,10 +3,13 @@
 namespace App\UI\IdentityAccess\Security;
 
 use App\Logic\IdentityAccess\Authentication\Dto\AuthenticationIdentity;
+use App\Logic\IdentityAccess\Authorization\PageAuthorizationContext;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccessRole;
 use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
@@ -47,6 +50,23 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
         return $this->identity->moduleAccess;
     }
 
+    /**
+     * @return list<PageAccess>|null
+     */
+    public function getPageAccess(): ?array
+    {
+        return $this->identity->pageAccess;
+    }
+
+    public function pageAuthorizationContext(): PageAuthorizationContext
+    {
+        return new PageAuthorizationContext(
+            roles: $this->identity->roles,
+            moduleAccess: $this->identity->moduleAccess,
+            pageAccess: $this->identity->pageAccess,
+        );
+    }
+
     public function getUserIdentifier(): string
     {
         if ($this->identity->email === '') {
@@ -75,6 +95,12 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
                 : $access->role;
             foreach ($this->effectiveModuleRoles($moduleRole) as $effectiveRole) {
                 $roles[] = sprintf('ROLE_MODULE_%s_%s', strtoupper($access->module->value), strtoupper($effectiveRole->value));
+            }
+        }
+        foreach ($this->identity->pageAccess ?? [] as $access) {
+            $roles[] = Permission::PagesEdit->value;
+            if ($access->role === PageAccessRole::Publisher) {
+                $roles[] = Permission::PagesPublish->value;
             }
         }
 

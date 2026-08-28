@@ -7,6 +7,7 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\IdentityAccess\User\Dto\UserResponse;
 use App\Logic\IdentityAccess\User\Manager\UserManagerInterface;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
 use App\Logic\IdentityAccess\User\Model\Role;
 
 readonly class ChangeUserAccessUseCase
@@ -21,8 +22,9 @@ readonly class ChangeUserAccessUseCase
      * @param list<Role> $roles
      * @param list<ModuleAccess> $moduleAccess
      * @param list<Role> $actorRoles
+     * @param list<PageAccess>|null $pageAccess
      */
-    public function execute(string $id, array $roles, array $moduleAccess, array $actorRoles): UserResponse
+    public function execute(string $id, array $roles, array $moduleAccess, array $actorRoles, ?array $pageAccess = null): UserResponse
     {
         $user = $this->manager->get($id);
         $actorIsSuperAdmin = in_array(Role::SuperAdmin, $actorRoles, true);
@@ -52,6 +54,6 @@ readonly class ChangeUserAccessUseCase
             throw new BusinessRuleViolationException('Dem letzten aktiven Super-Administrator kann die Rolle nicht entzogen werden.');
         }
 
-        return UserResponse::fromUser($this->manager->save($user->changeAccess($roles, $moduleAccess, $this->clock->now())));
+        return UserResponse::fromUser($this->manager->save($user->changeAccess($roles, $moduleAccess, $pageAccess, $this->clock->now())));
     }
 }

@@ -4,6 +4,7 @@ const app = document.querySelector('#app');
 let csrfToken = null;
 let currentRoles = [];
 let currentModuleAccess = {};
+let currentPageAccess = null;
 
 const CMS_MODULES = [
     ['pages', 'Seiten'],
@@ -73,10 +74,19 @@ const moduleRole = (module) => currentModuleAccess[module] || null;
 const canEditModule = (module) => hasModule(module)
     && (isGlobalAdministrator() || moduleRole(module) === 'editor');
 const canViewPages = () => hasModule('pages');
-const canEditPages = () => canViewPages()
-    && (isGlobalAdministrator() || ['editor', 'publisher', 'moderator'].includes(moduleRole('pages')));
-const canPublishPages = () => canViewPages()
-    && (isGlobalAdministrator() || moduleRole('pages') === 'publisher');
+const isPageAccessRestricted = () => currentPageAccess !== null && !isGlobalAdministrator();
+const pageRole = (pageId) => pageId && currentPageAccess ? currentPageAccess[pageId] || null : null;
+const canEditPages = (pageId = null) => canViewPages() && (
+    isGlobalAdministrator()
+    || (isPageAccessRestricted()
+        ? ['editor', 'publisher'].includes(pageRole(pageId))
+        : ['editor', 'publisher', 'moderator'].includes(moduleRole('pages')))
+);
+const canPublishPages = (pageId = null) => canViewPages() && (
+    isGlobalAdministrator()
+    || (isPageAccessRestricted() ? pageRole(pageId) === 'publisher' : moduleRole('pages') === 'publisher')
+);
+const canManagePageStructure = () => canEditPages() && !isPageAccessRestricted();
 
 const buildPageTree = (pages, includeOrphans = true) => {
     const nodes = new Map(pages.map((page) => [page.id, {...page, children: []}]));
@@ -2040,12 +2050,13 @@ const pagePayload = (form, blocks, page) => {
         title: data.get('title'),
         slug: data.get('slug'),
         navigationLabel: data.get('navigationLabel'),
-        parentId: data.get('parentId') || null,
-        navigationPosition: Number(data.get('navigationPosition')),
+        parentId: page && !canManagePageStructure() ? page.parentId : data.get('parentId') || null,
+        navigationPosition: page && !canManagePageStructure() ? page.navigationPosition : Number(data.get('navigationPosition')),
         visible: data.get('visible') === 'on',
         showInNavigation: data.get('showInNavigation') === 'on',
         seoTitle: data.get('seoTitle') || null,
         seoDescription: data.get('seoDescription') || null,
+        pageId: page?.id || null,
         version: page?.version || 0,
         blocks,
     };
@@ -2207,17 +2218,17 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         }
     };
     const statusActions = element('div', {className: 'status-actions'});
-    if (page && canEditPages() && page.status === 'draft') {
+    if (page && canEditPages(page.id) && page.status === 'draft') {
         const review = element('button', {className: 'secondary-button', text: 'Zur Prüfung', attributes: {type: 'button'}});
         review.addEventListener('click', () => runStatusAction('request-review', true));
         statusActions.append(review);
     }
-    if (canPublishPages() && page?.status !== 'archived') {
+    if (canPublishPages(page?.id || null) && page?.status !== 'archived') {
         const publish = element('button', {className: 'button', text: 'Veröffentlichen', attributes: {type: 'button'}});
         publish.addEventListener('click', () => page ? runStatusAction('publish', true) : savePage(true));
         statusActions.append(publish);
     }
-    if (page && canPublishPages() && page.publishedAt && page.status !== 'archived') {
+    if (page && canPublishPages(page.id) && page.publishedAt && page.status !== 'archived') {
         const unpublish = element('button', {className: 'secondary-button', text: 'Zurückziehen', attributes: {type: 'button'}});
         unpublish.addEventListener('click', () => runStatusAction('unpublish'));
         statusActions.append(unpublish);
@@ -2234,7 +2245,7 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         }
     });
     const saveButton = element('button', {className: 'button', text: 'Entwurf speichern', attributes: {type: 'submit'}});
-    if (!canEditPages() || page?.status === 'archived') saveButton.disabled = true;
+    if (!canEditPages(page?.id || null) || page?.status === 'archived') saveButton.disabled = true;
     const form = element('form', {
         className: 'editor-form',
         children: [
@@ -2344,6 +2355,7 @@ const renderAdmin = async () => {
     csrfToken = session.csrfToken;
     currentRoles = session.user.roles;
     currentModuleAccess = session.user.moduleAccess || {};
+    currentPageAccess = session.user.pageAccess ?? null;
     const workspace = element('section', {className: 'admin-workspace'});
     const sidebarTitle = element('h1', {text: 'Redaktion'});
     const menu = element('nav', {className: 'admin-menu', attributes: {'aria-label': 'Redaktionsbereiche'}});
@@ -2417,7 +2429,7 @@ const renderAdmin = async () => {
 
             return zone;
         };
-        if (canEditPages()) {
+        if (canManagePageStructure()) {
             const create = element('button', {className: 'secondary-button full', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
             create.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, null, activities)));
             list.append(create);
@@ -2439,7 +2451,7 @@ const renderAdmin = async () => {
             title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
 
             const actions = [];
-            if (canEditPages()) {
+            if (canManagePageStructure()) {
                 const runPageAction = async (button, url, method, success) => {
                     button.disabled = true;
                     try {
@@ -2541,7 +2553,7 @@ const renderAdmin = async () => {
             dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
             const row = element('div', {
                 className: 'page-tree-row',
-                children: [...(canEditPages() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
+                children: [...(canManagePageStructure() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
             });
             const item = element('li', {className: `page-tree-node${page.visible ? '' : ' is-hidden'}`, children: [row]});
             const childDropZone = element('div', {
@@ -2960,11 +2972,14 @@ const renderAdmin = async () => {
     };
 
     const showUsers = async () => {
-        const data = await request('/api/admin/v1/users');
+        const [data, pageOptions] = await Promise.all([
+            request('/api/admin/v1/users'),
+            request('/api/admin/v1/users/page-options'),
+        ]);
         workspace.replaceChildren(
             sectionHeading('Benutzer', 'Zugänge und Rollen verwalten'),
-            ...(canEditModule('user_management') ? [userCreationForm(showUsers)] : []),
-            element('div', {className: 'card-list', children: data.items.map((user) => userCard(user, showUsers))}),
+            ...(canEditModule('user_management') ? [userCreationForm(showUsers, pageOptions.items)] : []),
+            element('div', {className: 'card-list', children: data.items.map((user) => userCard(user, showUsers, pageOptions.items))}),
         );
     };
 
@@ -3081,6 +3096,7 @@ const renderAdmin = async () => {
         csrfToken = null;
         currentRoles = [];
         currentModuleAccess = {};
+        currentPageAccess = null;
         toast('Du wurdest abgemeldet.', 'info');
         renderLogin();
     });
@@ -3224,6 +3240,58 @@ const readModuleAccess = (form) => Object.fromEntries(
         .map((row) => [row.dataset.module, row.querySelector('select').value]),
 );
 
+const pageAccessFields = (selectedAccess = null, pages = []) => {
+    const restricted = element('input', {attributes: {type: 'checkbox', ...(selectedAccess !== null ? {checked: 'checked'} : {})}});
+    const list = element('div', {className: 'page-access-list'});
+    const flattenedPages = flattenPageTree(buildPageTree(pages));
+    flattenedPages.forEach(({page, depth}) => {
+        const selectedRole = selectedAccess?.[page.id] || 'editor';
+        const enabled = typeof selectedAccess?.[page.id] === 'string';
+        const checkbox = element('input', {attributes: {type: 'checkbox', ...(enabled ? {checked: 'checked'} : {})}});
+        const role = element('select', {
+            attributes: {'aria-label': `Seitenrecht für ${page.title}`, ...(enabled ? {} : {disabled: 'disabled'})},
+            children: [
+                element('option', {text: 'Editor', attributes: {value: 'editor'}}),
+                element('option', {text: 'Publisher', attributes: {value: 'publisher'}}),
+            ],
+        });
+        role.value = selectedRole;
+        checkbox.addEventListener('change', () => role.disabled = !checkbox.checked);
+        list.append(element('div', {
+            className: 'page-access-row',
+            attributes: {'data-page-access-id': page.id},
+            children: [
+                element('label', {className: 'check-field', children: [
+                    checkbox,
+                    element('span', {text: `${'— '.repeat(depth)}${page.title}`}),
+                ]}),
+                role,
+            ],
+        }));
+    });
+    if (!flattenedPages.length) list.append(emptyState('Noch keine Seiten vorhanden.'));
+    list.hidden = !restricted.checked;
+    restricted.addEventListener('change', () => list.hidden = !restricted.checked);
+
+    return element('div', {className: 'page-access-scope', children: [
+        element('label', {className: 'check-field', children: [restricted, element('span', {text: 'Zugriff auf bestimmte Seiten beschränken'})]}),
+        element('small', {className: 'field-hint', text: 'Dann werden im Modul Seiten ausschließlich die ausgewählten Seiten angezeigt. Admin und Super-Admin behalten Vollzugriff.'}),
+        list,
+    ]});
+};
+
+const readPageAccess = (form) => {
+    const scope = form.querySelector('.page-access-scope');
+    const restricted = scope.querySelector(':scope > .check-field input').checked;
+    const pageAccess = Object.fromEntries(
+        [...scope.querySelectorAll('[data-page-access-id]')]
+            .filter((row) => row.querySelector('input[type="checkbox"]').checked)
+            .map((row) => [row.dataset.pageAccessId, row.querySelector('select').value]),
+    );
+
+    return {restricted, pageAccess};
+};
+
 const canEditUser = (user) => {
     if (!canEditModule('user_management')) return false;
     if (user.roles.includes('super_admin')) return hasAnyRole('super_admin');
@@ -3232,7 +3300,7 @@ const canEditUser = (user) => {
     return true;
 };
 
-const openUserAccessDialog = (user, refresh) => {
+const openUserAccessDialog = (user, refresh, pages) => {
     const dialog = element('dialog', {className: 'activity-dialog'});
     const message = formMessage();
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -3252,6 +3320,10 @@ const openUserAccessDialog = (user, refresh) => {
             element('legend', {text: 'Module und Rollen'}),
             moduleAccessFields(user.moduleAccess || {}),
         ]}),
+        element('fieldset', {children: [
+            element('legend', {text: 'Seitenbezogene Rechte'}),
+            pageAccessFields(user.pageAccess, pages),
+        ]}),
         message,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]});
@@ -3261,10 +3333,13 @@ const openUserAccessDialog = (user, refresh) => {
         submit.disabled = true;
         const data = new FormData(form);
         const globalRole = data.get('globalRole');
+        const pageAccess = readPageAccess(form);
         try {
             await request(`/api/admin/v1/users/${user.id}/access`, {method: 'PUT', body: JSON.stringify({
                 roles: globalRole ? [globalRole] : [],
                 moduleAccess: readModuleAccess(form),
+                pageAccessRestricted: pageAccess.restricted,
+                pageAccess: pageAccess.pageAccess,
             })});
             toast('Globale Rolle und Modulrechte wurden gespeichert.');
             dialog.close();
@@ -3281,7 +3356,7 @@ const openUserAccessDialog = (user, refresh) => {
     dialog.showModal();
 };
 
-const userCard = (user, refresh) => {
+const userCard = (user, refresh, pages) => {
     const roleLabel = user.roles[0] === 'super_admin' ? 'Super-Admin' : (user.roles[0] === 'admin' ? 'Admin' : 'Keine');
     const moduleLabels = Object.entries(user.moduleAccess || {}).map(([module, role]) => {
         const label = CMS_MODULES.find(([value]) => value === module)?.[1] || module;
@@ -3292,11 +3367,12 @@ const userCard = (user, refresh) => {
         element('a', {text: user.email, attributes: {href: 'mailto:' + user.email}}),
         element('p', {className: 'tag-line', text: `Globale Rolle: ${roleLabel}`}),
         element('p', {className: 'tag-line', text: `Module: ${moduleLabels.join(' · ')}`}),
+        ...(user.pageAccess !== null ? [element('p', {className: 'tag-line', text: `Seitenscope: ${Object.keys(user.pageAccess).length} ausgewählte Seiten`})] : []),
     ];
     if (canEditUser(user)) {
         const actions = [];
         const edit = element('button', {className: 'secondary-button', text: 'Zugriff bearbeiten', attributes: {type: 'button'}});
-        edit.addEventListener('click', () => openUserAccessDialog(user, refresh));
+        edit.addEventListener('click', () => openUserAccessDialog(user, refresh, pages));
         actions.push(edit);
         if (user.active) {
             const suspend = element('button', {className: 'text-button danger', text: 'Benutzer sperren', attributes: {type: 'button'}});
@@ -3325,7 +3401,7 @@ const userCard = (user, refresh) => {
     return element('article', {className: 'management-card', children});
 };
 
-const userCreationForm = (refresh) => {
+const userCreationForm = (refresh, pages) => {
     const message = formMessage();
     const form = element('form', {className: 'compact-form', children: [
         element('h3', {text: 'Benutzer anlegen'}),
@@ -3336,6 +3412,7 @@ const userCreationForm = (refresh) => {
             element('small', {className: 'field-hint', text: 'Optional. Die Modulfreigaben bleiben auch für Administratoren verbindlich.'}),
         ]}),
         element('fieldset', {children: [element('legend', {text: 'Module und Rollen'}), moduleAccessFields()]}),
+        element('fieldset', {children: [element('legend', {text: 'Seitenbezogene Rechte'}), pageAccessFields(null, pages)]}),
         message,
         element('button', {className: 'button', text: 'Zugang anlegen', attributes: {type: 'submit'}}),
     ]});
@@ -3343,10 +3420,12 @@ const userCreationForm = (refresh) => {
         event.preventDefault();
         const data = new FormData(form);
         const globalRole = data.get('globalRole');
+        const pageAccess = readPageAccess(form);
         try {
             await request('/api/admin/v1/users', {method: 'POST', body: JSON.stringify({
                 displayName: data.get('displayName'), email: data.get('email'), password: data.get('password'),
                 roles: globalRole ? [globalRole] : [], moduleAccess: readModuleAccess(form),
+                pageAccessRestricted: pageAccess.restricted, pageAccess: pageAccess.pageAccess,
             })});
             toast('Benutzerzugang wurde angelegt.');
             await refresh();

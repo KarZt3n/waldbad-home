@@ -9,6 +9,7 @@ use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\IdentityAccess\User\Dto\UserResponse;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
+use App\Logic\IdentityAccess\User\Model\PageAccess;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
 readonly class ApiResponseFactory
@@ -173,6 +174,7 @@ readonly class ApiResponseFactory
      *     displayName: string,
      *     roles: list<string>,
      *     moduleAccess: array<string, string>,
+     *     pageAccess: array<string, string>|null,
      *     active: bool,
      *     version: int,
      *     createdAt: string,
@@ -188,6 +190,7 @@ readonly class ApiResponseFactory
             'displayName' => $user->displayName,
             'roles' => array_map(static fn (Role $role): string => $role->value, $user->roles),
             'moduleAccess' => $this->moduleAccess($user->moduleAccess),
+            'pageAccess' => $this->pageAccess($user->pageAccess),
             'active' => $user->active,
             'version' => $user->version,
             'createdAt' => $user->createdAt->format(\DateTimeInterface::ATOM),
@@ -205,6 +208,24 @@ readonly class ApiResponseFactory
         $result = [];
         foreach ($moduleAccess as $access) {
             $result[$access->module->value] = $access->role->value;
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param list<PageAccess>|null $pageAccess
+     * @return array<string, string>|null
+     */
+    private function pageAccess(?array $pageAccess): ?array
+    {
+        if ($pageAccess === null) {
+            return null;
+        }
+
+        $result = [];
+        foreach ($pageAccess as $access) {
+            $result[$access->pageId] = $access->role->value;
         }
 
         return $result;

@@ -38,6 +38,15 @@ Jeder Benutzer benötigt mindestens eine Modulzuordnung.
 | `Publisher` | alle Editor-Rechte sowie veröffentlichen und zurückziehen |
 | `Moderator` | alle Editor-Rechte sowie redaktionelle Prüfung; keine Veröffentlichung |
 
+Für Benutzer ohne globale Administratorrolle kann der Zugriff optional auf einzelne Seiten eingeschränkt werden. Jede ausgewählte Seite erhält dabei genau eines der folgenden Rechte:
+
+| Seitenrecht | Rechte |
+|---|---|
+| `Editor` | Seite anzeigen, bearbeiten, als Vorschau öffnen und zur Prüfung einreichen |
+| `Publisher` | alle Editor-Rechte sowie die Seite veröffentlichen und zurückziehen |
+
+Ist eine solche Einschränkung aktiv, zeigt die Seitenverwaltung ausschließlich die ausdrücklich zugewiesenen Seiten. Anlegen, Duplizieren, Löschen und Umsortieren bleiben gesperrt, weil diese Aktionen die gemeinsame Seitenstruktur oder nicht freigegebene Seiten beeinflussen können. Ohne Einschränkung gilt wie bisher die Rolle des Moduls `pages` für alle Seiten.
+
 ### 3.2 Alle anderen Module
 
 | Rolle | Rechte |
@@ -58,6 +67,8 @@ Das Seitenmodul darf Aktivitäten lesend abrufen, damit der Seiteneditor vorhand
 | `SuperAdmin` | Innerhalb jedes freigeschalteten Moduls gelten alle fachlichen Rechte. Ein SuperAdmin darf auch SuperAdmins und globale Rollen verwalten. |
 
 Globale Rollen heben die Modulgrenze nicht auf. Ein Admin mit ausschließlich `pages` darf beispielsweise alle Seitenaktionen ausführen, sieht aber weder Mitgliedsanträge noch die Benutzerverwaltung.
+
+Innerhalb des freigeschalteten Moduls `pages` ignorieren Admin und SuperAdmin eine eventuell gespeicherte Einschränkung auf einzelne Seiten und sehen sowie bearbeiten immer alle Seiten.
 
 ## 5. Benutzerverwaltung und Schutzregeln
 
@@ -123,11 +134,15 @@ Benutzer- und Sitzungsantworten liefern die globalen Rollen und die Modulzuordnu
   "moduleAccess": {
     "pages": "viewer",
     "guestbook": "editor"
+  },
+  "pageAccess": {
+    "page-id-1": "editor",
+    "page-id-2": "publisher"
   }
 }
 ```
 
-Die gespeicherte Modulrolle bleibt in der Antwort sichtbar, auch wenn eine globale Administratorrolle innerhalb des Moduls wirksam alle Rechte verleiht.
+`pageAccess: null` bedeutet uneingeschränkten Seitenzugriff gemäß Modulrolle. Die gespeicherte Modulrolle und der Seitenscope bleiben in der Antwort sichtbar, auch wenn eine globale Administratorrolle innerhalb des Moduls wirksam alle Rechte verleiht.
 
 ## 8. Sicherheits- und Architekturregeln
 

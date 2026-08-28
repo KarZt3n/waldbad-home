@@ -9,6 +9,7 @@ readonly class User
     /**
      * @param list<Role> $roles
      * @param list<ModuleAccess> $moduleAccess
+     * @param list<PageAccess>|null $pageAccess
      */
     public function __construct(
         public string $id,
@@ -22,6 +23,7 @@ readonly class User
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $lastLoginAt,
+        public ?array $pageAccess = null,
     ) {
         if (filter_var($this->email, FILTER_VALIDATE_EMAIL) === false) {
             throw new BusinessRuleViolationException('Die E-Mail-Adresse ist ungültig.');
@@ -43,13 +45,27 @@ readonly class User
         if (count($moduleNames) !== count(array_unique($moduleNames))) {
             throw new BusinessRuleViolationException('Ein Modul darf einem Benutzer nur einmal zugewiesen werden.');
         }
+
+        if ($this->pageAccess === []) {
+            throw new BusinessRuleViolationException('Ein eingeschränkter Seitenzugang benötigt mindestens eine Seitenberechtigung.');
+        }
+
+        $pageIds = array_map(static fn (PageAccess $access): string => $access->pageId, $this->pageAccess ?? []);
+        if (count($pageIds) !== count(array_unique($pageIds))) {
+            throw new BusinessRuleViolationException('Eine Seite darf einem Benutzer nur einmal zugewiesen werden.');
+        }
+
+        if ($this->pageAccess !== null && !in_array(CmsModule::Pages->value, $moduleNames, true)) {
+            throw new BusinessRuleViolationException('Seitenberechtigungen setzen eine Freigabe des Moduls Seiten voraus.');
+        }
     }
 
     /**
      * @param list<Role> $roles
      * @param list<ModuleAccess> $moduleAccess
+     * @param list<PageAccess>|null $pageAccess
      */
-    public function changeAccess(array $roles, array $moduleAccess, \DateTimeImmutable $updatedAt): self
+    public function changeAccess(array $roles, array $moduleAccess, ?array $pageAccess, \DateTimeImmutable $updatedAt): self
     {
         return new self(
             id: $this->id,
@@ -63,6 +79,7 @@ readonly class User
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
             lastLoginAt: $this->lastLoginAt,
+            pageAccess: $pageAccess,
         );
     }
 
@@ -80,6 +97,7 @@ readonly class User
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
             lastLoginAt: $this->lastLoginAt,
+            pageAccess: $this->pageAccess,
         );
     }
 }

@@ -11,6 +11,7 @@ readonly class UserResponse
     /**
      * @param list<Role> $roles
      * @param list<ModuleAccess> $moduleAccess
+     * @param list<\App\Logic\IdentityAccess\User\Model\PageAccess>|null $pageAccess
      */
     public function __construct(
         public string $id,
@@ -23,6 +24,7 @@ readonly class UserResponse
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $lastLoginAt,
+        public ?array $pageAccess,
     ) {
     }
 
@@ -39,6 +41,7 @@ readonly class UserResponse
             createdAt: $user->createdAt,
             updatedAt: $user->updatedAt,
             lastLoginAt: $user->lastLoginAt,
+            pageAccess: $user->pageAccess,
         );
     }
 }
