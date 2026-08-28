@@ -3520,13 +3520,18 @@ const renderAdmin = async () => {
     };
     const menuItems = [];
     if (hasModule('pages')) menuItems.push(addMenu('Seiten', showPages));
+
     if (hasModule('events')) menuItems.push(addMenu('Veranstaltungen', showEvents));
+    if (hasModule('event_helpers')) menuItems.push(addMenu('Veranstaltungshelfer', showEventHelpers));
     if (hasModule('activities')) menuItems.push(addMenu('Aktivitäten', showActivities));
+
+    if (hasModule('membership_applications')) menuItems.push(addMenu('Mitgliedsanträge', showMembership));
+
+    if (hasModule('user_management')) menuItems.push(addMenu('Benutzer', showUsers));
+
     if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', showGuestbook));
     if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', showContact));
-    if (hasModule('event_helpers')) menuItems.push(addMenu('Veranstaltungshelfer', showEventHelpers));
-    if (hasModule('membership_applications')) menuItems.push(addMenu('Mitgliedsanträge', showMembership));
-    if (hasModule('user_management')) menuItems.push(addMenu('Benutzer', showUsers));
+
     const logout = element('button', {className: 'text-button', text: 'Abmelden', attributes: {type: 'button'}});
     logout.addEventListener('click', async () => {
         await request('/api/auth/v1/logout', {method: 'POST'});
