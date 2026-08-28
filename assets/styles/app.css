@@ -465,7 +465,7 @@ a { color: var(--forest-700); }
     margin: 1.5rem 0;
     padding: 1.25rem 1.5rem;
     border-left: .4rem solid var(--sun-400);
-    border-radius: .6rem;
+    /*border-radius: .6rem;*/
     background: #fff8cf;
     font-weight: 700;
 }
