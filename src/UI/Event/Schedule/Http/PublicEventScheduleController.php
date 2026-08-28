@@ -26,7 +26,7 @@ readonly class PublicEventScheduleController
     #[Route('/next', name: 'api_public_event_schedule_next', methods: ['GET'])]
     public function next(Request $request, GetNextEventScheduleQuery $query): JsonResponse
     {
-        $schedule = $query->execute($this->kind($request));
+        $schedule = $query->execute($this->nextKind($request));
 
         return new JsonResponse(['item' => $schedule === null ? null : $this->responseFactory->schedule($schedule)]);
     }
@@ -35,6 +35,23 @@ readonly class PublicEventScheduleController
     {
         try {
             return EventScheduleKind::from($request->query->getString('kind', EventScheduleKind::Event->value));
+        } catch (\ValueError) {
+            throw new BadRequestHttpException('Die Art der Veranstaltung ist ungültig.');
+        }
+    }
+
+    /**
+     * @return EventScheduleKind|null Null steht für „egal, Veranstaltung oder Arbeitseinsatz“.
+     */
+    private function nextKind(Request $request): ?EventScheduleKind
+    {
+        $value = $request->query->getString('kind', EventScheduleKind::Event->value);
+        if ($value === 'any') {
+            return null;
+        }
+
+        try {
+            return EventScheduleKind::from($value);
         } catch (\ValueError) {
             throw new BadRequestHttpException('Die Art der Veranstaltung ist ungültig.');
         }

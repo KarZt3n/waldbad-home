@@ -672,7 +672,8 @@ const eventScheduleToBlockShape = (item) => ({
 const renderEventScheduleExtension = (kind, mode, context) => {
     const container = element('section', {className: 'event-schedule-extension', attributes: {'aria-live': 'polite'}});
     const emptyMessage = mode === 'next'
-        ? (kind === 'work_assignment' ? 'Aktuell ist kein weiterer Arbeitseinsatz geplant.' : 'Aktuell ist keine weitere Veranstaltung geplant.')
+        ? (kind === 'any' ? 'Aktuell ist keine weitere Veranstaltung oder Arbeitseinsatz geplant.'
+            : kind === 'work_assignment' ? 'Aktuell ist kein weiterer Arbeitseinsatz geplant.' : 'Aktuell ist keine weitere Veranstaltung geplant.')
         : (kind === 'work_assignment' ? 'Aktuell sind keine Arbeitseinsätze für dieses Jahr eingetragen.' : 'Aktuell sind keine Veranstaltungen für dieses Jahr eingetragen.');
     if (context.isPreview) {
         container.append(element('p', {className: 'empty-copy', text: emptyMessage}));
@@ -701,8 +702,9 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
     }
-    if (block.type === 'extension' && ['events_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment'].includes(block.extensionKey)) {
-        const kind = block.extensionKey.startsWith('work_assignments') || block.extensionKey === 'next_work_assignment' ? 'work_assignment' : 'event';
+    if (block.type === 'extension' && ['events_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment', 'next_event_or_work_assignment'].includes(block.extensionKey)) {
+        const kind = block.extensionKey === 'next_event_or_work_assignment' ? 'any'
+            : (block.extensionKey.startsWith('work_assignments') || block.extensionKey === 'next_work_assignment' ? 'work_assignment' : 'event');
         const mode = block.extensionKey.startsWith('next_') ? 'next' : 'current_year';
 
         return renderEventScheduleExtension(kind, mode, context);
@@ -1905,6 +1907,7 @@ const blockEditor = (block, index, handlers) => {
             element('option', {text: 'Arbeitseinsätze: aktuelles Jahr', attributes: {value: 'work_assignments_current_year'}}),
             element('option', {text: 'Veranstaltung: nächste', attributes: {value: 'next_event'}}),
             element('option', {text: 'Arbeitseinsatz: nächste', attributes: {value: 'next_work_assignment'}}),
+            element('option', {text: 'Veranstaltung/Arbeitseinsatz: nächste', attributes: {value: 'next_event_or_work_assignment'}}),
         ]});
         select.value = block.extensionKey || 'membership_application';
         block.extensionKey = select.value;

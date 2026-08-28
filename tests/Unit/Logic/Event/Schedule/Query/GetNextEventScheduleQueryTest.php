@@ -30,6 +30,22 @@ final class GetNextEventScheduleQueryTest extends TestCase
         self::assertSame('soonest-visible', $result->id);
     }
 
+    public function testNullKindIgnoresTheKindAndReturnsTheSoonestUpcomingScheduleOfEitherKind(): void
+    {
+        $manager = $this->createStub(EventScheduleManagerInterface::class);
+        $manager->method('all')->willReturn([
+            $this->schedule('event', EventScheduleKind::Event, '2026-09-05', visible: true),
+            $this->schedule('work-assignment', EventScheduleKind::WorkAssignment, '2026-09-01', visible: true),
+        ]);
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-08-28T00:00:00+02:00'));
+
+        $result = (new GetNextEventScheduleQuery($manager, $clock))->execute(null);
+
+        self::assertNotNull($result);
+        self::assertSame('work-assignment', $result->id);
+    }
+
     public function testReturnsNullWhenNothingIsUpcoming(): void
     {
         $manager = $this->createStub(EventScheduleManagerInterface::class);

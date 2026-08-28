@@ -16,13 +16,16 @@ readonly class GetNextEventScheduleQuery
     ) {
     }
 
-    public function execute(EventScheduleKind $kind): ?EventScheduleResponse
+    /**
+     * @param EventScheduleKind|null $kind Null berücksichtigt Veranstaltungen und Arbeitseinsätze gleichermaßen.
+     */
+    public function execute(?EventScheduleKind $kind): ?EventScheduleResponse
     {
         $today = $this->clock->now()->format('Y-m-d');
 
         $upcoming = array_values(array_filter(
             $this->manager->all(),
-            static fn (EventSchedule $schedule): bool => $schedule->kind === $kind
+            static fn (EventSchedule $schedule): bool => ($kind === null || $schedule->kind === $kind)
                 && $schedule->visible
                 && $schedule->date >= $today,
         ));
