@@ -215,13 +215,13 @@ a { color: var(--forest-700); }
 }
 
 .content-card h2 {
-    /*margin: 2.5rem 0 .8rem;*/
+    margin: 0rem 0 .8rem;
     color: var(--forest-900);
     font-family: Georgia, "Times New Roman", serif;
     font-size: clamp(1.8rem, 4vw, 2.8rem);
 }
 
-.content-card h2:first-child { margin-top: 0; }
+/*.content-card h2:first-child { margin-top: 0; }*/
 .embedded-page {
     margin-top: 0.5rem;
     display: grid;
