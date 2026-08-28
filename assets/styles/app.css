@@ -434,8 +434,8 @@ a { color: var(--forest-700); }
 .image-text.fit-contain .image-text-media img { object-fit: contain; background: #f0f4f1; }
 
 .custom-html, .rich-html {
-    margin: 0rem 0rem 1rem 0rem;
-    /*margin: 2rem 0; */
+    /*margin: 0rem 0rem 1rem 0rem;*/
+    margin: 2rem 0;
     color: #33463b;
     line-height: 1.7;
 }
