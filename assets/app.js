@@ -649,40 +649,45 @@ const renderImageSource = (source) => source
     ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
     : null;
 
-const renderEventScheduleExtension = (kind, context) => {
+const eventScheduleToBlockShape = (item) => ({
+    type: 'event',
+    content: item.content,
+    mediaUrl: item.mediaUrl,
+    mediaAlt: item.mediaAlt,
+    mediaSource: item.mediaSource,
+    layout: item.layout,
+    imageWidthPercent: item.imageWidthPercent,
+    verticalAlignment: item.verticalAlignment,
+    textAlignment: item.textAlignment,
+    imageFit: item.imageFit,
+    eventTitle: item.title,
+    eventDate: item.date,
+    eventTime: item.time,
+    eventIdentifier: item.id,
+    eventHelpEnabled: item.helpEnabled,
+    eventHelpButtonLabel: item.helpButtonLabel,
+    eventCallToActions: item.callToActions,
+});
+
+const renderEventScheduleExtension = (kind, mode, context) => {
     const container = element('section', {className: 'event-schedule-extension', attributes: {'aria-live': 'polite'}});
-    const emptyMessage = kind === 'work_assignment'
-        ? 'Aktuell sind keine Arbeitseinsätze für dieses Jahr eingetragen.'
-        : 'Aktuell sind keine Veranstaltungen für dieses Jahr eingetragen.';
+    const emptyMessage = mode === 'next'
+        ? (kind === 'work_assignment' ? 'Aktuell ist kein weiterer Arbeitseinsatz geplant.' : 'Aktuell ist keine weitere Veranstaltung geplant.')
+        : (kind === 'work_assignment' ? 'Aktuell sind keine Arbeitseinsätze für dieses Jahr eingetragen.' : 'Aktuell sind keine Veranstaltungen für dieses Jahr eingetragen.');
     if (context.isPreview) {
         container.append(element('p', {className: 'empty-copy', text: emptyMessage}));
         return container;
     }
-    request(`/api/public/v1/events?kind=${encodeURIComponent(kind)}`).then((data) => {
-        const items = data.items || [];
+    const endpoint = mode === 'next'
+        ? `/api/public/v1/events/next?kind=${encodeURIComponent(kind)}`
+        : `/api/public/v1/events?kind=${encodeURIComponent(kind)}`;
+    request(endpoint).then((data) => {
+        const items = mode === 'next' ? (data.item ? [data.item] : []) : (data.items || []);
         if (!items.length) {
             container.replaceChildren(element('p', {className: 'empty-copy', text: emptyMessage}));
             return;
         }
-        container.replaceChildren(...items.map((item) => renderPublicBlock({
-            type: 'event',
-            content: item.content,
-            mediaUrl: item.mediaUrl,
-            mediaAlt: item.mediaAlt,
-            mediaSource: item.mediaSource,
-            layout: item.layout,
-            imageWidthPercent: item.imageWidthPercent,
-            verticalAlignment: item.verticalAlignment,
-            textAlignment: item.textAlignment,
-            imageFit: item.imageFit,
-            eventTitle: item.title,
-            eventDate: item.date,
-            eventTime: item.time,
-            eventIdentifier: item.id,
-            eventHelpEnabled: item.helpEnabled,
-            eventHelpButtonLabel: item.helpButtonLabel,
-            eventCallToActions: item.callToActions,
-        }, context)));
+        container.replaceChildren(...items.map((item) => renderPublicBlock(eventScheduleToBlockShape(item), context)));
     }).catch(() => {
         container.replaceChildren(...(context.showEmbedErrors
             ? [element('p', {className: 'embedded-page-error', text: 'Die Veranstaltungen konnten nicht geladen werden.'})]
@@ -696,8 +701,11 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
     }
-    if (block.type === 'extension' && (block.extensionKey === 'events_current_year' || block.extensionKey === 'work_assignments_current_year')) {
-        return renderEventScheduleExtension(block.extensionKey === 'events_current_year' ? 'event' : 'work_assignment', context);
+    if (block.type === 'extension' && ['events_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment'].includes(block.extensionKey)) {
+        const kind = block.extensionKey.startsWith('work_assignments') || block.extensionKey === 'next_work_assignment' ? 'work_assignment' : 'event';
+        const mode = block.extensionKey.startsWith('next_') ? 'next' : 'current_year';
+
+        return renderEventScheduleExtension(kind, mode, context);
     }
     if (block.type === 'page_teaser') {
         const container = element('section', {className: 'page-teaser-loading', attributes: {'aria-live': 'polite'}});
@@ -1895,6 +1903,8 @@ const blockEditor = (block, index, handlers) => {
             element('option', {text: 'Mitgliedsantrag', attributes: {value: 'membership_application'}}),
             element('option', {text: 'Veranstaltungen: aktuelles Jahr', attributes: {value: 'events_current_year'}}),
             element('option', {text: 'Arbeitseinsätze: aktuelles Jahr', attributes: {value: 'work_assignments_current_year'}}),
+            element('option', {text: 'Veranstaltung: nächste', attributes: {value: 'next_event'}}),
+            element('option', {text: 'Arbeitseinsatz: nächste', attributes: {value: 'next_work_assignment'}}),
         ]});
         select.value = block.extensionKey || 'membership_application';
         block.extensionKey = select.value;
