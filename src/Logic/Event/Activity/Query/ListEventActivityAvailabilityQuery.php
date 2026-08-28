@@ -40,6 +40,7 @@ readonly class ListEventActivityAvailabilityQuery
             return new EventActivityAvailabilityResponse(
                 $activity->id, $activity->name, $activity->description,
                 $assignment->requiredHelpers, $counts[$activity->id] ?? 0,
+                $assignment->time, $assignment->meetTime, $assignment->meetPlace, $assignment->remark,
             );
         }, $event->activities);
     }

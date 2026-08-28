@@ -102,7 +102,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
-    public function testAdminModulesRestrictNavigationAreasAndApiEndpoints(): void
+    public function testAdminRoleAlwaysHasFullAccessRegardlessOfStoredModuleAccess(): void
     {
         $createUser = self::getContainer()->get(CreateUserUseCase::class);
         if (!$createUser instanceof CreateUserUseCase) {
@@ -139,18 +139,68 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $updatedUser = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($updatedUser);
+        // Der gespeicherte Modulzugriff bleibt exakt wie eingegeben – nur die abgeleiteten
+        // Rechte des angemeldeten Nutzers werden auf „alles“ angehoben (siehe unten).
         self::assertSame(['pages' => 'viewer'], $updatedUser['moduleAccess']);
 
+        $this->client->request('POST', '/api/auth/v1/logout');
         $this->client->jsonRequest('POST', '/api/auth/v1/login', [
             'email' => 'page-admin@example.test',
             'password' => 'Ein-sicheres-Testpasswort-2026',
         ]);
         self::assertResponseIsSuccessful();
-        $limitedLogin = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
-        self::assertIsArray($limitedLogin);
-        self::assertIsArray($limitedLogin['user']);
-        self::assertSame(['pages' => 'viewer'], $limitedLogin['user']['moduleAccess']);
-        self::assertIsString($limitedLogin['csrfToken']);
+        $adminLogin = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($adminLogin);
+        self::assertIsArray($adminLogin['user']);
+        self::assertIsString($adminLogin['csrfToken']);
+        // Admin- und Super-Admin-Konten sehen sich selbst immer mit vollem Zugriff auf jedes
+        // Modul, unabhängig vom gespeicherten (hier bewusst minimalen) Modulzugriff.
+        $expectedFullAccess = [];
+        foreach (self::allModuleAccess() as $access) {
+            $expectedFullAccess[$access->module->value] = $access->role->value;
+        }
+        self::assertSame($expectedFullAccess, $adminLogin['user']['moduleAccess']);
+        $adminHeaders = ['HTTP_X_CSRF_TOKEN' => $adminLogin['csrfToken']];
+
+        $this->client->request('GET', '/api/admin/v1/pages');
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
+            'name' => 'Von Admin trotz minimaler Zuweisung erlaubt',
+            'description' => '',
+            'active' => true,
+        ], $adminHeaders);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/guestbook-entries');
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/users');
+        self::assertResponseIsSuccessful();
+    }
+
+    public function testModuleAccessStillRestrictsNonAdminUsers(): void
+    {
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        if (!$createUser instanceof CreateUserUseCase) {
+            throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
+        }
+        $createUser->execute(new CreateUserRequest(
+            email: 'page-only-editor@example.test',
+            displayName: 'Page Only Editor',
+            plainPassword: 'Ein-sicheres-Testpasswort-2026',
+            roles: [],
+            moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
+        ));
+
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
+            'email' => 'page-only-editor@example.test',
+            'password' => 'Ein-sicheres-Testpasswort-2026',
+        ]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsArray($login['user']);
+        self::assertSame(['pages' => 'viewer'], $login['user']['moduleAccess']);
+        self::assertIsString($login['csrfToken']);
+        $headers = ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']];
 
         $this->client->request('GET', '/api/admin/v1/pages');
         self::assertResponseIsSuccessful();
@@ -160,7 +210,7 @@ final class CmsWorkflowTest extends WebTestCase
             'name' => 'Nicht erlaubt',
             'description' => '',
             'active' => true,
-        ], ['HTTP_X_CSRF_TOKEN' => $limitedLogin['csrfToken']]);
+        ], $headers);
         self::assertResponseStatusCodeSame(403);
         $this->client->request('GET', '/api/admin/v1/guestbook-entries');
         self::assertResponseStatusCodeSame(403);

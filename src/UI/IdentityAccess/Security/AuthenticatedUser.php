@@ -47,7 +47,19 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
      */
     public function getModuleAccess(): array
     {
-        return $this->identity->moduleAccess;
+        if (!$this->isAdministrator()) {
+            return $this->identity->moduleAccess;
+        }
+
+        // Admin und Super-Admin haben immer Zugriff auf alle Module, unabhängig davon, ob für sie
+        // explizit ein Modulzugriff hinterlegt wurde (z. B. weil das Modul erst nachträglich hinzukam).
+        return array_map(
+            static fn (CmsModule $module): ModuleAccess => new ModuleAccess(
+                $module,
+                $module === CmsModule::Pages ? ModuleRole::Publisher : ModuleRole::Editor,
+            ),
+            CmsModule::cases(),
+        );
     }
 
     /**
@@ -87,13 +99,8 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
         );
         $roles[] = 'ROLE_CMS';
         $roles[] = 'ROLE_CMS_READ';
-        $isAdministrator = in_array(Role::Admin, $this->identity->roles, true)
-            || in_array(Role::SuperAdmin, $this->identity->roles, true);
-        foreach ($this->identity->moduleAccess as $access) {
-            $moduleRole = $isAdministrator
-                ? ($access->module === CmsModule::Pages ? ModuleRole::Publisher : ModuleRole::Editor)
-                : $access->role;
-            foreach ($this->effectiveModuleRoles($moduleRole) as $effectiveRole) {
+        foreach ($this->getModuleAccess() as $access) {
+            foreach ($this->effectiveModuleRoles($access->role) as $effectiveRole) {
                 $roles[] = sprintf('ROLE_MODULE_%s_%s', strtoupper($access->module->value), strtoupper($effectiveRole->value));
             }
         }
@@ -114,6 +121,12 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
 
     public function eraseCredentials(): void
     {
+    }
+
+    private function isAdministrator(): bool
+    {
+        return in_array(Role::Admin, $this->identity->roles, true)
+            || in_array(Role::SuperAdmin, $this->identity->roles, true);
     }
 
     /**

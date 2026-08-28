@@ -1,12 +1,14 @@
 <?php
 
-namespace App\Logic\Content\Page\Model;
+namespace App\Logic\Event\Schedule\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 
-readonly class EventActivityAssignment
+readonly class EventScheduleActivity
 {
     public function __construct(
+        public string $id,
+        public int $position,
         public string $activityId,
         public int $requiredHelpers,
         public ?string $time = null,

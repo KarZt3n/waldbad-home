@@ -17,6 +17,8 @@ enum Permission: string
     case GuestbookEdit = 'ROLE_MODULE_GUESTBOOK_EDITOR';
     case ContactRequestsView = 'ROLE_MODULE_CONTACT_REQUESTS_VIEWER';
     case ContactRequestsEdit = 'ROLE_MODULE_CONTACT_REQUESTS_EDITOR';
+    case EventsView = 'ROLE_MODULE_EVENTS_VIEWER';
+    case EventsEdit = 'ROLE_MODULE_EVENTS_EDITOR';
     case EventHelpersView = 'ROLE_MODULE_EVENT_HELPERS_VIEWER';
     case EventHelpersEdit = 'ROLE_MODULE_EVENT_HELPERS_EDITOR';
     case MembershipApplicationsView = 'ROLE_MODULE_MEMBERSHIP_APPLICATIONS_VIEWER';

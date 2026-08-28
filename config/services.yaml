@@ -39,3 +39,7 @@ services:
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    # Multiple VolunteerEventProviderInterface implementations exist (the „Veranstaltung“ module and
+    # the legacy page-content-block lookup), so autowiring can no longer pick one automatically.
+    App\Logic\Event\HelpRequest\VolunteerEventProviderInterface: '@App\Data\Event\Schedule\Provider\ChainVolunteerEventProvider'

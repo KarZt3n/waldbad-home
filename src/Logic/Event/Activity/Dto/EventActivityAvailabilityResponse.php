@@ -10,6 +10,10 @@ readonly class EventActivityAvailabilityResponse
         public string $description,
         public int $requiredHelpers,
         public int $registeredHelpers,
+        public ?string $time = null,
+        public ?string $meetTime = null,
+        public ?string $meetPlace = null,
+        public ?string $remark = null,
     ) {
     }
 }

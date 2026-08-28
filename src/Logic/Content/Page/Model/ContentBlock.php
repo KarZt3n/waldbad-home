@@ -139,7 +139,11 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Ein Call-to-Action benötigt Link und Beschriftung.');
         }
 
-        if ($this->type === ContentBlockType::Extension && $this->extensionKey !== 'membership_application') {
+        if ($this->type === ContentBlockType::Extension && !in_array($this->extensionKey, [
+            'membership_application',
+            'events_current_year',
+            'work_assignments_current_year',
+        ], true)) {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
         }
 

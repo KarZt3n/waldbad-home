@@ -8,6 +8,7 @@ let currentPageAccess = null;
 
 const CMS_MODULES = [
     ['pages', 'Seiten'],
+    ['events', 'Veranstaltungen'],
     ['activities', 'Aktivitäten'],
     ['guestbook', 'Gästebuch'],
     ['contact_requests', 'Kontaktanfragen'],
@@ -15,6 +16,8 @@ const CMS_MODULES = [
     ['membership_applications', 'Mitgliedsanträge'],
     ['user_management', 'Benutzerverwaltung'],
 ];
+
+const EVENT_SCHEDULE_KIND_LABELS = {event: 'Veranstaltung', work_assignment: 'Arbeitseinsatz'};
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
@@ -109,6 +112,42 @@ const flattenPageTree = (nodes, depth = 0) => nodes.flatMap((node) => [
     {page: node, depth},
     ...flattenPageTree(node.children, depth + 1),
 ]);
+
+/**
+ * Buckets items with a `YYYY-MM-DD` date (and `HH:MM` time) into „Heute“, „Kommende“,
+ * „Abgeschlossen (aktuelles Jahr)“ and an archive grouped by year — the grouping used by the
+ * „Veranstaltungshelfer“ and „Veranstaltungen“ admin modules.
+ */
+const bucketItemsByDate = (items, getDate, getTime) => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const today = [currentYear, now.getMonth() + 1, now.getDate()]
+        .map((part, index) => index === 0 ? String(part) : String(part).padStart(2, '0'))
+        .join('-');
+    const compareAscending = (first, second) => {
+        const dateComparison = getDate(first).localeCompare(getDate(second));
+
+        return dateComparison !== 0 ? dateComparison : getTime(first).localeCompare(getTime(second));
+    };
+    const compareDescending = (first, second) => compareAscending(second, first);
+    const todayItems = items.filter((item) => getDate(item) === today).sort(compareAscending);
+    const upcomingItems = items.filter((item) => getDate(item) > today).sort(compareAscending);
+    const completedCurrentYearItems = items
+        .filter((item) => getDate(item) < today && Number.parseInt(getDate(item).slice(0, 4), 10) === currentYear)
+        .sort(compareDescending);
+    const archiveByYear = items
+        .filter((item) => getDate(item) < today && Number.parseInt(getDate(item).slice(0, 4), 10) < currentYear)
+        .reduce((years, item) => {
+            const year = Number.parseInt(getDate(item).slice(0, 4), 10);
+            if (!years.has(year)) years.set(year, []);
+            years.get(year).push(item);
+
+            return years;
+        }, new Map());
+    archiveByYear.forEach((yearItems) => yearItems.sort(compareDescending));
+
+    return {currentYear, todayItems, upcomingItems, completedCurrentYearItems, archiveByYear};
+};
 
 const encodePageSlug = (slug) => slug.split('/').map((segment) => encodeURIComponent(segment)).join('/');
 const pageHref = (slug) => slug === 'startseite' ? '/' : '/seite/' + encodePageSlug(slug);
@@ -527,6 +566,10 @@ const openEventHelpDialog = async (block) => {
             type: 'checkbox', name: 'activityIds', value: activity.id,
             ...(isFull ? {disabled: 'disabled'} : {}),
         }});
+        const scheduleParts = [];
+        if (activity.time) scheduleParts.push(`Uhrzeit: ${activity.time}`);
+        if (activity.meetTime) scheduleParts.push(`Treffzeit: ${activity.meetTime}`);
+        if (activity.meetPlace) scheduleParts.push(`Treffpunkt: ${activity.meetPlace}`);
         return element('label', {className: `event-activity-choice${isFull ? ' is-full' : ''}`, children: [
             input,
             element('span', {children: [
@@ -535,6 +578,8 @@ const openEventHelpDialog = async (block) => {
                     ? `Belegt · ${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`
                     : `${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`}),
                 ...(activity.description ? [element('small', {text: activity.description})] : []),
+                ...(scheduleParts.length ? [element('small', {className: 'event-activity-schedule', text: scheduleParts.join(' · ')})] : []),
+                ...(activity.remark ? [element('small', {className: 'event-activity-remark', text: activity.remark})] : []),
             ]}),
         ]});
     });
@@ -604,9 +649,55 @@ const renderImageSource = (source) => source
     ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
     : null;
 
+const renderEventScheduleExtension = (kind, context) => {
+    const container = element('section', {className: 'event-schedule-extension', attributes: {'aria-live': 'polite'}});
+    const emptyMessage = kind === 'work_assignment'
+        ? 'Aktuell sind keine Arbeitseinsätze für dieses Jahr eingetragen.'
+        : 'Aktuell sind keine Veranstaltungen für dieses Jahr eingetragen.';
+    if (context.isPreview) {
+        container.append(element('p', {className: 'empty-copy', text: emptyMessage}));
+        return container;
+    }
+    request(`/api/public/v1/events?kind=${encodeURIComponent(kind)}`).then((data) => {
+        const items = data.items || [];
+        if (!items.length) {
+            container.replaceChildren(element('p', {className: 'empty-copy', text: emptyMessage}));
+            return;
+        }
+        container.replaceChildren(...items.map((item) => renderPublicBlock({
+            type: 'event',
+            content: item.content,
+            mediaUrl: item.mediaUrl,
+            mediaAlt: item.mediaAlt,
+            mediaSource: item.mediaSource,
+            layout: item.layout,
+            imageWidthPercent: item.imageWidthPercent,
+            verticalAlignment: item.verticalAlignment,
+            textAlignment: item.textAlignment,
+            imageFit: item.imageFit,
+            eventTitle: item.title,
+            eventDate: item.date,
+            eventTime: item.time,
+            eventIdentifier: item.id,
+            eventHelpEnabled: item.helpEnabled,
+            eventHelpButtonLabel: item.helpButtonLabel,
+            eventCallToActions: item.callToActions,
+        }, context)));
+    }).catch(() => {
+        container.replaceChildren(...(context.showEmbedErrors
+            ? [element('p', {className: 'embedded-page-error', text: 'Die Veranstaltungen konnten nicht geladen werden.'})]
+            : []));
+    });
+
+    return container;
+};
+
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
+    }
+    if (block.type === 'extension' && (block.extensionKey === 'events_current_year' || block.extensionKey === 'work_assignments_current_year')) {
+        return renderEventScheduleExtension(block.extensionKey === 'events_current_year' ? 'event' : 'work_assignment', context);
     }
     if (block.type === 'page_teaser') {
         const container = element('section', {className: 'page-teaser-loading', attributes: {'aria-live': 'polite'}});
@@ -1802,6 +1893,8 @@ const blockEditor = (block, index, handlers) => {
     } else if (block.type === 'extension') {
         const select = element('select', {attributes: {id: 'block-extension-' + index}, children: [
             element('option', {text: 'Mitgliedsantrag', attributes: {value: 'membership_application'}}),
+            element('option', {text: 'Veranstaltungen: aktuelles Jahr', attributes: {value: 'events_current_year'}}),
+            element('option', {text: 'Arbeitseinsätze: aktuelles Jahr', attributes: {value: 'work_assignments_current_year'}}),
         ]});
         select.value = block.extensionKey || 'membership_application';
         block.extensionKey = select.value;
@@ -2849,37 +2942,10 @@ const renderAdmin = async () => {
             })}),
             ]});
         };
-        const compareAscending = (first, second) => {
-            const dateComparison = first.event.eventDate.localeCompare(second.event.eventDate);
-            if (dateComparison !== 0) return dateComparison;
-
-            return first.event.eventTime.localeCompare(second.event.eventTime);
-        };
-        const compareDescending = (first, second) => compareAscending(second, first);
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const today = [currentYear, now.getMonth() + 1, now.getDate()]
-            .map((part, index) => index === 0 ? String(part) : String(part).padStart(2, '0'))
-            .join('-');
-        const allGroups = [...groups.values()];
-        const todayGroups = allGroups
-            .filter(({event}) => event.eventDate === today)
-            .sort(compareAscending);
-        const upcomingGroups = allGroups
-            .filter(({event}) => event.eventDate > today)
-            .sort(compareAscending);
-        const completedCurrentYearGroups = allGroups
-            .filter(({event}) => event.eventDate < today && Number.parseInt(event.eventDate.slice(0, 4), 10) === currentYear)
-            .sort(compareDescending);
-        const archiveGroups = allGroups
-            .filter(({event}) => event.eventDate < today && Number.parseInt(event.eventDate.slice(0, 4), 10) < currentYear)
-            .reduce((years, group) => {
-                const year = Number.parseInt(group.event.eventDate.slice(0, 4), 10);
-                if (!years.has(year)) years.set(year, []);
-                years.get(year).push(group);
-
-                return years;
-            }, new Map());
+        const {
+            currentYear, todayItems: todayGroups, upcomingItems: upcomingGroups,
+            completedCurrentYearItems: completedCurrentYearGroups, archiveByYear: archiveGroups,
+        } = bucketItemsByDate([...groups.values()], (group) => group.event.eventDate, (group) => group.event.eventTime);
         const eventSection = (title, eventGroups, modifier = '') => element('section', {
             className: `event-helper-section ${modifier}`.trim(),
             children: [
@@ -2905,7 +2971,7 @@ const renderAdmin = async () => {
                 : []),
             ...[...archiveGroups.entries()]
                 .sort(([firstYear], [secondYear]) => secondYear - firstYear)
-                .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups.sort(compareDescending))),
+                .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups)),
         ];
         workspace.replaceChildren(
             sectionHeading('Veranstaltungshelfer', 'Anmeldungen nach Veranstaltung gruppiert verwalten'),
@@ -2983,66 +3049,66 @@ const renderAdmin = async () => {
         );
     };
 
+    const openActivityDialog = (activity, onSaved) => {
+        const dialog = element('dialog', {className: 'activity-dialog'});
+        const name = field('Bezeichnung', `activity-name-${activity?.id || 'new'}`, activity?.name || '');
+        const description = field('Beschreibung (optional)', `activity-description-${activity?.id || 'new'}`, activity?.description || '', 'textarea');
+        const active = element('input', {attributes: {type: 'checkbox'}});
+        active.checked = activity?.active !== false;
+        const message = formMessage();
+        const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const form = element('form', {className: 'activity-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: activity ? 'Aktivität bearbeiten' : 'Neue Aktivität'}),
+                    element('h2', {text: activity?.name || 'Aktivität anlegen'}),
+                ]}),
+            ]}),
+            name,
+            description,
+            element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+        ]});
+        name.querySelector('input').required = true;
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            try {
+                await request(activity ? `/api/admin/v1/event-activities/${activity.id}` : '/api/admin/v1/event-activities', {
+                    method: activity ? 'PUT' : 'POST',
+                    body: JSON.stringify({
+                        name: name.querySelector('input').value,
+                        description: description.querySelector('textarea').value,
+                        active: active.checked,
+                    }),
+                });
+                toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                submit.disabled = false;
+            }
+        });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+        name.querySelector('input').focus();
+    };
+
     const showActivities = async () => {
         const data = await request('/api/admin/v1/event-activities');
-        const openActivityDialog = (activity = null) => {
-            const dialog = element('dialog', {className: 'activity-dialog'});
-            const name = field('Bezeichnung', `activity-name-${activity?.id || 'new'}`, activity?.name || '');
-            const description = field('Beschreibung (optional)', `activity-description-${activity?.id || 'new'}`, activity?.description || '', 'textarea');
-            const active = element('input', {attributes: {type: 'checkbox'}});
-            active.checked = activity?.active !== false;
-            const message = formMessage();
-            const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
-            const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
-            const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
-            const form = element('form', {className: 'activity-dialog-content', children: [
-                element('header', {children: [
-                    element('div', {children: [
-                        element('p', {className: 'eyebrow', text: activity ? 'Aktivität bearbeiten' : 'Neue Aktivität'}),
-                        element('h2', {text: activity?.name || 'Aktivität anlegen'}),
-                    ]}),
-                ]}),
-                name,
-                description,
-                element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
-                message,
-                element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
-            ]});
-            name.querySelector('input').required = true;
-            cancel.addEventListener('click', () => dialog.close());
-            close.addEventListener('click', () => dialog.close());
-            form.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                submit.disabled = true;
-                try {
-                    await request(activity ? `/api/admin/v1/event-activities/${activity.id}` : '/api/admin/v1/event-activities', {
-                        method: activity ? 'PUT' : 'POST',
-                        body: JSON.stringify({
-                            name: name.querySelector('input').value,
-                            description: description.querySelector('textarea').value,
-                            active: active.checked,
-                        }),
-                    });
-                    toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
-                    dialog.close();
-                    await showActivities();
-                } catch (error) {
-                    message.textContent = error.message;
-                    toast(error.message, 'error');
-                    submit.disabled = false;
-                }
-            });
-            dialog.addEventListener('close', () => dialog.remove());
-            dialog.append(close, form);
-            document.body.append(dialog);
-            dialog.showModal();
-            name.querySelector('input').focus();
-        };
-
         const heading = sectionHeading('Aktivitäten', 'Wiederverwendbare Tätigkeiten für Veranstaltungen und gemeinsame Arbeitseinsätze');
         if (canEditModule('activities')) {
             const create = element('button', {className: 'button', text: '＋ Neue Aktivität', attributes: {type: 'button'}});
-            create.addEventListener('click', () => openActivityDialog());
+            create.addEventListener('click', () => openActivityDialog(null, showActivities));
             heading.append(create);
         }
         const rows = data.items.map((activity) => {
@@ -3058,7 +3124,7 @@ const renderAdmin = async () => {
                     ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
             });
-            if (canEditModule('activities')) row.addEventListener('click', () => openActivityDialog(activity));
+            if (canEditModule('activities')) row.addEventListener('click', () => openActivityDialog(activity, showActivities));
             return row;
         });
         workspace.replaceChildren(
@@ -3066,6 +3132,376 @@ const renderAdmin = async () => {
             element('div', {className: 'activity-list', children: data.items.length
                 ? rows
                 : [emptyState('Noch keine Aktivitäten angelegt.')]}),
+        );
+    };
+
+    const openEventDialog = (schedule, kind, onSaved, handlers) => {
+        const draft = {
+            content: schedule?.content || '',
+            mediaUrl: schedule?.mediaUrl || null,
+            mediaAlt: schedule?.mediaAlt || null,
+            mediaSource: schedule?.mediaSource || null,
+        };
+        const effectiveKind = schedule?.kind || kind;
+        const dialogKey = schedule?.id || 'new';
+        const dialog = element('dialog', {className: 'event-schedule-dialog'});
+
+        const title = field('Überschrift', 'event-title-' + dialogKey, schedule?.title || '');
+        const date = field('Datum', 'event-date-' + dialogKey, schedule?.date || '', 'date');
+        const time = field('Uhrzeit', 'event-time-' + dialogKey, schedule?.time || '14:00', 'time');
+        title.querySelector('input').required = true;
+        date.querySelector('input').required = true;
+        time.querySelector('input').required = true;
+
+        const visible = element('input', {attributes: {type: 'checkbox'}});
+        visible.checked = schedule ? schedule.visible !== false : true;
+
+        const helpEnabled = element('input', {attributes: {type: 'checkbox'}});
+        helpEnabled.checked = schedule ? schedule.helpEnabled === true : effectiveKind === 'work_assignment';
+        const helpLabel = field('Beschriftung des Buttons', 'event-help-label-' + dialogKey, schedule?.helpButtonLabel || 'Ich möchte helfen!');
+        const helpLabelInput = helpLabel.querySelector('input');
+
+        let activityCatalog = (handlers.activities || []).slice();
+        const activities = (schedule?.activities || []).map((activity) => ({...activity}));
+        const activityList = element('div', {className: 'event-activity-editor-list'});
+        const renderActivityRows = () => {
+            activityList.replaceChildren(...activities.map((assignment, assignmentIndex) => {
+                const select = element('select', {attributes: {'aria-label': 'Aktivität'}});
+                activityCatalog.forEach((activity) => {
+                    if (!activity.active && activity.id !== assignment.activityId) return;
+                    if (activity.id !== assignment.activityId && activities.some((item) => item.activityId === activity.id)) return;
+                    select.append(element('option', {text: `${activity.name}${activity.active ? '' : ' (inaktiv)'}`, attributes: {value: activity.id}}));
+                });
+                select.value = assignment.activityId;
+                select.addEventListener('change', () => assignment.activityId = select.value);
+                const count = element('input', {className: 'event-activity-detail-input', attributes: {
+                    type: 'number', min: '1', max: '999', value: String(assignment.requiredHelpers || 1),
+                    'aria-label': 'Benötigte Helfer', title: 'Benötigte Helfer',
+                }});
+                const setCount = (value) => {
+                    const normalized = Math.min(999, Math.max(1, value || 1));
+                    count.value = String(normalized);
+                    assignment.requiredHelpers = normalized;
+                };
+                count.addEventListener('input', () => setCount(Number.parseInt(count.value, 10)));
+                count.addEventListener('blur', () => setCount(Number.parseInt(count.value, 10)));
+                const timeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Uhrzeit der Aktivität', title: 'Uhrzeit'}});
+                timeInput.value = assignment.time || '';
+                timeInput.addEventListener('input', () => assignment.time = timeInput.value || null);
+                const meetTimeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Treffzeit (optional)', title: 'Treffzeit'}});
+                meetTimeInput.value = assignment.meetTime || '';
+                meetTimeInput.addEventListener('input', () => assignment.meetTime = meetTimeInput.value || null);
+                const meetPlaceInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', placeholder: 'Treffort (optional)', 'aria-label': 'Treffort (optional)'}});
+                meetPlaceInput.value = assignment.meetPlace || '';
+                meetPlaceInput.addEventListener('input', () => assignment.meetPlace = meetPlaceInput.value || null);
+                const remarkInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', placeholder: 'Bemerkung (optional)', 'aria-label': 'Bemerkung (optional)'}});
+                remarkInput.value = assignment.remark || '';
+                remarkInput.addEventListener('input', () => assignment.remark = remarkInput.value || null);
+                const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Zuordnung entfernen', 'aria-label': 'Zuordnung entfernen'}});
+                remove.addEventListener('click', () => {
+                    activities.splice(assignmentIndex, 1);
+                    renderActivityRows();
+                });
+
+                return element('div', {className: 'event-schedule-activity-row', children: [
+                    select, count, timeInput, meetTimeInput, meetPlaceInput, remarkInput,
+                    remove,
+                ]});
+            }));
+        };
+        const addActivity = element('button', {className: 'secondary-button', text: '＋ Aktivität zuordnen', attributes: {type: 'button'}});
+        addActivity.addEventListener('click', () => {
+            const available = activityCatalog.find((activity) => activity.active && !activities.some((item) => item.activityId === activity.id));
+            if (!available) {
+                toast('Keine weitere aktive Aktivität verfügbar.', 'error');
+                return;
+            }
+            activities.push({activityId: available.id, requiredHelpers: 1, time: null, meetTime: null, meetPlace: null, remark: null});
+            renderActivityRows();
+        });
+        const addNewActivity = element('button', {className: 'secondary-button', text: '＋ Neue Aktivität anlegen', attributes: {type: 'button'}});
+        addNewActivity.addEventListener('click', () => {
+            const knownIds = new Set(activityCatalog.map((activity) => activity.id));
+            openActivityDialog(null, async () => {
+                const refreshed = await request('/api/admin/v1/event-activities');
+                activityCatalog = refreshed.items;
+                handlers.activities = refreshed.items;
+                const createdActivity = activityCatalog.find((activity) => !knownIds.has(activity.id));
+                if (createdActivity) {
+                    activities.push({activityId: createdActivity.id, requiredHelpers: 1, time: null, meetTime: null, meetPlace: null, remark: null});
+                }
+                toast('Aktivität wurde angelegt und zugeordnet.');
+                renderActivityRows();
+            });
+        });
+        renderActivityRows();
+        const activityEditor = element('fieldset', {className: 'event-activity-editor', children: [
+            element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
+            element('small', {text: 'Uhrzeit, Treffzeit, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt.'}),
+            activityList,
+            element('div', {className: 'event-activity-editor-actions', children: [addActivity, addNewActivity]}),
+        ]});
+        const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
+        helpConfiguration.hidden = !helpEnabled.checked;
+        helpEnabled.addEventListener('change', () => helpConfiguration.hidden = !helpEnabled.checked);
+
+        const callToActions = (schedule?.callToActions || []).map((action) => ({...action}));
+        const actionList = element('div', {className: 'event-call-action-editor-list'});
+        const renderActions = () => {
+            actionList.replaceChildren(...callToActions.map((action, actionIndex) => {
+                const label = field('Button-Beschriftung', `event-action-label-${dialogKey}-${actionIndex}`, action.label || 'Mehr erfahren');
+                const labelInput = label.querySelector('input');
+                labelInput.maxLength = 80;
+                labelInput.required = true;
+                labelInput.addEventListener('input', () => action.label = labelInput.value);
+
+                const targetType = element('select', {attributes: {'aria-label': 'Art des Linkziels'}, children: [
+                    element('option', {text: 'URL verlinken', attributes: {value: 'url'}}),
+                    element('option', {text: 'CMS-Seite verlinken', attributes: {value: 'page'}}),
+                ]});
+                targetType.value = action.pageId ? 'page' : 'url';
+                const targetField = element('div', {className: 'event-call-action-target'});
+                const renderTarget = () => {
+                    if (targetType.value === 'page') {
+                        const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
+                        pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
+                        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
+                            pageSelect.append(element('option', {
+                                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
+                                attributes: {value: candidate.id},
+                            }));
+                        });
+                        pageSelect.value = action.pageId || '';
+                        pageSelect.required = true;
+                        pageSelect.addEventListener('change', () => action.pageId = pageSelect.value || null);
+                        targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                        return;
+                    }
+                    const url = field('URL', `event-action-url-${dialogKey}-${actionIndex}`, action.url || '/');
+                    const urlInput = url.querySelector('input');
+                    urlInput.maxLength = 2048;
+                    urlInput.required = true;
+                    urlInput.addEventListener('input', () => action.url = urlInput.value);
+                    targetField.replaceChildren(url);
+                };
+                targetType.addEventListener('change', () => {
+                    if (targetType.value === 'page') {
+                        action.url = null;
+                    } else {
+                        action.pageId = null;
+                        action.url = '/';
+                    }
+                    renderTarget();
+                });
+                renderTarget();
+                const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Aktionsbutton entfernen', 'aria-label': 'Aktionsbutton entfernen'}});
+                remove.addEventListener('click', () => {
+                    callToActions.splice(actionIndex, 1);
+                    renderActions();
+                });
+
+                return element('div', {className: 'event-call-action-editor-row', children: [
+                    label,
+                    element('label', {className: 'field', children: [element('span', {text: 'Linkziel'}), targetType]}),
+                    targetField,
+                    remove,
+                ]});
+            }));
+        };
+        const addAction = element('button', {className: 'secondary-button', text: '＋ Aktionsbutton hinzufügen', attributes: {type: 'button'}});
+        addAction.addEventListener('click', () => {
+            callToActions.push({label: 'Mehr erfahren', url: '/', pageId: null});
+            renderActions();
+        });
+        renderActions();
+
+        const message = formMessage();
+        const submit = element('button', {
+            className: 'button',
+            text: schedule ? 'Änderungen speichern' : (effectiveKind === 'work_assignment' ? 'Arbeitseinsatz anlegen' : 'Veranstaltung anlegen'),
+            attributes: {type: 'submit'},
+        });
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const actions = [cancel, submit];
+        if (schedule) {
+            const deleteButton = element('button', {className: 'text-button danger', text: 'Löschen', attributes: {type: 'button'}});
+            deleteButton.addEventListener('click', async () => {
+                const confirmed = await confirmAction(
+                    `„${schedule.title}“ löschen?`,
+                    'Der Eintrag wird endgültig entfernt. Bereits eingegangene Helferanmeldungen bleiben im Modul „Veranstaltungshelfer“ einsehbar.',
+                    'Löschen',
+                );
+                if (!confirmed) return;
+                try {
+                    await request('/api/admin/v1/events/' + schedule.id, {method: 'DELETE'});
+                    toast('Der Eintrag wurde gelöscht.');
+                    dialog.close();
+                    await onSaved();
+                } catch (error) {
+                    toast(error.message, 'error');
+                }
+            });
+            actions.unshift(deleteButton);
+        }
+
+        const form = element('form', {className: 'event-schedule-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: EVENT_SCHEDULE_KIND_LABELS[effectiveKind] || effectiveKind}),
+                    element('h2', {text: schedule ? schedule.title : (effectiveKind === 'work_assignment' ? 'Arbeitseinsatz anlegen' : 'Veranstaltung anlegen')}),
+                ]}),
+            ]}),
+            title,
+            element('div', {className: 'form-grid', children: [date, time]}),
+            element('div', {className: 'field', children: [
+                element('span', {text: 'Zusatzinformationen (optional)'}),
+                richTextEditor(draft, 'event-' + dialogKey, null, 'Zusatzinformationen zur Veranstaltung'),
+            ]}),
+            collectionItemMediaEditor(draft, 'event-' + dialogKey),
+            element('label', {className: 'check-field', children: [visible, element('span', {text: 'Im Frontend sichtbar'})]}),
+            element('label', {className: 'check-field event-help-option', children: [
+                helpEnabled,
+                element('span', {text: 'Im Frontend den Button „Ich möchte helfen!“ mit Anmeldeformular anzeigen'}),
+            ]}),
+            helpConfiguration,
+            element('fieldset', {className: 'event-call-action-editor', children: [
+                element('legend', {text: 'Weitere Aktionsbuttons'}),
+                element('small', {text: 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.'}),
+                actionList,
+                addAction,
+            ]}),
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: actions}),
+        ]});
+
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            try {
+                const payload = {
+                    title: title.querySelector('input').value,
+                    date: date.querySelector('input').value,
+                    time: time.querySelector('input').value,
+                    content: draft.content,
+                    mediaUrl: draft.mediaUrl,
+                    mediaAlt: draft.mediaAlt,
+                    mediaSource: draft.mediaSource,
+                    helpEnabled: helpEnabled.checked,
+                    helpButtonLabel: helpLabelInput.value || null,
+                    visible: visible.checked,
+                    activities,
+                    callToActions,
+                };
+                if (schedule) {
+                    await request('/api/admin/v1/events/' + schedule.id, {method: 'PUT', body: JSON.stringify(payload)});
+                    toast('Änderungen wurden gespeichert.');
+                } else {
+                    await request('/api/admin/v1/events', {method: 'POST', body: JSON.stringify({...payload, kind: effectiveKind})});
+                    toast(effectiveKind === 'work_assignment' ? 'Arbeitseinsatz wurde angelegt.' : 'Veranstaltung wurde angelegt.');
+                }
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                submit.disabled = false;
+            }
+        });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+        title.querySelector('input').focus();
+    };
+
+    let eventScheduleKindFilter = '';
+    const showEvents = async () => {
+        const [scheduleData, activityData] = await Promise.all([
+            request('/api/admin/v1/events'),
+            request('/api/admin/v1/event-activities'),
+        ]);
+        let pages = [];
+        try {
+            pages = (await request('/api/admin/v1/pages')).items;
+        } catch {
+            pages = [];
+        }
+        const handlers = {activities: activityData.items, pages};
+
+        const filterSelect = element('select', {attributes: {'aria-label': 'Nach Art filtern'}, children: [
+            element('option', {text: 'Alle', attributes: {value: ''}}),
+            element('option', {text: 'Nur Veranstaltungen', attributes: {value: 'event'}}),
+            element('option', {text: 'Nur Arbeitseinsätze', attributes: {value: 'work_assignment'}}),
+        ]});
+        filterSelect.value = eventScheduleKindFilter;
+        filterSelect.addEventListener('change', async () => {
+            eventScheduleKindFilter = filterSelect.value;
+            await showEvents();
+        });
+
+        const items = scheduleData.items.filter((item) => !eventScheduleKindFilter || item.kind === eventScheduleKindFilter);
+
+        const renderRow = (item) => {
+            const row = element('button', {
+                className: `activity-list-row event-kind-${item.kind}${item.visible ? '' : ' is-inactive'}`,
+                attributes: {type: 'button', ...(canEditModule('events') ? {} : {disabled: 'disabled'})},
+                children: [
+                    element('span', {className: 'activity-list-copy', children: [
+                        element('strong', {text: item.title}),
+                        element('small', {text: `${new Date(`${item.date}T00:00:00`).toLocaleDateString('de-DE')} · ${item.time} Uhr`}),
+                    ]}),
+                    element('span', {className: `status-badge event-kind-badge-${item.kind}`, text: EVENT_SCHEDULE_KIND_LABELS[item.kind] || item.kind}),
+                    ...(item.visible ? [] : [element('span', {className: 'status-badge status-inactive', text: 'Ausgeblendet'})]),
+                    ...(canEditModule('events') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
+                ],
+            });
+            if (canEditModule('events')) row.addEventListener('click', () => openEventDialog(item, item.kind, showEvents, handlers));
+            return row;
+        };
+
+        const {currentYear, todayItems, upcomingItems, completedCurrentYearItems, archiveByYear} =
+            bucketItemsByDate(items, (item) => item.date, (item) => item.time);
+        const section = (title, sectionItems, modifier = '') => element('section', {
+            className: `event-helper-section ${modifier}`.trim(),
+            children: [
+                element('div', {className: 'event-helper-section-heading', children: [
+                    element('h3', {text: title}),
+                    element('span', {className: 'status-badge', text: String(sectionItems.length)}),
+                ]}),
+                element('div', {className: 'activity-list', children: sectionItems.map(renderRow)}),
+            ],
+        });
+        const archive = (title, sectionItems) => element('details', {className: 'event-helper-archive', children: [
+            element('summary', {children: [
+                element('strong', {text: title}),
+                element('span', {className: 'status-badge', text: String(sectionItems.length)}),
+            ]}),
+            element('div', {className: 'event-helper-archive-list', children: [element('div', {className: 'activity-list', children: sectionItems.map(renderRow)})]}),
+        ]});
+        const sections = [
+            ...(todayItems.length ? [section('Heute', todayItems, 'event-helper-section-today')] : []),
+            ...(upcomingItems.length ? [section('Kommende', upcomingItems)] : []),
+            ...(completedCurrentYearItems.length ? [archive(`Abgeschlossen ${currentYear}`, completedCurrentYearItems)] : []),
+            ...[...archiveByYear.entries()].sort(([firstYear], [secondYear]) => secondYear - firstYear)
+                .map(([year, yearItems]) => archive(`Archiv ${year}`, yearItems)),
+        ];
+
+        const heading = sectionHeading('Veranstaltungen', 'Veranstaltungen und Arbeitseinsätze verwalten');
+        if (canEditModule('events')) {
+            const createEvent = element('button', {className: 'button event-create-button event-create-event', text: '＋ Veranstaltung erstellen', attributes: {type: 'button'}});
+            const createWorkAssignment = element('button', {className: 'button event-create-button event-create-work-assignment', text: '＋ Arbeitseinsatz erstellen', attributes: {type: 'button'}});
+            createEvent.addEventListener('click', () => openEventDialog(null, 'event', showEvents, handlers));
+            createWorkAssignment.addEventListener('click', () => openEventDialog(null, 'work_assignment', showEvents, handlers));
+            heading.append(createEvent, createWorkAssignment);
+        }
+
+        workspace.replaceChildren(
+            heading,
+            element('div', {className: 'management-toolbar', children: [filterSelect, element('span', {text: `${items.length} Einträge`})]}),
+            element('div', {className: 'event-helper-groups', children: sections.length ? sections : [emptyState('Noch keine Veranstaltungen oder Arbeitseinsätze angelegt.')]}),
         );
     };
 
@@ -3084,6 +3520,7 @@ const renderAdmin = async () => {
     };
     const menuItems = [];
     if (hasModule('pages')) menuItems.push(addMenu('Seiten', showPages));
+    if (hasModule('events')) menuItems.push(addMenu('Veranstaltungen', showEvents));
     if (hasModule('activities')) menuItems.push(addMenu('Aktivitäten', showActivities));
     if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', showGuestbook));
     if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', showContact));

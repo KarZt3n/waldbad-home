@@ -20,6 +20,10 @@ readonly class PublicEventActivityController
                 'description' => $activity->description,
                 'requiredHelpers' => $activity->requiredHelpers,
                 'registeredHelpers' => $activity->registeredHelpers,
+                'time' => $activity->time,
+                'meetTime' => $activity->meetTime,
+                'meetPlace' => $activity->meetPlace,
+                'remark' => $activity->remark,
             ],
             $query->execute($eventIdentifier),
         )]);

@@ -893,7 +893,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     gap: 1rem;
 }
 
-.management-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0; }
+.management-toolbar { display: flex; width: 100%; max-width: 68rem; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem auto; }
 .management-toolbar select { width: min(20rem, 100%); }
 .membership-admin-card { border-left: .35rem solid var(--water-400); }
 .membership-admin-card.status-done { border-left-color: var(--forest-700); }
@@ -1267,7 +1267,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .selected-activity-list { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 .activity-chip { background: #e1f1e8; border-radius: 999px; padding: .3rem .65rem; font-size: .9rem; }
 .section-heading > .button { margin-top: 1rem; }
-.activity-list { display: grid; max-width: 68rem; margin: 0 auto; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; background: var(--white); box-shadow: 0 .45rem 1.4rem rgb(11 46 32 / 8%); }
+.activity-list { display: grid; width: 100%; max-width: 68rem; margin: 0 auto; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; background: var(--white); box-shadow: 0 .45rem 1.4rem rgb(11 46 32 / 8%); }
 .activity-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1rem; align-items: center; width: 100%; padding: 1.1rem 1.25rem; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .activity-list-row:last-child { border-bottom: 0; }
 .activity-list-row:hover { background: #f2f8f4; }
@@ -1287,6 +1287,34 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .activity-dialog-content { display: grid; gap: 1rem; padding: 2rem; }
 .activity-dialog-content header h2 { margin: .2rem 0 0; }
 .activity-dialog-content textarea { min-height: 8rem; }
+
+/* Modul „Veranstaltungen“ (Events & Arbeitseinsätze) */
+.event-create-button { margin-left: .6rem; }
+.event-create-event { background: var(--forest-700); }
+.event-create-event:hover { background: var(--forest-800); }
+.event-create-work-assignment { color: var(--forest-950); background: var(--sun-400); }
+.event-create-work-assignment:hover { background: #e9c530; }
+.activity-list-row.event-kind-event { border-left: .3rem solid var(--forest-700); }
+.activity-list-row.event-kind-work_assignment { border-left: .3rem solid var(--sun-400); }
+.status-badge.event-kind-badge-event { color: var(--white); background: var(--forest-700); }
+.status-badge.event-kind-badge-work_assignment { color: var(--forest-950); background: var(--sun-400); }
+.event-schedule-dialog { width: min(52rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 1rem; color: var(--ink); background: var(--white); box-shadow: var(--shadow); }
+.event-schedule-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.event-schedule-dialog-content { display: grid; width: 100%; min-width: 0; gap: 1rem; padding: 2rem; overflow-x: hidden; overflow-y: auto; }
+.event-schedule-dialog-content > * { min-width: 0; }
+.event-schedule-dialog-content header h2 { margin: .2rem 0 0; }
+.event-schedule-activity-row { display: grid; grid-template-columns: minmax(10rem, 1.4fr) 4.5rem 6rem 6rem minmax(8rem, 1fr) minmax(8rem, 1fr) auto; gap: .5rem; align-items: center; }
+.event-schedule-activity-row select,
+.event-schedule-activity-row input.event-activity-detail-input { width: 100%; padding: .5rem .6rem; border: 1px solid #aabbb0; border-radius: .5rem; font: inherit; }
+.event-activity-editor-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .6rem; }
+.event-activity-schedule { color: var(--forest-700); }
+.event-activity-remark { font-style: italic; }
+.event-schedule-extension { display: grid; gap: 1.5rem; }
+
+@media (max-width: 640px) {
+    .event-schedule-activity-row { grid-template-columns: 1fr auto; padding-top: .75rem; border-top: 1px solid var(--line); }
+    .event-schedule-activity-row .tree-icon-button { grid-column: 2; grid-row: 1; }
+}
 
 @media (max-width: 640px) {
     .event-activity-editor-head { display: none; }
