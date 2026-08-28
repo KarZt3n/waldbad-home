@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: waldbad-home-stage
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ permissions:
 jobs:
   deploy:
     name: Deploy waldbad-home stage
-    runs-on: [self-hosted, linux, x64, waldbad-stage]
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 30
     environment: stage
     steps:
@@ -28,4 +28,3 @@ jobs:
 
       - name: Healthcheck
         run: curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8083/api/public/v1/navigation >/dev/null
-
