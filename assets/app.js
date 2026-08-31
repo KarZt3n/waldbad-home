@@ -1,6 +1,30 @@
 import './styles/app.css';
 
 const app = document.querySelector('#app');
+
+// Verhindert, dass die Seite im Hintergrund scrollt, solange ein <dialog> geöffnet ist (nur das
+// Overlay selbst soll scrollbar sein) – reagiert automatisch auf jedes showModal()/close(), ohne
+// dass jede einzelne Dialogfunktion das selbst verwalten muss.
+let dialogScrollLockActive = false;
+let dialogScrollLockPosition = 0;
+const updateDialogScrollLock = () => {
+    const anyDialogOpen = document.querySelector('dialog[open]') !== null;
+    if (anyDialogOpen === dialogScrollLockActive) return;
+    dialogScrollLockActive = anyDialogOpen;
+    if (anyDialogOpen) {
+        dialogScrollLockPosition = window.scrollY;
+        document.body.style.top = `-${dialogScrollLockPosition}px`;
+        document.body.classList.add('dialog-open');
+    } else {
+        document.body.classList.remove('dialog-open');
+        document.body.style.top = '';
+        window.scrollTo(0, dialogScrollLockPosition);
+    }
+};
+new MutationObserver(updateDialogScrollLock).observe(document.documentElement, {
+    attributes: true, attributeFilter: ['open'], subtree: true,
+});
+
 let csrfToken = null;
 let currentRoles = [];
 let currentModuleAccess = {};
@@ -642,7 +666,6 @@ const openEventHelpDialog = async (block) => {
     dialog.append(close, form);
     document.body.append(dialog);
     dialog.showModal();
-    form.querySelector('[name="firstName"]').focus();
 };
 
 const renderImageSource = (source) => source
@@ -1336,8 +1359,6 @@ const richTextEditor = (block, index, onChange = null, ariaLabel = 'Rich-Text-In
         dialog.append(form);
         document.body.append(dialog);
         dialog.showModal();
-        rows.focus();
-        rows.select();
     });
 
     const toggle = element('button', {className: 'editor-tool html-toggle', text: 'HTML', attributes: {type: 'button', title: 'HTML-Quelltext bearbeiten'}});
@@ -2950,7 +2971,6 @@ const renderAdmin = async () => {
             dialog.append(form);
             document.body.append(dialog);
             dialog.showModal();
-            intervalList.querySelector('[data-interval-from]').focus();
         };
         const participationStatus = (requestItem) => {
             if (requestItem.status === 'participated') {
@@ -3217,7 +3237,6 @@ const renderAdmin = async () => {
         dialog.append(close, form);
         document.body.append(dialog);
         dialog.showModal();
-        name.querySelector('input').focus();
     };
 
     const showActivities = async () => {
@@ -3612,7 +3631,6 @@ const renderAdmin = async () => {
         dialog.append(close, form);
         document.body.append(dialog);
         dialog.showModal();
-        title.querySelector('input').focus();
     };
 
     let eventScheduleKindFilter = '';

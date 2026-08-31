@@ -27,6 +27,16 @@ body {
     background: var(--sand-50);
 }
 
+/* Solange ein <dialog> offen ist, soll nur das Overlay selbst scrollbar sein, nicht die Seite
+   dahinter (besonders auf Mobilgeräten sonst spürbar). Wird automatisch von app.js gesetzt. */
+body.dialog-open {
+    position: fixed;
+    right: 0;
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
 button, input, textarea, select { font: inherit; }
 a { color: var(--forest-700); }
 :focus-visible { outline: 3px solid var(--water-400); outline-offset: 3px; }
@@ -562,6 +572,7 @@ a { color: var(--forest-700); }
 
 .field {
     display: grid;
+    min-width: 0;
     gap: .4rem;
     color: var(--forest-900);
     font-weight: 700;
@@ -569,6 +580,7 @@ a { color: var(--forest-700); }
 
 .field input, .field textarea, select {
     width: 100%;
+    min-width: 0;
     padding: .8rem;
     border: 1px solid #aabbb0;
     border-radius: .55rem;
@@ -578,6 +590,11 @@ a { color: var(--forest-700); }
 }
 
 .field textarea { min-height: 7rem; resize: vertical; }
+
+/* Native Datum-/Uhrzeit-Eingaben bringen browserabhängig eine eigene Mindestbreite mit (u. a.
+   für Kalender-/Uhr-Icon) und würden sonst breiter wirken als die übrigen Eingabefelder im
+   selben Formularraster. */
+.field input[type="date"], .field input[type="time"] { min-width: 0; max-width: 100%; }
 .form-message { min-height: 1.5em; color: var(--danger); }
 .form-message.success { color: var(--forest-700); }
 
