@@ -12,6 +12,7 @@ readonly class EventActivityResponse
         public string $description,
         public bool $active,
         public ?int $defaultRequiredHelpers,
+        public bool $alwaysIncluded,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -25,6 +26,7 @@ readonly class EventActivityResponse
             description: $activity->description,
             active: $activity->active,
             defaultRequiredHelpers: $activity->defaultRequiredHelpers,
+            alwaysIncluded: $activity->alwaysIncluded,
             createdAt: $activity->createdAt,
             updatedAt: $activity->updatedAt,
         );

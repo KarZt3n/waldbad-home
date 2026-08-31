@@ -15,6 +15,7 @@ readonly class EventActivityMapper
             description: $entity->getDescription(),
             active: $entity->isActive(),
             defaultRequiredHelpers: $entity->getDefaultRequiredHelpers(),
+            alwaysIncluded: $entity->isAlwaysIncluded(),
             createdAt: $entity->getCreatedAt(),
             updatedAt: $entity->getUpdatedAt(),
         );
@@ -28,6 +29,7 @@ readonly class EventActivityMapper
             description: $activity->description,
             active: $activity->active,
             defaultRequiredHelpers: $activity->defaultRequiredHelpers,
+            alwaysIncluded: $activity->alwaysIncluded,
             createdAt: $activity->createdAt,
             updatedAt: $activity->updatedAt,
         );
@@ -35,6 +37,13 @@ readonly class EventActivityMapper
 
     public function updateEntity(EventActivity $activity, EventActivityEntity $entity): void
     {
-        $entity->update($activity->name, $activity->description, $activity->active, $activity->defaultRequiredHelpers, $activity->updatedAt);
+        $entity->update(
+            $activity->name,
+            $activity->description,
+            $activity->active,
+            $activity->defaultRequiredHelpers,
+            $activity->alwaysIncluded,
+            $activity->updatedAt,
+        );
     }
 }

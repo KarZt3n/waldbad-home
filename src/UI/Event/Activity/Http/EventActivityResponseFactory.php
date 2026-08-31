@@ -15,6 +15,7 @@ readonly class EventActivityResponseFactory
             'description' => $activity->description,
             'active' => $activity->active,
             'defaultRequiredHelpers' => $activity->defaultRequiredHelpers,
+            'alwaysIncluded' => $activity->alwaysIncluded,
             'createdAt' => $activity->createdAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $activity->updatedAt->format(\DateTimeInterface::ATOM),
         ];

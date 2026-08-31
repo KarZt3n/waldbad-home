@@ -3201,6 +3201,8 @@ const renderAdmin = async () => {
         defaultRequiredHelpersInput.max = '999';
         const active = element('input', {attributes: {type: 'checkbox'}});
         active.checked = activity?.active !== false;
+        const alwaysIncluded = element('input', {attributes: {type: 'checkbox'}});
+        alwaysIncluded.checked = activity?.alwaysIncluded === true;
         const message = formMessage();
         const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
         const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -3217,6 +3219,8 @@ const renderAdmin = async () => {
             defaultRequiredHelpers,
             element('small', {text: 'Wird beim Zuordnen der Aktivität zu einer Veranstaltung als Vorschlag für die benötigte Helferzahl übernommen.'}),
             element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
+            element('label', {className: 'check-field', children: [alwaysIncluded, element('span', {text: 'Immer in neue Veranstaltungen einbinden'})]}),
+            element('small', {text: 'Wird beim Anlegen einer neuen Veranstaltung automatisch zugeordnet.'}),
             message,
             element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
         ]});
@@ -3234,6 +3238,7 @@ const renderAdmin = async () => {
                         description: description.querySelector('textarea').value,
                         active: active.checked,
                         defaultRequiredHelpers: defaultRequiredHelpersInput.value === '' ? null : Number.parseInt(defaultRequiredHelpersInput.value, 10),
+                        alwaysIncluded: alwaysIncluded.checked,
                     }),
                 });
                 toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
@@ -3269,6 +3274,7 @@ const renderAdmin = async () => {
                         element('small', {text: activity.description || 'Keine Beschreibung hinterlegt.'}),
                         ...(activity.defaultRequiredHelpers ? [element('small', {text: `Standard: ${activity.defaultRequiredHelpers} Helfer`})] : []),
                     ]}),
+                    ...(activity.alwaysIncluded ? [element('span', {className: 'status-badge', text: 'Immer eingebunden'})] : []),
                     element('span', {className: `status-badge ${activity.active ? 'status-active' : 'status-inactive'}`, text: activity.active ? 'Aktiv' : 'Inaktiv'}),
                     ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
@@ -3311,7 +3317,17 @@ const renderAdmin = async () => {
         const helpLabelInput = helpLabel.querySelector('input');
 
         let activityCatalog = (handlers.activities || []).slice();
-        const activities = (schedule?.activities || []).map((activity) => ({...activity}));
+        // Bei einer neuen Veranstaltung werden alle als „immer einbinden“ markierten Aktivitäten
+        // automatisch vorbelegt; beim Bearbeiten bleiben die gespeicherten Zuordnungen unangetastet.
+        const activities = schedule
+            ? schedule.activities.map((activity) => ({...activity}))
+            : activityCatalog
+                .filter((activity) => activity.active && activity.alwaysIncluded)
+                .map((activity) => ({
+                    activityId: activity.id,
+                    requiredHelpers: String(activity.defaultRequiredHelpers ?? 1),
+                    time: null, meetTime: null, meetPlace: null, remark: null,
+                }));
         const activityList = element('div', {className: 'event-activity-editor-list'});
         const renderActivityRows = () => {
             activityList.replaceChildren(...activities.map((assignment, assignmentIndex) => {

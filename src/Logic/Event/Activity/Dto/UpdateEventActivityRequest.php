@@ -10,6 +10,7 @@ readonly class UpdateEventActivityRequest
         public string $description,
         public bool $active,
         public ?int $defaultRequiredHelpers,
+        public bool $alwaysIncluded,
     ) {
     }
 }

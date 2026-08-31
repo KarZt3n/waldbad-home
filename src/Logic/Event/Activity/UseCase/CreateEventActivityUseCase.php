@@ -28,6 +28,7 @@ readonly class CreateEventActivityUseCase
             description: trim($request->description),
             active: $request->active,
             defaultRequiredHelpers: $request->defaultRequiredHelpers,
+            alwaysIncluded: $request->alwaysIncluded,
             createdAt: $now,
             updatedAt: $now,
         )));

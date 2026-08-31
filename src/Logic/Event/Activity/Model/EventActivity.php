@@ -12,6 +12,7 @@ readonly class EventActivity
         public string $description,
         public bool $active,
         public ?int $defaultRequiredHelpers,
+        public bool $alwaysIncluded,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -26,7 +27,7 @@ readonly class EventActivity
         }
     }
 
-    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, \DateTimeImmutable $updatedAt): self
+    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, bool $alwaysIncluded, \DateTimeImmutable $updatedAt): self
     {
         return new self(
             id: $this->id,
@@ -34,6 +35,7 @@ readonly class EventActivity
             description: trim($description),
             active: $active,
             defaultRequiredHelpers: $defaultRequiredHelpers,
+            alwaysIncluded: $alwaysIncluded,
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
         );

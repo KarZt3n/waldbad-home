@@ -22,6 +22,8 @@ class EventActivityEntity
         private bool $active,
         #[ORM\Column(type: Types::INTEGER, nullable: true)]
         private ?int $defaultRequiredHelpers,
+        #[ORM\Column(type: Types::BOOLEAN)]
+        private bool $alwaysIncluded,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $createdAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
@@ -34,15 +36,17 @@ class EventActivityEntity
     public function getDescription(): string { return $this->description; }
     public function isActive(): bool { return $this->active; }
     public function getDefaultRequiredHelpers(): ?int { return $this->defaultRequiredHelpers; }
+    public function isAlwaysIncluded(): bool { return $this->alwaysIncluded; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
 
-    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, \DateTimeImmutable $updatedAt): void
+    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, bool $alwaysIncluded, \DateTimeImmutable $updatedAt): void
     {
         $this->name = $name;
         $this->description = $description;
         $this->active = $active;
         $this->defaultRequiredHelpers = $defaultRequiredHelpers;
+        $this->alwaysIncluded = $alwaysIncluded;
         $this->updatedAt = $updatedAt;
     }
 }
