@@ -11,6 +11,7 @@ readonly class EventActivityResponse
         public string $name,
         public string $description,
         public bool $active,
+        public ?int $defaultRequiredHelpers,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -23,6 +24,7 @@ readonly class EventActivityResponse
             name: $activity->name,
             description: $activity->description,
             active: $activity->active,
+            defaultRequiredHelpers: $activity->defaultRequiredHelpers,
             createdAt: $activity->createdAt,
             updatedAt: $activity->updatedAt,
         );

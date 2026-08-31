@@ -3190,6 +3190,15 @@ const renderAdmin = async () => {
         const dialog = element('dialog', {className: 'activity-dialog'});
         const name = field('Bezeichnung', `activity-name-${activity?.id || 'new'}`, activity?.name || '');
         const description = field('Beschreibung (optional)', `activity-description-${activity?.id || 'new'}`, activity?.description || '', 'textarea');
+        const defaultRequiredHelpers = field(
+            'Standard-Anzahl benötigter Helfer (optional)',
+            `activity-default-required-helpers-${activity?.id || 'new'}`,
+            activity?.defaultRequiredHelpers ?? '',
+            'number',
+        );
+        const defaultRequiredHelpersInput = defaultRequiredHelpers.querySelector('input');
+        defaultRequiredHelpersInput.min = '1';
+        defaultRequiredHelpersInput.max = '999';
         const active = element('input', {attributes: {type: 'checkbox'}});
         active.checked = activity?.active !== false;
         const message = formMessage();
@@ -3205,6 +3214,8 @@ const renderAdmin = async () => {
             ]}),
             name,
             description,
+            defaultRequiredHelpers,
+            element('small', {text: 'Wird beim Zuordnen der Aktivität zu einer Veranstaltung als Vorschlag für die benötigte Helferzahl übernommen.'}),
             element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
             message,
             element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
@@ -3222,6 +3233,7 @@ const renderAdmin = async () => {
                         name: name.querySelector('input').value,
                         description: description.querySelector('textarea').value,
                         active: active.checked,
+                        defaultRequiredHelpers: defaultRequiredHelpersInput.value === '' ? null : Number.parseInt(defaultRequiredHelpersInput.value, 10),
                     }),
                 });
                 toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
@@ -3255,6 +3267,7 @@ const renderAdmin = async () => {
                     element('span', {className: 'activity-list-copy', children: [
                         element('strong', {text: activity.name}),
                         element('small', {text: activity.description || 'Keine Beschreibung hinterlegt.'}),
+                        ...(activity.defaultRequiredHelpers ? [element('small', {text: `Standard: ${activity.defaultRequiredHelpers} Helfer`})] : []),
                     ]}),
                     element('span', {className: `status-badge ${activity.active ? 'status-active' : 'status-inactive'}`, text: activity.active ? 'Aktiv' : 'Inaktiv'}),
                     ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
@@ -3319,7 +3332,14 @@ const renderAdmin = async () => {
                     select.append(element('option', {text: `${activity.name}${activity.active ? '' : ' (inaktiv)'}`, attributes: {value: activity.id}}));
                 });
                 select.value = assignment.activityId;
-                select.addEventListener('change', () => assignment.activityId = select.value);
+                select.addEventListener('change', () => {
+                    assignment.activityId = select.value;
+                    const selectedActivity = activityCatalog.find((activity) => activity.id === select.value);
+                    if (selectedActivity?.defaultRequiredHelpers) {
+                        assignment.requiredHelpers = String(selectedActivity.defaultRequiredHelpers);
+                        count.value = String(selectedActivity.defaultRequiredHelpers);
+                    }
+                });
                 const count = element('input', {className: 'event-activity-detail-input', attributes: {
                     type: 'number', inputmode: 'numeric', value: String(assignment.requiredHelpers ?? 1),
                     'aria-label': 'Anzahl benötigter Helfer',
@@ -3390,7 +3410,7 @@ const renderAdmin = async () => {
                 toast('Keine weitere aktive Aktivität verfügbar.', 'error');
                 return;
             }
-            activities.push({activityId: available.id, requiredHelpers: 1, time: null, meetTime: null, meetPlace: null, remark: null});
+            activities.push({activityId: available.id, requiredHelpers: String(available.defaultRequiredHelpers ?? 1), time: null, meetTime: null, meetPlace: null, remark: null});
             renderActivityRows();
         });
         const addNewActivity = element('button', {className: 'secondary-button', text: '＋ Neue Aktivität anlegen', attributes: {type: 'button'}});
@@ -3402,7 +3422,7 @@ const renderAdmin = async () => {
                 handlers.activities = refreshed.items;
                 const createdActivity = activityCatalog.find((activity) => !knownIds.has(activity.id));
                 if (createdActivity) {
-                    activities.push({activityId: createdActivity.id, requiredHelpers: 1, time: null, meetTime: null, meetPlace: null, remark: null});
+                    activities.push({activityId: createdActivity.id, requiredHelpers: String(createdActivity.defaultRequiredHelpers ?? 1), time: null, meetTime: null, meetPlace: null, remark: null});
                 }
                 toast('Aktivität wurde angelegt und zugeordnet.');
                 renderActivityRows();

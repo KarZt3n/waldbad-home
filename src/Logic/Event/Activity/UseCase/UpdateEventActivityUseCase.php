@@ -21,6 +21,7 @@ readonly class UpdateEventActivityUseCase
             $request->name,
             $request->description,
             $request->active,
+            $request->defaultRequiredHelpers,
             $this->clock->now(),
         );
 

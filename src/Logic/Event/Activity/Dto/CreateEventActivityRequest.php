@@ -8,6 +8,7 @@ readonly class CreateEventActivityRequest
         public string $name,
         public string $description,
         public bool $active,
+        public ?int $defaultRequiredHelpers,
     ) {
     }
 }

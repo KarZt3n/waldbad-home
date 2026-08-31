@@ -41,6 +41,7 @@ final class AdminEventActivityController extends AbstractController
             name: $this->name($data->getString('name')),
             description: $this->description($data->getString('description')),
             active: $data->getBoolean('active', true),
+            defaultRequiredHelpers: $this->defaultRequiredHelpers($data->get('defaultRequiredHelpers')),
         ))), JsonResponse::HTTP_CREATED);
     }
 
@@ -55,7 +56,20 @@ final class AdminEventActivityController extends AbstractController
             name: $this->name($data->getString('name')),
             description: $this->description($data->getString('description')),
             active: $data->getBoolean('active', true),
+            defaultRequiredHelpers: $this->defaultRequiredHelpers($data->get('defaultRequiredHelpers')),
         ))));
+    }
+
+    private function defaultRequiredHelpers(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_int($value) && !(is_string($value) && ctype_digit($value))) {
+            throw new BadRequestHttpException('Die Standard-Helferzahl muss eine ganze Zahl sein.');
+        }
+
+        return (int) $value;
     }
 
     private function name(string $name): string
