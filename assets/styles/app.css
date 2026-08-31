@@ -1363,7 +1363,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .activity-chip { background: #e1f1e8; border-radius: 999px; padding: .3rem .65rem; font-size: .9rem; }
 .section-heading > .button { margin-top: 1rem; }
 .activity-list { display: grid; width: 100%; max-width: 68rem; margin: 0 auto; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; background: var(--white); box-shadow: 0 .45rem 1.4rem rgb(11 46 32 / 8%); }
-.activity-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 1rem; align-items: center; width: 100%; padding: 1.1rem 1.25rem; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.activity-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-flow: column; grid-auto-columns: auto; gap: 1rem; align-items: center; width: 100%; padding: 1.1rem 1.25rem; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .activity-list-row:last-child { border-bottom: 0; }
 .activity-list-row:hover { background: #f2f8f4; }
 .activity-list-row:focus-visible { position: relative; z-index: 1; outline: 3px solid var(--lime-400); outline-offset: -3px; }
@@ -1373,7 +1373,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .activity-list-row.is-inactive:disabled:hover { background: #f5f6f5; }
 .activity-list-copy { display: grid; gap: .25rem; min-width: 0; }
 .activity-list-copy strong { font-size: 1.05rem; }
-.activity-list-copy small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.activity-list-copy small { overflow: hidden; color: var(--muted); font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
 .activity-list-edit { color: var(--forest-700); font-weight: 800; }
 .status-badge.status-active { color: var(--forest-900); background: #dcefe4; }
 .status-badge.status-inactive { color: #59645f; background: #e8ebe9; }
@@ -1453,7 +1453,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     .event-call-action-editor-row > .field,
     .event-call-action-target { grid-column: 1 / -1; }
     .event-call-action-editor-row > .tree-icon-button { grid-column: 2; grid-row: 1; }
-    .activity-list-row { grid-template-columns: minmax(0, 1fr) auto; }
-    .activity-list-edit { grid-column: 1 / -1; }
+    /* Auf schmalen Bildschirmen zuerst die Badges („Immer eingebunden“, „Aktiv“/„Inaktiv“), dann
+       Titel/Beschreibung, dann „Bearbeiten“ – statt nebeneinander in einer engen Zeile. */
+    .activity-list-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+    .activity-list-row .status-badge { order: -1; }
+    .activity-list-copy { order: 1; flex: 1 1 100%; }
+    .activity-list-edit { order: 2; flex: 1 1 100%; }
     .activity-list-copy small { white-space: normal; }
 }
