@@ -111,6 +111,14 @@ final class EventScheduleTest extends TestCase
         new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2, meetTime: '9:5');
     }
 
+    public function testActivityRequiredHelpersMustBePositive(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('zwischen 1 und 999');
+
+        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 0);
+    }
+
     public function testReviseKeepsIdentityAndKind(): void
     {
         $now = new \DateTimeImmutable('2026-08-28T10:00:00+00:00');

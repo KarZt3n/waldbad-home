@@ -567,8 +567,8 @@ const openEventHelpDialog = async (block) => {
             ...(isFull ? {disabled: 'disabled'} : {}),
         }});
         const scheduleParts = [];
-        if (activity.time) scheduleParts.push(`Uhrzeit: ${activity.time}`);
-        if (activity.meetTime) scheduleParts.push(`Treffzeit: ${activity.meetTime}`);
+        if (activity.time) scheduleParts.push(`Start: ${activity.time}`);
+        if (activity.meetTime) scheduleParts.push(`Ende: ${activity.meetTime}`);
         if (activity.meetPlace) scheduleParts.push(`Treffpunkt: ${activity.meetPlace}`);
         return element('label', {className: `event-activity-choice${isFull ? ' is-full' : ''}`, children: [
             input,
@@ -1186,6 +1186,7 @@ const parentPageField = (pages, page, initialParentId) => {
 };
 
 const renderLogin = () => {
+    app.onkeydown = null;
     const message = element('p', {className: 'form-message', attributes: {'aria-live': 'polite'}});
     const form = element('form', {
         className: 'login-card',
@@ -2464,7 +2465,37 @@ const renderAdmin = async () => {
     currentPageAccess = session.user.pageAccess ?? null;
     const workspace = element('section', {className: 'admin-workspace'});
     const sidebarTitle = element('h1', {text: 'Redaktion'});
-    const menu = element('nav', {className: 'admin-menu', attributes: {'aria-label': 'Redaktionsbereiche'}});
+    const menu = element('nav', {className: 'admin-menu', attributes: {id: 'admin-navigation-menu', 'aria-label': 'Redaktionsbereiche'}});
+    const sidebar = element('aside', {className: 'admin-sidebar', attributes: {id: 'admin-navigation'}, children: [
+        sidebarTitle,
+        menu,
+    ]});
+    const adminLayout = element('main', {className: 'admin-layout', children: [sidebar, workspace]});
+    const navigationToggle = element('button', {
+        className: 'admin-nav-toggle',
+        attributes: {
+            type: 'button',
+            'aria-controls': 'admin-navigation',
+            'aria-expanded': 'false',
+            'aria-label': 'Redaktionsnavigation öffnen',
+        },
+        children: [
+            element('span', {className: 'admin-nav-toggle-bar'}),
+            element('span', {className: 'admin-nav-toggle-bar'}),
+            element('span', {className: 'admin-nav-toggle-bar'}),
+        ],
+    });
+    const closeAdminNavigation = () => {
+        adminLayout.classList.remove('admin-nav-open');
+        navigationToggle.setAttribute('aria-expanded', 'false');
+        navigationToggle.setAttribute('aria-label', 'Redaktionsnavigation öffnen');
+    };
+    navigationToggle.addEventListener('click', () => {
+        const open = adminLayout.classList.toggle('admin-nav-open');
+        navigationToggle.setAttribute('aria-expanded', String(open));
+        navigationToggle.setAttribute('aria-label', open ? 'Redaktionsnavigation schließen' : 'Redaktionsnavigation öffnen');
+    });
+    workspace.addEventListener('click', closeAdminNavigation);
 
     const showPages = async () => {
         const [pages, activityData] = await Promise.all([
@@ -2556,7 +2587,7 @@ const renderAdmin = async () => {
             });
             title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
 
-            const actions = [];
+            const actionDefinitions = [];
             if (canManagePageStructure()) {
                 const runPageAction = async (button, url, method, success) => {
                     button.disabled = true;
@@ -2569,44 +2600,117 @@ const renderAdmin = async () => {
                         button.disabled = false;
                     }
                 };
-                const addChild = element('button', {className: 'tree-icon-button', text: '＋', attributes: {type: 'button', title: `Unterseite zu ${page.title} hinzufügen`, 'aria-label': `Unterseite zu ${page.title} hinzufügen`}});
-                addChild.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, page.id, activities)));
-                const edit = element('button', {className: 'tree-icon-button', text: '✎', attributes: {type: 'button', title: `${page.title} bearbeiten`, 'aria-label': `${page.title} bearbeiten`}});
-                edit.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
-                const duplicate = element('button', {className: 'tree-icon-button', text: '⧉', attributes: {type: 'button', title: `${page.title} duplizieren`, 'aria-label': `${page.title} duplizieren`}});
-                duplicate.addEventListener('click', () => runPageAction(
-                    duplicate,
-                    `/api/admin/v1/pages/${page.id}/duplicate`,
-                    'POST',
-                    `„${page.title}“ wurde als ausgeblendeter Entwurf dupliziert.`,
-                ));
-                const moveUp = element('button', {className: 'tree-icon-button', text: '↑', attributes: {type: 'button', title: `${page.title} nach oben verschieben`, 'aria-label': `${page.title} nach oben verschieben`}});
-                moveUp.disabled = siblingIndex === 0;
-                moveUp.addEventListener('click', () => runPageAction(
-                    moveUp,
-                    `/api/admin/v1/pages/${page.id}/move/up`,
-                    'POST',
-                    `„${page.title}“ wurde nach oben verschoben.`,
-                ));
-                const moveDown = element('button', {className: 'tree-icon-button', text: '↓', attributes: {type: 'button', title: `${page.title} nach unten verschieben`, 'aria-label': `${page.title} nach unten verschieben`}});
-                moveDown.disabled = siblingIndex === siblings.length - 1;
-                moveDown.addEventListener('click', () => runPageAction(
-                    moveDown,
-                    `/api/admin/v1/pages/${page.id}/move/down`,
-                    'POST',
-                    `„${page.title}“ wurde nach unten verschoben.`,
-                ));
-                const remove = element('button', {className: 'tree-icon-button danger', text: '✕', attributes: {type: 'button', title: `${page.title} löschen`, 'aria-label': `${page.title} löschen`}});
-                remove.addEventListener('click', async () => {
-                    const confirmed = await confirmAction(
-                        `„${page.title}“ löschen?`,
-                        'Die Seite und ihre Inhalte werden dauerhaft gelöscht. Seiten mit Unterseiten oder Einbettungen können erst gelöscht werden, nachdem diese Abhängigkeiten entfernt wurden.',
-                        'Seite löschen',
-                    );
-                    if (!confirmed) return;
-                    await runPageAction(remove, `/api/admin/v1/pages/${page.id}`, 'DELETE', `„${page.title}“ wurde gelöscht.`);
+                actionDefinitions.push(
+                    {
+                        icon: '＋',
+                        label: `Unterseite zu ${page.title} hinzufügen`,
+                        menuLabel: 'Unterseite hinzufügen',
+                        run: () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, page.id, activities)),
+                    },
+                    {
+                        icon: '✎',
+                        label: `${page.title} bearbeiten`,
+                        menuLabel: 'Bearbeiten',
+                        run: () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)),
+                    },
+                    {
+                        icon: '⧉',
+                        label: `${page.title} duplizieren`,
+                        menuLabel: 'Duplizieren',
+                        run: (button) => runPageAction(
+                            button,
+                            `/api/admin/v1/pages/${page.id}/duplicate`,
+                            'POST',
+                            `„${page.title}“ wurde als ausgeblendeter Entwurf dupliziert.`,
+                        ),
+                    },
+                    {
+                        icon: '↑',
+                        label: `${page.title} nach oben verschieben`,
+                        menuLabel: 'Nach oben verschieben',
+                        disabled: siblingIndex === 0,
+                        run: (button) => runPageAction(
+                            button,
+                            `/api/admin/v1/pages/${page.id}/move/up`,
+                            'POST',
+                            `„${page.title}“ wurde nach oben verschoben.`,
+                        ),
+                    },
+                    {
+                        icon: '↓',
+                        label: `${page.title} nach unten verschieben`,
+                        menuLabel: 'Nach unten verschieben',
+                        disabled: siblingIndex === siblings.length - 1,
+                        run: (button) => runPageAction(
+                            button,
+                            `/api/admin/v1/pages/${page.id}/move/down`,
+                            'POST',
+                            `„${page.title}“ wurde nach unten verschoben.`,
+                        ),
+                    },
+                    {
+                        icon: '✕',
+                        label: `${page.title} löschen`,
+                        menuLabel: 'Löschen',
+                        danger: true,
+                        run: async (button) => {
+                            const confirmed = await confirmAction(
+                                `„${page.title}“ löschen?`,
+                                'Die Seite und ihre Inhalte werden dauerhaft gelöscht. Seiten mit Unterseiten oder Einbettungen können erst gelöscht werden, nachdem diese Abhängigkeiten entfernt wurden.',
+                                'Seite löschen',
+                            );
+                            if (!confirmed) return;
+                            await runPageAction(button, `/api/admin/v1/pages/${page.id}`, 'DELETE', `„${page.title}“ wurde gelöscht.`);
+                        },
+                    },
+                );
+            }
+
+            const createActionButton = (definition, mobile = false) => {
+                const button = element('button', {
+                    className: mobile
+                        ? `page-tree-menu-action${definition.danger ? ' danger' : ''}`
+                        : `tree-icon-button${definition.danger ? ' danger' : ''}`,
+                    text: mobile ? definition.menuLabel : definition.icon,
+                    attributes: {type: 'button', title: definition.label, 'aria-label': definition.label},
                 });
-                actions.push(addChild, edit, duplicate, moveUp, moveDown, remove);
+                button.disabled = definition.disabled === true;
+                button.addEventListener('click', () => definition.run(button));
+
+                return button;
+            };
+            const actionContainers = [];
+            if (actionDefinitions.length) {
+                const mobileActionMenu = element('details', {
+                    className: 'page-tree-action-menu',
+                    children: [
+                        element('summary', {
+                            className: 'page-tree-action-menu-toggle',
+                            text: '⋮',
+                            attributes: {title: `Aktionen für ${page.title}`, 'aria-label': `Aktionen für ${page.title}`},
+                        }),
+                        element('div', {
+                            className: 'page-tree-action-menu-popover',
+                            children: actionDefinitions.map((definition) => createActionButton(definition, true)),
+                        }),
+                    ],
+                });
+                mobileActionMenu.querySelectorAll('.page-tree-menu-action').forEach((button) => {
+                    button.addEventListener('click', () => mobileActionMenu.removeAttribute('open'));
+                });
+                mobileActionMenu.addEventListener('toggle', () => {
+                    if (!mobileActionMenu.open) return;
+                    list.querySelectorAll('.page-tree-action-menu[open]').forEach((menu) => {
+                        if (menu !== mobileActionMenu) menu.removeAttribute('open');
+                    });
+                });
+                actionContainers.push(
+                    element('div', {
+                        className: 'page-tree-actions',
+                        children: actionDefinitions.map((definition) => createActionButton(definition)),
+                    }),
+                    mobileActionMenu,
+                );
             }
 
             const dragHandle = element('div', {
@@ -2659,7 +2763,7 @@ const renderAdmin = async () => {
             dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
             const row = element('div', {
                 className: 'page-tree-row',
-                children: [...(canManagePageStructure() ? [dragHandle] : []), title, element('div', {className: 'page-tree-actions', children: actions})],
+                children: [...(canManagePageStructure() ? [dragHandle] : []), title, ...actionContainers],
             });
             const item = element('li', {className: `page-tree-node${page.visible ? '' : ' is-hidden'}`, children: [row]});
             const childDropZone = element('div', {
@@ -3179,7 +3283,17 @@ const renderAdmin = async () => {
         const activityList = element('div', {className: 'event-activity-editor-list'});
         const renderActivityRows = () => {
             activityList.replaceChildren(...activities.map((assignment, assignmentIndex) => {
-                const select = element('select', {attributes: {'aria-label': 'Aktivität'}});
+                const fieldId = (name) => `event-activity-${name}-${dialogKey}-${assignmentIndex}`;
+                const activityField = (label, name, control, modifier = '') => {
+                    const id = fieldId(name);
+                    control.id = id;
+                    return element('label', {
+                        className: `event-activity-field event-activity-field-${name}${modifier ? ` ${modifier}` : ''}`,
+                        attributes: {for: id},
+                        children: [element('span', {text: label}), control],
+                    });
+                };
+                const select = element('select');
                 activityCatalog.forEach((activity) => {
                     if (!activity.active && activity.id !== assignment.activityId) return;
                     if (activity.id !== assignment.activityId && activities.some((item) => item.activityId === activity.id)) return;
@@ -3188,28 +3302,50 @@ const renderAdmin = async () => {
                 select.value = assignment.activityId;
                 select.addEventListener('change', () => assignment.activityId = select.value);
                 const count = element('input', {className: 'event-activity-detail-input', attributes: {
-                    type: 'number', min: '1', max: '999', value: String(assignment.requiredHelpers || 1),
-                    'aria-label': 'Benötigte Helfer', title: 'Benötigte Helfer',
+                    type: 'number', inputmode: 'numeric', value: String(assignment.requiredHelpers ?? 1),
+                    'aria-label': 'Anzahl benötigter Helfer',
                 }});
-                const setCount = (value) => {
-                    const normalized = Math.min(999, Math.max(1, value || 1));
-                    count.value = String(normalized);
-                    assignment.requiredHelpers = normalized;
-                };
-                count.addEventListener('input', () => setCount(Number.parseInt(count.value, 10)));
-                count.addEventListener('blur', () => setCount(Number.parseInt(count.value, 10)));
-                const timeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Uhrzeit der Aktivität', title: 'Uhrzeit'}});
+                count.addEventListener('input', () => {
+                    assignment.requiredHelpers = count.value;
+                    if (count.hasAttribute('aria-invalid')) message.textContent = '';
+                    count.setCustomValidity('');
+                    count.removeAttribute('aria-invalid');
+                });
+                const timeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Start'}});
                 timeInput.value = assignment.time || '';
                 timeInput.addEventListener('input', () => assignment.time = timeInput.value || null);
-                const meetTimeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Treffzeit (optional)', title: 'Treffzeit'}});
+                const meetTimeInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'time', 'aria-label': 'Ende'}});
                 meetTimeInput.value = assignment.meetTime || '';
                 meetTimeInput.addEventListener('input', () => assignment.meetTime = meetTimeInput.value || null);
-                const meetPlaceInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', placeholder: 'Treffort (optional)', 'aria-label': 'Treffort (optional)'}});
+                const meetPlaceInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', maxlength: '160', 'aria-label': 'Treffort (optional)'}});
                 meetPlaceInput.value = assignment.meetPlace || '';
                 meetPlaceInput.addEventListener('input', () => assignment.meetPlace = meetPlaceInput.value || null);
-                const remarkInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', placeholder: 'Bemerkung (optional)', 'aria-label': 'Bemerkung (optional)'}});
+                const remarkInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', maxlength: '500', 'aria-label': 'Bemerkung (optional)'}});
                 remarkInput.value = assignment.remark || '';
                 remarkInput.addEventListener('input', () => assignment.remark = remarkInput.value || null);
+                assignment.remarkExpanded ??= false;
+                const remarkToggleLabel = assignment.remarkExpanded
+                    ? 'Bemerkungsfeld ausblenden'
+                    : (assignment.remark ? 'Bemerkung bearbeiten' : 'Bemerkung hinzufügen');
+                const remarkToggle = element('button', {
+                    className: `secondary-button event-activity-remark-toggle${assignment.remark ? ' has-value' : ''}`,
+                    attributes: {
+                        type: 'button',
+                        title: remarkToggleLabel,
+                        'aria-label': remarkToggleLabel,
+                        'aria-expanded': String(assignment.remarkExpanded),
+                        ...(assignment.remarkExpanded ? {'aria-controls': fieldId('remark')} : {}),
+                    },
+                    children: [
+                        element('span', {className: 'event-activity-remark-toggle-icon', text: assignment.remarkExpanded ? '−' : '＋', attributes: {'aria-hidden': 'true'}}),
+                        element('span', {className: 'event-activity-remark-toggle-label', text: 'Bemerkung'}),
+                    ],
+                });
+                remarkToggle.addEventListener('click', () => {
+                    assignment.remarkExpanded = !assignment.remarkExpanded;
+                    renderActivityRows();
+                    if (assignment.remarkExpanded) activityList.querySelector(`#${CSS.escape(fieldId('remark'))}`)?.focus();
+                });
                 const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Zuordnung entfernen', 'aria-label': 'Zuordnung entfernen'}});
                 remove.addEventListener('click', () => {
                     activities.splice(assignmentIndex, 1);
@@ -3217,8 +3353,14 @@ const renderAdmin = async () => {
                 });
 
                 return element('div', {className: 'event-schedule-activity-row', children: [
-                    select, count, timeInput, meetTimeInput, meetPlaceInput, remarkInput,
+                    activityField('Aktivität', 'activity', select),
+                    activityField('Anzahl', 'count', count),
+                    activityField('Start', 'start', timeInput),
+                    activityField('Ende', 'end', meetTimeInput),
+                    activityField('Treffort (optional)', 'meet-place', meetPlaceInput),
+                    remarkToggle,
                     remove,
+                    ...(assignment.remarkExpanded ? [activityField('Bemerkung (optional)', 'remark', remarkInput)] : []),
                 ]});
             }));
         };
@@ -3250,7 +3392,7 @@ const renderAdmin = async () => {
         renderActivityRows();
         const activityEditor = element('fieldset', {className: 'event-activity-editor', children: [
             element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
-            element('small', {text: 'Uhrzeit, Treffzeit, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt.'}),
+            element('small', {text: 'Start, Ende, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt.'}),
             activityList,
             element('div', {className: 'event-activity-editor-actions', children: [addActivity, addNewActivity]}),
         ]});
@@ -3329,16 +3471,36 @@ const renderAdmin = async () => {
         renderActions();
 
         const message = formMessage();
+        const submitLabel = schedule
+            ? 'Änderungen speichern'
+            : (effectiveKind === 'work_assignment' ? 'Arbeitseinsatz anlegen' : 'Veranstaltung anlegen');
         const submit = element('button', {
-            className: 'button',
-            text: schedule ? 'Änderungen speichern' : (effectiveKind === 'work_assignment' ? 'Arbeitseinsatz anlegen' : 'Veranstaltung anlegen'),
-            attributes: {type: 'submit'},
+            className: 'button event-dialog-action event-dialog-action-save',
+            attributes: {type: 'submit', title: submitLabel, 'aria-label': submitLabel},
+            children: [
+                element('span', {className: 'event-dialog-action-icon', text: '✓', attributes: {'aria-hidden': 'true'}}),
+                element('span', {className: 'event-dialog-action-label', text: submitLabel}),
+            ],
         });
-        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const cancel = element('button', {
+            className: 'secondary-button event-dialog-action event-dialog-action-cancel',
+            attributes: {type: 'button', title: 'Abbrechen', 'aria-label': 'Abbrechen'},
+            children: [
+                element('span', {className: 'event-dialog-action-icon', text: '×', attributes: {'aria-hidden': 'true'}}),
+                element('span', {className: 'event-dialog-action-label', text: 'Abbrechen'}),
+            ],
+        });
         const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
         const actions = [cancel, submit];
         if (schedule) {
-            const deleteButton = element('button', {className: 'text-button danger', text: 'Löschen', attributes: {type: 'button'}});
+            const deleteButton = element('button', {
+                className: 'text-button danger event-dialog-action event-dialog-action-delete',
+                attributes: {type: 'button', title: 'Löschen', 'aria-label': 'Löschen'},
+                children: [
+                    element('span', {className: 'event-dialog-action-icon', text: '⌫', attributes: {'aria-hidden': 'true'}}),
+                    element('span', {className: 'event-dialog-action-label', text: 'Löschen'}),
+                ],
+            });
             deleteButton.addEventListener('click', async () => {
                 const confirmed = await confirmAction(
                     `„${schedule.title}“ löschen?`,
@@ -3394,6 +3556,22 @@ const renderAdmin = async () => {
             event.preventDefault();
             submit.disabled = true;
             try {
+                const countInputs = activityList.querySelectorAll('.event-activity-field-count input');
+                const invalidCount = Array.from(countInputs).find((input, index) => {
+                    const value = Number(input.value);
+                    const valid = input.value.trim() !== '' && Number.isInteger(value) && value > 0 && value <= 999;
+                    input.setCustomValidity(valid ? '' : 'Bitte eine ganze Zahl zwischen 1 und 999 eingeben.');
+                    input.toggleAttribute('aria-invalid', !valid);
+                    if (valid) activities[index].requiredHelpers = value;
+                    return !valid;
+                });
+                if (invalidCount) {
+                    message.textContent = 'Die Anzahl der benötigten Helfer muss zwischen 1 und 999 liegen.';
+                    invalidCount.reportValidity();
+                    invalidCount.focus();
+                    submit.disabled = false;
+                    return;
+                }
                 const payload = {
                     title: title.querySelector('input').value,
                     date: date.querySelector('input').value,
@@ -3405,7 +3583,14 @@ const renderAdmin = async () => {
                     helpEnabled: helpEnabled.checked,
                     helpButtonLabel: helpLabelInput.value || null,
                     visible: visible.checked,
-                    activities,
+                    activities: activities.map((activity) => ({
+                        activityId: activity.activityId,
+                        requiredHelpers: activity.requiredHelpers,
+                        time: activity.time || null,
+                        meetTime: activity.meetTime || null,
+                        meetPlace: activity.meetPlace || null,
+                        remark: activity.remark || null,
+                    })),
                     callToActions,
                 };
                 if (schedule) {
@@ -3523,6 +3708,7 @@ const renderAdmin = async () => {
         button.addEventListener('click', async () => {
             menu.querySelectorAll('button').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
+            closeAdminNavigation();
             try { await action(); } catch (error) {
                 toast(error.message, 'error');
                 workspace.replaceChildren(emptyState(error.message));
@@ -3559,19 +3745,20 @@ const renderAdmin = async () => {
     app.replaceChildren(
         element('header', {className: 'admin-header', children: [
             element('a', {className: 'admin-brand', text: 'Waldbad · Redaktion', attributes: {href: '/admin'}}),
+            navigationToggle,
             element('div', {className: 'admin-account', children: [
                 element('span', {text: session.user.displayName}),
                 logout,
             ]}),
         ]}),
-        element('main', {className: 'admin-layout', children: [
-            element('aside', {className: 'admin-sidebar', children: [
-                sidebarTitle,
-                menu,
-            ]}),
-            workspace,
-        ]}),
+        adminLayout,
     );
+    app.onkeydown = (event) => {
+        if (event.key === 'Escape' && adminLayout.classList.contains('admin-nav-open')) {
+            closeAdminNavigation();
+            navigationToggle.focus();
+        }
+    };
     if (menuItems.length) {
         menuItems[0].click();
     } else {
