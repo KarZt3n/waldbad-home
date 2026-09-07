@@ -30,6 +30,9 @@ readonly class MembershipApplicationResponse
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $processingAt,
         public ?\DateTimeImmutable $completedAt,
+        public ?\DateTimeImmutable $releasedAt,
+        /** @var list<string>|null */
+        public ?array $releasedMemberIds,
     ) {
     }
 
@@ -53,6 +56,8 @@ readonly class MembershipApplicationResponse
             updatedAt: $application->updatedAt,
             processingAt: $application->processingAt,
             completedAt: $application->completedAt,
+            releasedAt: $application->releasedAt,
+            releasedMemberIds: $application->releasedMemberIds,
         );
     }
 }

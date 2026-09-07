@@ -38,8 +38,54 @@ const CMS_MODULES = [
     ['contact_requests', 'Kontaktanfragen'],
     ['event_helpers', 'Veranstaltungshelfer'],
     ['membership_applications', 'Mitgliedsanträge'],
+    ['members', 'Mitglieder'],
+    ['contribution_rates', 'Beitragssätze'],
     ['user_management', 'Benutzerverwaltung'],
 ];
+
+const SALUTATION_LABELS = {mr: 'Herr', ms: 'Frau', diverse: 'Divers'};
+const FAMILY_ROLE_LABELS = {none: 'Einzelperson', head: 'Hauptmitglied', partner: 'Familienangehöriger', child: 'Kind'};
+const MEMBER_FUNCTION_LABELS = {board: 'Vorstand', member: 'Mitglied', supporter: 'Unterstützer', treasurer: 'Kassenwart'};
+const PAYMENT_METHOD_LABELS = {sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar'};
+const PAYMENT_INTERVAL_LABELS = {
+    once: 'Einmalig', yearly: 'Jährlich', half_yearly: 'Halbjährlich', quarterly: 'Quartalsweise', bimonthly: 'Zweimonatlich', monthly: 'Monatlich',
+};
+const PERSON_GROUP_LABELS = {individual: 'Einzelperson', family: 'Familie'};
+const PAYMENT_DAY_LABELS = {first: 'zum 01.', fifteenth: 'zum 15.'};
+const PAYER_TYPE_LABELS = {self_payer: 'Selbstzahler', other_member: 'Anderes Mitglied'};
+const CONTRIBUTION_CATEGORY_LABELS = {
+    individual_junior: 'Einzelperson bis 21 Jahre',
+    individual_senior: 'Einzelperson über 21 Jahre',
+    family_adult: 'Familie: Elternteil',
+    family_child_paying: 'Familie: Kind (zahlend)',
+    family_child_exempt: 'Familie: Kind (beitragsfrei)',
+    work_assignment_surcharge: 'Arbeitseinsatz-Zuschlag',
+};
+
+const formatEuro = (cents) => cents === null || cents === undefined
+    ? '–'
+    : (cents / 100).toLocaleString('de-DE', {style: 'currency', currency: 'EUR'});
+
+const selectField = (label, name, options, selected = '') => {
+    const select = element('select', {
+        attributes: {name, id: name},
+        children: options.map(([value, text]) => element('option', {text, attributes: {value}})),
+    });
+    select.value = selected;
+
+    return element('label', {className: 'field', children: [element('span', {text: label}), select]});
+};
+
+const radioGroup = (name, legend, options, selected) => {
+    const inputs = options.map(([value, text]) => {
+        const input = element('input', {attributes: {type: 'radio', name, value}});
+        input.checked = value === selected;
+
+        return element('label', {className: 'radio-field', children: [input, element('span', {text})]});
+    });
+
+    return element('fieldset', {className: 'radio-group', children: [element('legend', {text: legend}), ...inputs]});
+};
 
 const EVENT_SCHEDULE_KIND_LABELS = {event: 'Veranstaltung', work_assignment: 'Arbeitseinsatz'};
 
@@ -3128,7 +3174,7 @@ const renderAdmin = async () => {
         filter.value = membershipStatusFilter;
         filter.addEventListener('change', async () => {
             membershipStatusFilter = filter.value;
-            await showMembership();
+            await showMembershipManagement();
         });
         const cards = data.items.map((application) => {
             const primary = application.applicants[0];
@@ -3140,8 +3186,18 @@ const renderAdmin = async () => {
             ]}));
             const actions = [];
             if (canEditModule('membership_applications') && application.status === 'failed') {
-                actions.push(actionButton('Erneut zur Übertragung freigeben', `/api/admin/v1/membership-applications/${application.id}/retry`, showMembership, 'button', {
+                actions.push(actionButton('Erneut zur Übertragung freigeben', `/api/admin/v1/membership-applications/${application.id}/retry`, showMembershipManagement, 'button', {
                     success: 'Der Antrag steht erneut zur Übertragung bereit.',
+                }));
+            }
+            if (canEditModule('membership_applications') && canEditModule('members') && !application.releasedAt) {
+                actions.push(actionButton('Als Mitglied anlegen', `/api/admin/v1/membership-applications/${application.id}/release`, showMembershipManagement, 'button', {
+                    confirm: {
+                        title: 'Mitglied anlegen',
+                        description: 'Für jede Person dieses Antrags wird ein Mitglied in der Mitgliederverwaltung angelegt. Das kann nicht rückgängig gemacht werden.',
+                        label: 'Mitglied anlegen',
+                    },
+                    success: 'Die Person(en) wurden als Mitglied angelegt.',
                 }));
             }
             return element('article', {className: `management-card membership-admin-card status-${application.status}`, children: [
@@ -3158,6 +3214,7 @@ const renderAdmin = async () => {
                     element('div', {children: [element('dt', {text: 'IBAN'}), element('dd', {text: application.iban})]}),
                     element('div', {children: [element('dt', {text: 'Vorgang'}), element('dd', {text: application.id})]}),
                     ...(application.externalReference ? [element('div', {children: [element('dt', {text: 'Fremdsystem'}), element('dd', {text: application.externalReference})]})] : []),
+                    ...(application.releasedAt ? [element('div', {children: [element('dt', {text: 'Mitglied angelegt'}), element('dd', {text: new Date(application.releasedAt).toLocaleString('de-DE')})]})] : []),
                 ]}),
                 element('details', {children: [
                     element('summary', {text: 'Personen und Kontaktdaten anzeigen'}),
@@ -3172,6 +3229,663 @@ const renderAdmin = async () => {
             element('div', {className: 'management-toolbar', children: [filter, element('span', {text: `${data.total} Anträge`})]}),
             element('div', {className: 'card-list', children: cards.length ? cards : [emptyState('Keine Mitgliedsanträge für diesen Status vorhanden.')]}),
         );
+    };
+
+    const showMembershipDashboard = async () => {
+        const stats = await request('/api/admin/v1/membership-dashboard');
+        const tile = (label, value) => element('article', {className: 'stat-tile', children: [
+            element('strong', {text: String(value)}),
+            element('span', {text: label}),
+        ]});
+        workspace.replaceChildren(
+            sectionHeading('Dashboard', 'Kennzahlen der Mitgliederverwaltung auf einen Blick'),
+            element('div', {className: 'stat-tile-grid', children: [
+                tile('Mitglieder gesamt', stats.totalMembers),
+                tile('davon aktiv', stats.activeMembers),
+                tile('Offene Mitgliedsanträge', stats.pendingApplications),
+            ]}),
+            element('p', {className: 'empty-copy', text: 'Weitere Auswertungen folgen.'}),
+        );
+    };
+
+    // Suchbares Textfeld über ein natives <datalist> statt eines langen <select> mit allen
+    // Mitgliedern: Der Browser filtert die Vorschlagsliste selbst anhand der Eingabe (Name oder
+    // Mitgliedsnummer), ein verstecktes Feld hält die tatsächlich gewählte Mitglieds-ID.
+    const memberSearchField = (label, name, members, currentId, selectedId) => {
+        const labelOf = (candidate) => `${candidate.firstName} ${candidate.lastName} (${candidate.memberNumber})`;
+        const candidates = members.filter((candidate) => candidate.id !== currentId);
+        const idByLabel = new Map(candidates.map((candidate) => [labelOf(candidate), candidate.id]));
+        const selected = candidates.find((candidate) => candidate.id === selectedId);
+
+        const listId = `${name}-options`;
+        const hidden = element('input', {attributes: {type: 'hidden', name}});
+        hidden.value = selectedId || '';
+        const search = element('input', {attributes: {
+            type: 'text', id: name, list: listId, autocomplete: 'off',
+            placeholder: 'Name oder Mitgliedsnummer suchen …',
+        }});
+        search.value = selected ? labelOf(selected) : '';
+        const datalist = element('datalist', {attributes: {id: listId}, children: candidates.map(
+            (candidate) => element('option', {attributes: {value: labelOf(candidate)}}),
+        )});
+        const sync = () => { hidden.value = idByLabel.get(search.value.trim()) || ''; };
+        search.addEventListener('input', sync);
+        search.addEventListener('change', sync);
+
+        return element('label', {className: 'field', children: [element('span', {text: label}), search, datalist, hidden]});
+    };
+
+    const memberOpenButton = (entry, currentId, openOther) => entry.id === currentId
+        ? null
+        : (() => {
+            const button = element('button', {className: 'secondary-button', text: 'Öffnen →', attributes: {type: 'button'}});
+            button.addEventListener('click', () => openOther(entry.id));
+
+            return button;
+        })();
+
+    const memberListItem = (entry, currentId, openOther) => {
+        const openButton = memberOpenButton(entry, currentId, openOther);
+
+        return element('li', {children: [
+            element('div', {className: `member-list-card${entry.id === currentId ? ' is-current' : ''}`, children: [
+                element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
+                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+            ]}),
+            ...(openButton ? [openButton] : []),
+        ]});
+    };
+
+    // Die einzelnen Beitragssatz-Positionen, aus denen sich der Beitrag eines Mitglieds
+    // zusammensetzt (laufender Beitrag nach Kategorie + ggf. Arbeitseinsatz-Zuschlag).
+    const contributionPositions = (entry) => [
+        ...(entry.contributionCategory
+            ? [[CONTRIBUTION_CATEGORY_LABELS[entry.contributionCategory] || entry.contributionCategory, entry.contributionAmountCents]]
+            : []),
+        ...(entry.workAssignmentSurchargeCents != null ? [['Arbeitseinsatz-Zuschlag', entry.workAssignmentSurchargeCents]] : []),
+    ];
+
+    const payerListItem = (entry, currentId, openOther) => {
+        const openButton = memberOpenButton(entry, currentId, openOther);
+        const positions = contributionPositions(entry);
+        const sumCents = positions.reduce((sum, [, cents]) => sum + (cents || 0), 0);
+
+        return element('li', {className: entry.id === currentId ? 'is-current' : '', children: [
+            element('div', {className: 'member-payer-row', children: [
+                element('div', {className: 'member-payer-info', children: [
+                    element('div', {className: 'member-payer-entry-header', children: [
+                        element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
+                        element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+                    ]}),
+                    element('ul', {className: 'member-payer-positions', children: positions.length
+                        ? positions.map(([label, cents]) => element('li', {children: [
+                            element('span', {text: label}),
+                            element('span', {text: ` · ${formatEuro(cents)}`}),
+                        ]}))
+                        : [element('li', {className: 'empty-copy', text: 'Noch kein Beitrag berechnet.'})]}),
+                ]}),
+                element('strong', {className: 'member-payer-sum', text: formatEuro(sumCents)}),
+            ]}),
+            ...(openButton ? [openButton] : []),
+        ]});
+    };
+
+    const openMemberDialog = async (member, onSaved) => {
+        // Immer die vollständige, ungefilterte Mitgliederliste laden (unabhängig von einer evtl.
+        // aktiven Suche in der Tabelle), damit die Zahler-Suche jedes Mitglied findet.
+        const [household, payerCandidates] = await Promise.all([
+            member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null),
+            request('/api/admin/v1/members').then((data) => data.items),
+        ]);
+        const dialog = element('dialog', {className: 'activity-dialog member-dialog'});
+        const suffix = member?.id || 'new';
+        const openOther = async (id) => {
+            dialog.close();
+            const other = await request(`/api/admin/v1/members/${id}`);
+            await openMemberDialog(other, onSaved);
+        };
+
+        const salutation = selectField('Anrede', `member-salutation-${suffix}`, Object.entries(SALUTATION_LABELS), member?.salutation || 'mr');
+        const lastName = field('Name', `member-last-name-${suffix}`, member?.lastName || '');
+        const firstName = field('Vorname', `member-first-name-${suffix}`, member?.firstName || '');
+        const birthDate = field('Geburtsdatum', `member-birth-date-${suffix}`, member?.birthDate || '', 'date');
+        const street = field('Straße', `member-street-${suffix}`, member?.street || '');
+        const postalCode = field('PLZ', `member-postal-code-${suffix}`, member?.postalCode || '');
+        const city = field('Ort', `member-city-${suffix}`, member?.city || '');
+        const email = field('E-Mail', `member-email-${suffix}`, member?.email || '', 'email');
+        const phone = field('Telefon', `member-phone-${suffix}`, member?.phone || '');
+
+        const memberNumberField = member
+            ? (() => {
+                const readonlyField = field('Mitgliedsnummer', `member-number-${suffix}`, member.memberNumber);
+                readonlyField.querySelector('input').readOnly = true;
+
+                return readonlyField;
+            })()
+            : element('p', {className: 'empty-copy', text: 'Die Mitgliedsnummer wird automatisch vergeben.'});
+        const primaryMemberNumber = field('Hauptnummer', `member-primary-number-${suffix}`, member?.primaryMemberNumber || '');
+        const familyRole = selectField('Familienzugehörigkeit', `member-family-role-${suffix}`, Object.entries(FAMILY_ROLE_LABELS), member?.familyRole || 'none');
+
+        const joinedAt = field('Eintrittsdatum', `member-joined-at-${suffix}`, member?.joinedAt || new Date().toISOString().slice(0, 10), 'date');
+        const leftAt = field('Austrittsdatum (optional)', `member-left-at-${suffix}`, member?.leftAt || '', 'date');
+        const active = element('input', {attributes: {type: 'checkbox'}});
+        active.checked = member ? member.active : true;
+        const memberFunction = selectField('Funktion', `member-function-${suffix}`, Object.entries(MEMBER_FUNCTION_LABELS), member?.function || 'member');
+
+        const accountHolder = field('Kontoinhaber', `member-account-holder-${suffix}`, member?.accountHolder || '');
+        const iban = field('IBAN', `member-iban-${suffix}`, member?.iban || '');
+        const bankName = field('Bank (optional)', `member-bank-name-${suffix}`, member?.bankName || '');
+        const mandateReference = field('Mandatsreferenz', `member-mandate-reference-${suffix}`, member?.mandateReference || '');
+
+        const paymentMethod = selectField('Zahlart', `member-payment-method-${suffix}`, Object.entries(PAYMENT_METHOD_LABELS), member?.paymentMethod || 'sepa_direct_debit');
+        const paymentInterval = selectField('Zahlintervall', `member-payment-interval-${suffix}`, Object.entries(PAYMENT_INTERVAL_LABELS).filter(([value]) => value !== 'once'), member?.paymentInterval || 'yearly');
+        const paymentDay = radioGroup(`member-payment-day-${suffix}`, 'Zahlung am', Object.entries(PAYMENT_DAY_LABELS), member?.paymentDay || 'first');
+        const payerType = selectField('Zahler', `member-payer-type-${suffix}`, Object.entries(PAYER_TYPE_LABELS), member?.payerType || 'self_payer');
+        const payerMember = memberSearchField('Zahlendes Mitglied', `member-payer-id-${suffix}`, payerCandidates, member?.id, member?.payerMemberId || '');
+        const payerMemberSelect = payerMember.querySelector('input[type="hidden"]');
+        const togglePayerMember = () => { payerMember.hidden = payerTypeSelect.value !== 'other_member'; };
+        const payerTypeSelect = payerType.querySelector('select');
+        payerTypeSelect.addEventListener('change', togglePayerMember);
+        togglePayerMember();
+
+        const nextBookingMonth = selectField('Nächste Buchung (Monat)', `member-next-booking-month-${suffix}`, Array.from({length: 12}, (_, index) => [String(index + 1), String(index + 1).padStart(2, '0')]), String(member?.nextBookingMonth || 3));
+        const nextBookingYear = field('Nächste Buchung (Jahr)', `member-next-booking-year-${suffix}`, String(member?.nextBookingYear || (new Date().getFullYear() + 1)), 'number');
+
+        const message = formMessage();
+        const submit = element('button', {className: 'button', text: member ? 'Änderungen speichern' : 'Mitglied anlegen', attributes: {type: 'submit'}});
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+
+        const contributionSection = member ? element('fieldset', {children: [
+            element('legend', {text: 'Beitrag'}),
+            element('p', {children: [
+                element('strong', {text: member.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[member.contributionCategory] || member.contributionCategory : 'Noch nicht berechnet'}),
+                element('span', {text: ` · ${formatEuro(member.contributionAmountCents)} pro Jahr`}),
+            ]}),
+            ...(member.workAssignmentSurchargeCents != null ? [element('p', {children: [
+                element('strong', {text: 'Arbeitseinsatz-Zuschlag'}),
+                element('span', {text: ` · zzgl. ${formatEuro(member.workAssignmentSurchargeCents)} pro Jahr (bei Ableistung der Gemeinschaftsstunden erstattungsfähig)`}),
+            ]})] : []),
+            element('p', {className: 'field-hint', text: 'Erhaltene Beitragssätze (einmalige Gebühren):'}),
+            element('ul', {className: 'member-remarks', children: member.oneTimeCharges.length
+                ? member.oneTimeCharges.map((charge) => element('li', {children: [
+                    element('strong', {text: charge.label}),
+                    element('span', {text: ` · ${formatEuro(charge.amountCents)} · ${new Date(charge.chargedAt).toLocaleDateString('de-DE')}`}),
+                ]}))
+                : [element('li', {className: 'empty-copy', text: 'Keine einmaligen Gebühren berechnet.'})]}),
+        ]}) : null;
+        const recalculate = member ? element('button', {className: 'secondary-button', text: 'Beitrag neu berechnen', attributes: {type: 'button'}}) : null;
+        if (recalculate) {
+            recalculate.addEventListener('click', async () => {
+                recalculate.disabled = true;
+                try {
+                    await request(`/api/admin/v1/members/${member.id}/recalculate-contribution`, {method: 'POST'});
+                    toast('Der Beitrag wurde für die ganze Familie neu berechnet.');
+                    dialog.close();
+                    await onSaved();
+                } catch (error) {
+                    toast(error.message, 'error');
+                    recalculate.disabled = false;
+                }
+            });
+            contributionSection.append(
+                recalculate,
+                element('small', {text: 'Berechnet den Beitrag für die gesamte Familie (alle Mitglieder mit derselben Hauptnummer) neu.'}),
+            );
+        }
+
+        const remarksList = member ? element('ul', {className: 'member-remarks', children: member.remarks.length
+            ? member.remarks.map((remark) => element('li', {children: [
+                element('strong', {text: new Date(remark.createdAt).toLocaleString('de-DE')}),
+                remark.authorDisplayName ? element('span', {text: ` · ${remark.authorDisplayName}`}) : null,
+                element('p', {text: remark.text}),
+            ].filter(Boolean)}))
+            : [element('li', {className: 'empty-copy', text: 'Noch keine Bemerkungen.'})]}) : null;
+        const newRemark = member ? field('Neue Bemerkung', `member-remark-${suffix}`, '', 'textarea') : null;
+        const addRemarkButton = member ? element('button', {className: 'secondary-button', text: 'Bemerkung hinzufügen', attributes: {type: 'button'}}) : null;
+        if (addRemarkButton) {
+            addRemarkButton.addEventListener('click', async () => {
+                const text = newRemark.querySelector('textarea').value.trim();
+                if (!text) return;
+                addRemarkButton.disabled = true;
+                try {
+                    await request(`/api/admin/v1/members/${member.id}/remarks`, {method: 'POST', body: JSON.stringify({text})});
+                    toast('Die Bemerkung wurde hinzugefügt.');
+                    dialog.close();
+                    await onSaved();
+                } catch (error) {
+                    toast(error.message, 'error');
+                    addRemarkButton.disabled = false;
+                }
+            });
+        }
+
+        const householdSection = member ? element('fieldset', {children: [
+            element('legend', {text: 'Familienzugehörigkeit'}),
+            element('ul', {className: 'member-household-list', children: household.householdMembers.length
+                ? household.householdMembers.map((entry) => memberListItem(entry, member.id, openOther))
+                : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})]}),
+        ]}) : null;
+
+        const payerSection = member ? element('fieldset', {children: [
+            element('legend', {text: 'Gesamtberechnung für den Zahler'}),
+            element('p', {className: 'field-hint', text: household.payer.id === member.id
+                ? 'Dieses Mitglied zahlt selbst, zusammen für:'
+                : `Der Beitrag wird gezahlt von ${household.payer.firstName} ${household.payer.lastName} (${household.payer.memberNumber}), zusammen für:`}),
+            element('ul', {className: 'member-payer-list', children: household.payerEntries.map((entry) => payerListItem(entry, member.id, openOther))}),
+            element('div', {className: 'member-payer-total', children: [
+                element('span', {text: 'Gesamtbeitrag pro Jahr'}),
+                element('span', {text: formatEuro(household.payerTotalAnnualCents)}),
+            ]}),
+        ]}) : null;
+
+        const tabs = [
+            ['stammdaten', 'Stammdaten', [
+                element('fieldset', {children: [
+                    element('legend', {text: 'Persönliche Daten'}),
+                    memberNumberField, primaryMemberNumber, salutation, lastName, firstName, birthDate, familyRole,
+                    element('small', {text: 'Familienangehörige erhalten hier die Mitgliedsnummer des Hauptmitglieds.'}),
+                ]}),
+                ...(householdSection ? [householdSection] : []),
+            ]],
+            ['kontakt', 'Kontaktdaten', [
+                element('fieldset', {children: [element('legend', {text: 'Adresse'}), street, postalCode, city]}),
+                element('fieldset', {children: [element('legend', {text: 'Kontakt'}), email, phone]}),
+            ]],
+            ['verein', 'Vereinsdaten', [
+                element('fieldset', {children: [
+                    element('legend', {text: 'Vereinsdaten'}),
+                    memberFunction,
+                    element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktives Mitglied'})]}),
+                    joinedAt, leftAt,
+                ]}),
+            ]],
+            ['beitrag', 'Beitragsdaten', [
+                element('fieldset', {children: [
+                    element('legend', {text: 'Kontodaten'}),
+                    accountHolder, iban, bankName, mandateReference,
+                    element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich.'}),
+                ]}),
+                element('fieldset', {children: [
+                    element('legend', {text: 'Zahlungsdaten'}),
+                    paymentMethod, paymentInterval, paymentDay, payerType, payerMember, nextBookingMonth, nextBookingYear,
+                ]}),
+                ...(contributionSection ? [contributionSection] : []),
+                ...(payerSection ? [payerSection] : []),
+            ]],
+            ...(member ? [['bemerkungen', 'Bemerkungen', [
+                element('fieldset', {children: [element('legend', {text: 'Bemerkungen'}), remarksList, newRemark, addRemarkButton]}),
+            ]]] : []),
+        ];
+
+        let activeTab = tabs[0][0];
+        const tabPanels = tabs.map(([key, , children]) => [key, element('div', {className: 'member-dialog-panel', children})]);
+        const tabStrip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'Mitgliedsdaten'}});
+        const updatePanels = () => {
+            tabPanels.forEach(([key, panel]) => { panel.hidden = key !== activeTab; });
+        };
+        const updateTabStrip = () => {
+            tabStrip.replaceChildren(...tabs.map(([key, label]) => {
+                const button = element('button', {className: `sub-tab${key === activeTab ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
+                button.addEventListener('click', () => { activeTab = key; updateTabStrip(); updatePanels(); });
+
+                return button;
+            }));
+        };
+        updateTabStrip();
+        updatePanels();
+
+        const form = element('form', {className: 'activity-dialog-content member-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: member ? 'Mitglied bearbeiten' : 'Neues Mitglied'}),
+                    element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'}),
+                ]}),
+            ]}),
+            tabStrip,
+            ...tabPanels.map(([, panel]) => panel),
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+        ]});
+        [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
+            wrapper.querySelector('input').required = true;
+        });
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            const payload = {
+                primaryMemberNumber: primaryMemberNumber.querySelector('input').value.trim() || null,
+                salutation: salutation.querySelector('select').value,
+                lastName: lastName.querySelector('input').value,
+                firstName: firstName.querySelector('input').value,
+                birthDate: birthDate.querySelector('input').value,
+                street: street.querySelector('input').value,
+                postalCode: postalCode.querySelector('input').value,
+                city: city.querySelector('input').value,
+                email: email.querySelector('input').value || null,
+                phone: phone.querySelector('input').value || null,
+                familyRole: familyRole.querySelector('select').value,
+                joinedAt: joinedAt.querySelector('input').value,
+                leftAt: leftAt.querySelector('input').value || null,
+                active: active.checked,
+                function: memberFunction.querySelector('select').value,
+                accountHolder: accountHolder.querySelector('input').value || null,
+                iban: iban.querySelector('input').value || null,
+                bankName: bankName.querySelector('input').value || null,
+                mandateReference: mandateReference.querySelector('input').value || null,
+                paymentMethod: paymentMethod.querySelector('select').value,
+                paymentInterval: paymentInterval.querySelector('select').value,
+                paymentDay: dialog.querySelector(`input[name="member-payment-day-${suffix}"]:checked`)?.value || 'first',
+                payerType: payerTypeSelect.value,
+                payerMemberId: payerTypeSelect.value === 'other_member' ? (payerMemberSelect.value || null) : null,
+                nextBookingMonth: Number.parseInt(nextBookingMonth.querySelector('select').value, 10),
+                nextBookingYear: Number.parseInt(nextBookingYear.querySelector('input').value, 10),
+            };
+            try {
+                if (member) {
+                    await request(`/api/admin/v1/members/${member.id}`, {
+                        method: 'PUT',
+                        body: JSON.stringify({...payload, memberNumber: member.memberNumber, version: member.version}),
+                    });
+                    toast('Das Mitglied wurde gespeichert.');
+                } else {
+                    await request('/api/admin/v1/members', {method: 'POST', body: JSON.stringify(payload)});
+                    toast('Das Mitglied wurde angelegt.');
+                }
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                submit.disabled = false;
+            }
+        });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+    };
+
+    let memberSearchTerm = '';
+    const showMembers = async () => {
+        const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
+        const data = await request('/api/admin/v1/members' + query);
+        const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
+        if (canEditModule('members')) {
+            const create = element('button', {className: 'button', text: '＋ Neues Mitglied', attributes: {type: 'button'}});
+            create.addEventListener('click', () => openMemberDialog(null, showMembershipManagement));
+            heading.append(create);
+        }
+
+        const search = element('input', {attributes: {type: 'search', placeholder: 'Suche nach Nummer, Name oder Ort', value: memberSearchTerm}});
+        search.addEventListener('change', async () => {
+            memberSearchTerm = search.value.trim();
+            await showMembershipManagement();
+        });
+
+        const importInput = element('input', {attributes: {type: 'file', accept: '.csv,.json,.xml'}});
+        const importFormat = element('select', {children: [
+            element('option', {text: 'CSV', attributes: {value: 'csv'}}),
+            element('option', {text: 'JSON', attributes: {value: 'json'}}),
+            element('option', {text: 'XML', attributes: {value: 'xml'}}),
+        ]});
+        const importButton = element('button', {className: 'secondary-button', text: 'Importieren', attributes: {type: 'button'}});
+        importButton.addEventListener('click', async () => {
+            const file = importInput.files[0];
+            if (!file) {
+                toast('Bitte zuerst eine Datei auswählen.', 'error');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('format', importFormat.value);
+            importButton.disabled = true;
+            try {
+                const result = await request('/api/admin/v1/members/import', {method: 'POST', body: formData});
+                const errorSuffix = result.errors.length ? `, ${result.errors.length} Zeile(n) mit Fehlern` : '';
+                toast(`${result.created} Mitglied(er) angelegt, ${result.updated} aktualisiert${errorSuffix}.`, result.errors.length ? 'info' : 'success');
+                importInput.value = '';
+                await showMembershipManagement();
+            } catch (error) {
+                toast(error.message, 'error');
+            } finally {
+                importButton.disabled = false;
+            }
+        });
+
+        const exportFormat = element('select', {children: [
+            element('option', {text: 'CSV', attributes: {value: 'csv'}}),
+            element('option', {text: 'JSON', attributes: {value: 'json'}}),
+            element('option', {text: 'XML', attributes: {value: 'xml'}}),
+        ]});
+        const exportButton = element('button', {className: 'secondary-button', text: 'Exportieren', attributes: {type: 'button'}});
+        exportButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch(`/api/admin/v1/members/export?format=${exportFormat.value}`, {credentials: 'same-origin'});
+                if (!response.ok) throw new Error('Der Export ist fehlgeschlagen.');
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const link = element('a', {attributes: {href: url, download: `mitglieder.${exportFormat.value}`}});
+                document.body.append(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        });
+
+        const columns = ['Mitgl.-Nr.', 'Hauptnr.', 'Anrede', 'Name', 'Vorname', 'Geburtsdatum', 'Straße', 'PLZ', 'Ort'];
+        const rows = data.items.map((memberItem) => {
+            const row = element('tr', {
+                className: 'member-row',
+                attributes: {tabindex: '0', role: 'button'},
+                children: [
+                    memberItem.memberNumber,
+                    memberItem.primaryMemberNumber,
+                    SALUTATION_LABELS[memberItem.salutation] || memberItem.salutation,
+                    memberItem.lastName,
+                    memberItem.firstName,
+                    new Date(`${memberItem.birthDate}T00:00:00`).toLocaleDateString('de-DE'),
+                    memberItem.street,
+                    memberItem.postalCode,
+                    memberItem.city,
+                ].map((text) => element('td', {text})),
+            });
+            const open = () => openMemberDialog(memberItem, showMembershipManagement);
+            row.addEventListener('click', open);
+            row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+
+            return row;
+        });
+        const table = element('table', {className: 'data-table', children: [
+            element('thead', {children: [element('tr', {children: columns.map((text) => element('th', {text}))})]}),
+            element('tbody', {children: rows}),
+        ]});
+
+        workspace.replaceChildren(
+            heading,
+            element('div', {className: 'management-toolbar', children: [search, element('span', {text: `${data.total} Mitglieder`})]}),
+            element('div', {className: 'management-toolbar', children: [importInput, importFormat, importButton, exportFormat, exportButton]}),
+            data.items.length ? table : emptyState('Noch keine Mitglieder angelegt.'),
+        );
+    };
+
+    const openContributionRateDialog = (rate, existingRates, onSaved) => {
+        const suffix = rate?.id || 'new';
+        const dialog = element('dialog', {className: 'activity-dialog'});
+        const usedCategories = new Set(existingRates.map((item) => item.category).filter(Boolean));
+        const category = !rate ? selectField('Kategorie', `rate-category-${suffix}`, [
+            ['', 'Keine (benutzerdefiniert)'],
+            ...Object.entries(CONTRIBUTION_CATEGORY_LABELS).filter(([value]) => !usedCategories.has(value)),
+        ], '') : null;
+        if (category) {
+            category.append(element('small', {text: 'Eine der sechs festen Kategorien nur wählen, um sie nach einem Löschen neu anzulegen – sie wird sonst nicht in der automatischen Beitragsermittlung berücksichtigt.'}));
+        }
+        const label = field('Bezeichnung', `rate-label-${suffix}`, rate?.label || '');
+        const amount = field('Betrag (Euro)', `rate-amount-${suffix}`, rate ? (rate.amountCents / 100).toFixed(2) : '0.00', 'number');
+        amount.querySelector('input').step = '0.01';
+        amount.querySelector('input').min = '0';
+        const period = selectField('Zeitraum', `rate-period-${suffix}`, Object.entries(PAYMENT_INTERVAL_LABELS), rate?.period || 'yearly');
+        const personGroup = selectField('Personenkreis', `rate-person-group-${suffix}`, [
+            ['', 'Keiner (gilt für alle)'],
+            ...Object.entries(PERSON_GROUP_LABELS),
+        ], rate?.personGroup || '');
+        personGroup.append(element('small', {text: 'Bei Zeitraum „Einmalig“ erforderlich – wird dann bei Neuanlage eines passenden Mitglieds automatisch berechnet (Familie nur beim Hauptmitglied).'}));
+        const minAge = field('Altersspanne – von (Jahre, optional)', `rate-min-age-${suffix}`, rate?.minAge != null ? String(rate.minAge) : '', 'number');
+        const maxAge = field('Altersspanne – bis einschließlich (Jahre, optional)', `rate-max-age-${suffix}`, rate?.maxAge != null ? String(rate.maxAge) : '', 'number');
+        minAge.querySelector('input').min = '0';
+        maxAge.querySelector('input').min = '0';
+        const message = formMessage();
+        const submit = element('button', {className: 'button', text: rate ? 'Änderungen speichern' : 'Beitragssatz anlegen', attributes: {type: 'submit'}});
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const deleteButton = rate ? element('button', {className: 'secondary-button danger-button', text: 'Löschen', attributes: {type: 'button'}}) : null;
+        if (deleteButton) {
+            deleteButton.addEventListener('click', async () => {
+                const warning = rate.category
+                    ? `„${rate.label}“ wird von der automatischen Beitragsermittlung genutzt und endgültig gelöscht. Bis sie neu angelegt wird, schlägt die Berechnung für betroffene Mitglieder fehl.`
+                    : `„${rate.label}“ wird endgültig gelöscht.`;
+                const confirmed = await confirmAction('Beitragssatz löschen', warning, 'Löschen');
+                if (!confirmed) return;
+                deleteButton.disabled = true;
+                try {
+                    await request(`/api/admin/v1/contribution-rates/${rate.id}`, {method: 'DELETE'});
+                    toast('Der Beitragssatz wurde gelöscht.');
+                    dialog.close();
+                    await onSaved();
+                } catch (error) {
+                    toast(error.message, 'error');
+                    deleteButton.disabled = false;
+                }
+            });
+        }
+        const form = element('form', {className: 'activity-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: rate ? 'Beitragssatz bearbeiten' : 'Neuer Beitragssatz'}),
+                    element('h2', {text: rate ? (CONTRIBUTION_CATEGORY_LABELS[rate.category] || rate.label) : 'Beitragssatz anlegen'}),
+                    ...(rate && !rate.category ? [element('small', {text: 'Benutzerdefiniert – nicht Teil der automatischen Beitragsermittlung.'})] : []),
+                ]}),
+            ]}),
+            ...(category ? [category] : []),
+            label, amount, period, personGroup, minAge, maxAge,
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), cancel, submit]}),
+        ]});
+        label.querySelector('input').required = true;
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            const minAgeValue = minAge.querySelector('input').value;
+            const maxAgeValue = maxAge.querySelector('input').value;
+            const payload = {
+                ...(category ? {category: category.querySelector('select').value || null} : {}),
+                label: label.querySelector('input').value,
+                amountCents: Math.round(Number.parseFloat(amount.querySelector('input').value) * 100),
+                period: period.querySelector('select').value,
+                personGroup: personGroup.querySelector('select').value || null,
+                minAge: minAgeValue === '' ? null : Number.parseInt(minAgeValue, 10),
+                maxAge: maxAgeValue === '' ? null : Number.parseInt(maxAgeValue, 10),
+            };
+            try {
+                await request(rate ? `/api/admin/v1/contribution-rates/${rate.id}` : '/api/admin/v1/contribution-rates', {
+                    method: rate ? 'PUT' : 'POST',
+                    body: JSON.stringify(payload),
+                });
+                toast(rate ? 'Der Beitragssatz wurde gespeichert.' : 'Der Beitragssatz wurde angelegt.');
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                submit.disabled = false;
+            }
+        });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+    };
+
+    const showContributionRates = async () => {
+        const data = await request('/api/admin/v1/contribution-rates');
+        const heading = sectionHeading('Beitragssätze', 'Bezeichnung, Betrag, Zeitraum und Altersspanne je Beitragssatz pflegen');
+        if (canEditModule('contribution_rates')) {
+            const create = element('button', {className: 'button', text: '＋ Neuer Beitragssatz', attributes: {type: 'button'}});
+            create.addEventListener('click', () => openContributionRateDialog(null, data.items, showMembershipManagement));
+            heading.append(create);
+        }
+        const rows = data.items.map((rate) => {
+            const ageRange = rate.minAge != null || rate.maxAge != null
+                ? `${rate.minAge ?? '0'}–${rate.maxAge ?? '∞'} Jahre`
+                : null;
+            const isOnce = rate.period === 'once';
+            const row = element('button', {
+                className: 'activity-list-row',
+                attributes: {type: 'button', ...(canEditModule('contribution_rates') ? {} : {disabled: 'disabled'})},
+                children: [
+                    element('span', {className: 'activity-list-copy', children: [
+                        element('strong', {text: CONTRIBUTION_CATEGORY_LABELS[rate.category] || rate.label}),
+                        element('small', {text: [
+                            rate.category ? rate.label : 'Benutzerdefiniert',
+                            rate.personGroup ? PERSON_GROUP_LABELS[rate.personGroup] : null,
+                            ageRange,
+                        ].filter(Boolean).join(' · ')}),
+                    ]}),
+                    element('span', {className: 'status-badge', text: `${formatEuro(rate.amountCents)} · ${PAYMENT_INTERVAL_LABELS[rate.period] || rate.period}`}),
+                    ...(isOnce ? [] : [element('span', {className: 'status-badge', text: `${formatEuro(rate.annualAmountCents)} / Jahr`})]),
+                    ...(canEditModule('contribution_rates') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
+                ],
+            });
+            if (canEditModule('contribution_rates')) row.addEventListener('click', () => openContributionRateDialog(rate, data.items, showMembershipManagement));
+
+            return row;
+        });
+        workspace.replaceChildren(
+            heading,
+            element('div', {className: 'activity-list', children: rows.length ? rows : [emptyState('Keine Beitragssätze vorhanden.')]}),
+        );
+    };
+
+    let activeMembershipTab = null;
+    const showMembershipManagement = async () => {
+        const tabs = [
+            ...(hasModule('members') ? [['dashboard', 'Dashboard', showMembershipDashboard]] : []),
+            ...(hasModule('members') ? [['members', 'Mitglieder', showMembers]] : []),
+            ...(hasModule('contribution_rates') ? [['rates', 'Beitragssätze', showContributionRates]] : []),
+            ...(hasModule('membership_applications') ? [['applications', 'Mitgliedsanträge', showMembership]] : []),
+        ];
+        if (!tabs.some(([key]) => key === activeMembershipTab)) activeMembershipTab = tabs[0]?.[0] || null;
+
+        const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Mitgliederverwaltung'}, children: tabs.map(([key, label]) => {
+            const button = element('button', {
+                className: `sub-tab${key === activeMembershipTab ? ' active' : ''}`,
+                text: label,
+                attributes: {type: 'button'},
+            });
+            button.addEventListener('click', async () => {
+                activeMembershipTab = key;
+                await showMembershipManagement();
+            });
+
+            return button;
+        })});
+        const active = tabs.find(([key]) => key === activeMembershipTab);
+        if (!active) {
+            workspace.replaceChildren(tabStrip, emptyState('Für diesen Zugang ist kein Bereich der Mitgliederverwaltung freigeschaltet.'));
+            return;
+        }
+        // showMembers/showMembershipDashboard/showContributionRates/showMembership schreiben wie
+        // jedes andere Modul direkt in `workspace`. Deren Ergebnis wird danach in ein Tab-Panel
+        // umgehängt, damit Tab-Leiste und Inhalt gemeinsam sichtbar bleiben.
+        await active[2]();
+        const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
+        workspace.replaceChildren(tabStrip, panel);
     };
 
     const showUsers = async () => {
@@ -3778,7 +4492,9 @@ const renderAdmin = async () => {
     if (hasModule('event_helpers')) menuItems.push(addMenu('Veranstaltungshelfer', showEventHelpers));
     if (hasModule('activities')) menuItems.push(addMenu('Aktivitäten', showActivities));
 
-    if (hasModule('membership_applications')) menuItems.push(addMenu('Mitgliedsanträge', showMembership));
+    if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications')) {
+        menuItems.push(addMenu('Mitgliederverwaltung', showMembershipManagement));
+    }
 
     if (hasModule('user_management')) menuItems.push(addMenu('Benutzer', showUsers));
 

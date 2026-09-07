@@ -1461,3 +1461,68 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     .activity-list-edit { order: 2; flex: 1 1 100%; }
     .activity-list-copy small { white-space: normal; }
 }
+
+/* Mitgliederverwaltung: Tab-Leiste innerhalb eines Moduls (Dashboard/Mitglieder/Beitragssätze/
+   Mitgliedsanträge) — das erste Sub-Navigation-Muster im Redaktionsbereich. */
+.sub-tab-strip { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; max-width: 68rem; margin: 0 auto 1.5rem; border-bottom: 1px solid var(--line); }
+.sub-tab { padding: .75rem 1.1rem; border: 0; border-bottom: .2rem solid transparent; color: var(--muted); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.sub-tab:hover { color: var(--forest-900); }
+.sub-tab.active { color: var(--forest-900); border-bottom-color: var(--forest-700); }
+.sub-tab-panel { display: contents; }
+
+.stat-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; width: 100%; max-width: 68rem; margin: 0 auto; }
+.stat-tile { display: grid; gap: .35rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); box-shadow: var(--shadow); }
+.stat-tile strong { font-size: 2rem; color: var(--forest-900); }
+.stat-tile span { color: var(--muted); }
+
+.radio-group { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; padding: 0; border: 0; }
+.radio-group legend { width: 100%; margin-bottom: .35rem; padding: 0; font-weight: 700; }
+.radio-field { display: flex; align-items: center; gap: .5rem; font-weight: 500; }
+
+.data-table { width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); }
+.data-table th, .data-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.data-table th { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.data-table tbody tr.member-row { cursor: pointer; }
+.data-table tbody tr.member-row:hover, .data-table tbody tr.member-row:focus-visible { background: #f2f8f4; }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+
+.member-dialog { width: min(68rem, calc(100vw - 2rem)); }
+.member-dialog-content fieldset { display: grid; gap: 1rem; margin: 0; padding: 1.25rem; border: 1px solid var(--line); border-radius: 1rem; }
+.member-dialog-content legend { padding: 0 .4rem; font-weight: 800; color: var(--forest-900); }
+.member-remarks { display: grid; gap: .75rem; margin: 0; padding: 0; list-style: none; }
+.member-remarks li { padding: .75rem 1rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--sand-50); }
+.member-remarks li p { margin: .35rem 0 0; }
+
+/* Overlay-interne Reiter (Stammdaten/Kontaktdaten/Vereinsdaten/Beitragsdaten/Bemerkungen) — nutzt
+   dieselbe visuelle Sprache wie `.sub-tab`, aber ohne die seitenweite Breiten-/Zentrierungsregel. */
+.member-dialog-tab-strip { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 1.25rem; border-bottom: 1px solid var(--line); }
+.member-dialog-panel { display: grid; gap: 1rem; }
+.member-dialog-panel[hidden] { display: none; }
+
+.member-household-list, .member-payer-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+
+/* Familienzugehörigkeit: Der Rahmen umschließt nur die Personen-Info, der Öffnen-Button steht
+   als eigenes Element rechts daneben, außerhalb des Rahmens. */
+.member-household-list li { display: flex; align-items: center; gap: .6rem; }
+.member-household-list .member-list-card { flex: 1; padding: .6rem .9rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--sand-50); }
+.member-household-list .member-list-card.is-current { border-color: var(--forest-700); background: var(--forest-100); }
+.member-household-list .secondary-button, .member-payer-list .secondary-button { padding: .35rem .7rem; font-size: .85rem; }
+
+/* Gesamtberechnung für den Zahler: Name links, darunter die einzelnen Beitragssatz-Positionen;
+   die Summe pro Mitglied steht rechts daneben. */
+.member-payer-list li { display: grid; gap: .5rem; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--sand-50); }
+.member-payer-list li.is-current { border-color: var(--forest-700); background: var(--forest-100); }
+.member-payer-list .secondary-button { justify-self: start; }
+.member-payer-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.member-payer-info { flex: 1; }
+.member-payer-entry-header { display: flex; flex-wrap: wrap; gap: .25rem; }
+.member-payer-positions { display: grid; gap: .2rem; margin: .35rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .88rem; }
+.member-payer-positions li { display: flex; flex-wrap: wrap; gap: .2rem; }
+.member-payer-sum { white-space: nowrap; font-size: 1.05rem; color: var(--forest-900); }
+
+.member-payer-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: 1rem 1.1rem; border-radius: .75rem; background: var(--forest-100); font-weight: 800; color: var(--forest-900); }
+.member-payer-total span:last-child { font-size: 1.15rem; }
+
+@media (max-width: 640px) {
+    .data-table { display: block; overflow-x: auto; }
+}

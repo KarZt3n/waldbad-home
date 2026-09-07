@@ -11,5 +11,7 @@ enum CmsModule: string
     case Events = 'events';
     case EventHelpers = 'event_helpers';
     case MembershipApplications = 'membership_applications';
+    case Members = 'members';
+    case ContributionRates = 'contribution_rates';
     case UserManagement = 'user_management';
 }

@@ -23,6 +23,10 @@ enum Permission: string
     case EventHelpersEdit = 'ROLE_MODULE_EVENT_HELPERS_EDITOR';
     case MembershipApplicationsView = 'ROLE_MODULE_MEMBERSHIP_APPLICATIONS_VIEWER';
     case MembershipApplicationsEdit = 'ROLE_MODULE_MEMBERSHIP_APPLICATIONS_EDITOR';
+    case MembersView = 'ROLE_MODULE_MEMBERS_VIEWER';
+    case MembersEdit = 'ROLE_MODULE_MEMBERS_EDITOR';
+    case ContributionRatesView = 'ROLE_MODULE_CONTRIBUTION_RATES_VIEWER';
+    case ContributionRatesEdit = 'ROLE_MODULE_CONTRIBUTION_RATES_EDITOR';
     case UserManagementView = 'ROLE_MODULE_USER_MANAGEMENT_VIEWER';
     case UserManagementEdit = 'ROLE_MODULE_USER_MANAGEMENT_EDITOR';
 }

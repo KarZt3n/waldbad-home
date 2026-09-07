@@ -5,6 +5,7 @@ namespace App\UI\Membership\Application\Http;
 use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Query\GetMembershipApplicationQuery;
 use App\Logic\Membership\Application\Query\ListMembershipApplicationsQuery;
+use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
 use App\Logic\Membership\Application\UseCase\RetryMembershipApplicationUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -46,6 +47,19 @@ class AdminMembershipApplicationController extends AbstractController
     public function retry(string $id, RetryMembershipApplicationUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembershipApplicationsEdit->value);
+
+        return new JsonResponse($this->responseFactory->application($useCase->execute($id)));
+    }
+
+    /**
+     * Legt aus einem Mitgliedsantrag Mitglieder in der Mitgliederverwaltung an. Unabhängig vom
+     * Übertragungsstatus an das Fremdsystem; ein Antrag kann nur einmal freigegeben werden.
+     */
+    #[Route('/{id}/release', name: 'api_admin_membership_application_release', methods: ['POST'])]
+    public function release(string $id, ReleaseMembershipApplicationUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembershipApplicationsEdit->value);
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
 
         return new JsonResponse($this->responseFactory->application($useCase->execute($id)));
     }

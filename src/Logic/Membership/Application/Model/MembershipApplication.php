@@ -27,6 +27,9 @@ readonly class MembershipApplication
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $processingAt,
         public ?\DateTimeImmutable $completedAt,
+        public ?\DateTimeImmutable $releasedAt = null,
+        /** @var list<string>|null */
+        public ?array $releasedMemberIds = null,
     ) {
         $count = count($this->applicants);
         if ($count < 1 || $count > 8) {
@@ -94,6 +97,44 @@ readonly class MembershipApplication
         return $this->withStatus(ApplicationStatus::Pending, $at, null, null, null, null);
     }
 
+    /**
+     * Markiert den Antrag als in Mitglieder überführt. Unabhängig vom Übertragungsstatus an das
+     * Fremdsystem, da beide Vorgänge getrennt voneinander laufen können.
+     *
+     * @param list<string> $memberIds
+     */
+    public function release(array $memberIds, \DateTimeImmutable $at): self
+    {
+        if ($this->releasedAt !== null) {
+            throw new BusinessRuleViolationException('Der Mitgliedsantrag wurde bereits als Mitglied angelegt.');
+        }
+        if ($memberIds === []) {
+            throw new BusinessRuleViolationException('Bei der Freigabe muss mindestens ein Mitglied angelegt werden.');
+        }
+
+        return new self(
+            id: $this->id,
+            membershipType: $this->membershipType,
+            applicants: $this->applicants,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            signerName: $this->signerName,
+            emailConsent: $this->emailConsent,
+            declarationVersion: $this->declarationVersion,
+            status: $this->status,
+            externalReference: $this->externalReference,
+            failureReason: $this->failureReason,
+            version: $this->version,
+            submittedAt: $this->submittedAt,
+            updatedAt: $at,
+            processingAt: $this->processingAt,
+            completedAt: $this->completedAt,
+            releasedAt: $at,
+            releasedMemberIds: $memberIds,
+        );
+    }
+
     private function withStatus(
         ApplicationStatus $status,
         \DateTimeImmutable $updatedAt,
@@ -120,6 +161,8 @@ readonly class MembershipApplication
             updatedAt: $updatedAt,
             processingAt: $processingAt,
             completedAt: $completedAt,
+            releasedAt: $this->releasedAt,
+            releasedMemberIds: $this->releasedMemberIds,
         );
     }
 

@@ -42,6 +42,8 @@ readonly class MembershipApplicationResponseFactory
             'updatedAt' => $application->updatedAt->format(\DateTimeInterface::ATOM),
             'processingAt' => $application->processingAt?->format(\DateTimeInterface::ATOM),
             'completedAt' => $application->completedAt?->format(\DateTimeInterface::ATOM),
+            'releasedAt' => $application->releasedAt?->format(\DateTimeInterface::ATOM),
+            'releasedMemberIds' => $application->releasedMemberIds,
         ];
     }
 

@@ -46,6 +46,8 @@ readonly class MembershipApplicationMapper
             updatedAt: $entity->getUpdatedAt(),
             processingAt: $entity->getProcessingAt(),
             completedAt: $entity->getCompletedAt(),
+            releasedAt: $entity->getReleasedAt(),
+            releasedMemberIds: $this->decodeMemberIds($entity->getReleasedMemberIds()),
         );
     }
 
@@ -67,6 +69,8 @@ readonly class MembershipApplicationMapper
             updatedAt: $application->updatedAt,
             processingAt: $application->processingAt,
             completedAt: $application->completedAt,
+            releasedAt: $application->releasedAt,
+            releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
         );
         foreach ($application->applicants as $applicant) {
             $entity->addApplicant(new MembershipApplicantEntity(
@@ -98,6 +102,32 @@ readonly class MembershipApplicationMapper
             processingAt: $application->processingAt,
             completedAt: $application->completedAt,
         );
+        $entity->release(
+            releasedAt: $application->releasedAt,
+            releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
+            updatedAt: $application->updatedAt,
+        );
     }
 
+    /**
+     * @return list<string>|null
+     */
+    private function decodeMemberIds(?string $releasedMemberIds): ?array
+    {
+        if ($releasedMemberIds === null) {
+            return null;
+        }
+        /** @var list<string> $decoded */
+        $decoded = json_decode($releasedMemberIds, true, flags: JSON_THROW_ON_ERROR);
+
+        return $decoded;
+    }
+
+    /**
+     * @param list<string>|null $memberIds
+     */
+    private function encodeMemberIds(?array $memberIds): ?string
+    {
+        return $memberIds === null ? null : json_encode($memberIds, JSON_THROW_ON_ERROR);
+    }
 }

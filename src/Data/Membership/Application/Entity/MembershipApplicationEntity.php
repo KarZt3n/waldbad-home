@@ -56,6 +56,10 @@ class MembershipApplicationEntity
         private ?\DateTimeImmutable $processingAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
         private ?\DateTimeImmutable $completedAt,
+        #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+        private ?\DateTimeImmutable $releasedAt = null,
+        #[ORM\Column(type: Types::TEXT, nullable: true)]
+        private ?string $releasedMemberIds = null,
     ) {
         $this->applicants = new ArrayCollection();
     }
@@ -89,6 +93,8 @@ class MembershipApplicationEntity
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
     public function getProcessingAt(): ?\DateTimeImmutable { return $this->processingAt; }
     public function getCompletedAt(): ?\DateTimeImmutable { return $this->completedAt; }
+    public function getReleasedAt(): ?\DateTimeImmutable { return $this->releasedAt; }
+    public function getReleasedMemberIds(): ?string { return $this->releasedMemberIds; }
 
     public function updateStatus(
         string $status,
@@ -104,5 +110,12 @@ class MembershipApplicationEntity
         $this->updatedAt = $updatedAt;
         $this->processingAt = $processingAt;
         $this->completedAt = $completedAt;
+    }
+
+    public function release(?\DateTimeImmutable $releasedAt, ?string $releasedMemberIds, \DateTimeImmutable $updatedAt): void
+    {
+        $this->releasedAt = $releasedAt;
+        $this->releasedMemberIds = $releasedMemberIds;
+        $this->updatedAt = $updatedAt;
     }
 }
