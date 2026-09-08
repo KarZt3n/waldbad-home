@@ -39,13 +39,23 @@ readonly class MemberOnboardingOrchestrator
      *                                auf false setzen, damit keine Beitrittsgebühr für längst
      *                                bestehende Mitgliedschaften berechnet wird — sie gilt nur für
      *                                tatsächlich neue Mitgliedschaften.
+     * @param ?array<string, true> $knownMemberNumbers Beim Massenimport treten Mitgliedsnummern
+     *                                als eigene Zeile *und* als Hauptmitglied einer anderen Zeile
+     *                                auf; welche Zeile zuerst physisch angelegt wird, ist reine
+     *                                Verarbeitungsreihenfolge. Enthält diese Menge alle Nummern des
+     *                                laufenden Imports, genügt die Zugehörigkeit zum Import, ohne
+     *                                dass das Hauptmitglied bereits gespeichert sein muss. Bei
+     *                                null (Normalbetrieb: manuelle Anlage, Freigabe eines
+     *                                Mitgliedsantrags) gilt weiterhin die strenge Prüfung gegen die
+     *                                Datenbank.
      */
-    public function createFromRequest(CreateMemberRequest $request, bool $chargeOneTimeFees = true): Member
+    public function createFromRequest(CreateMemberRequest $request, bool $chargeOneTimeFees = true, ?array $knownMemberNumbers = null): Member
     {
         $memberNumber = $request->memberNumber ?? $this->numberGenerator->next();
         $primaryMemberNumber = $request->primaryMemberNumber ?? $memberNumber;
         if ($primaryMemberNumber !== $memberNumber
             && $request->familyRole !== FamilyRole::None
+            && !isset($knownMemberNumbers[$primaryMemberNumber])
             && $this->members->findByMemberNumber($primaryMemberNumber) === null
         ) {
             throw new BusinessRuleViolationException(sprintf(

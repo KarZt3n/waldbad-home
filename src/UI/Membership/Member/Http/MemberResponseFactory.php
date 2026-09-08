@@ -65,6 +65,7 @@ readonly class MemberResponseFactory
             'paymentDay' => $member->paymentDay->value,
             'payerType' => $member->payerType->value,
             'payerMemberId' => $member->payerMemberId,
+            'payerMemberNumber' => $payerMember?->memberNumber,
             'payerDisplayName' => $payerMember === null ? null : sprintf('%s %s (%s)', $payerMember->firstName, $payerMember->lastName, $payerMember->memberNumber),
             'nextBookingMonth' => $member->nextBookingMonth,
             'nextBookingYear' => $member->nextBookingYear,

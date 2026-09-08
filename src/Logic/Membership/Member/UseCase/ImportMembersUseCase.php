@@ -34,9 +34,20 @@ readonly class ImportMembersUseCase
         $updated = 0;
         $errors = [];
 
-        foreach ($request->rows as $index => $row) {
+        /** @var array<string, true> $knownMemberNumbers Jede Nummer aus der Importdatei gilt als
+         *  "wird existieren", damit ein Hauptmitglied, das erst später im gleichen Lauf angelegt
+         *  wird, dessen Familienmitglieder nicht blockiert (siehe orderForProcessing()). */
+        $knownMemberNumbers = [];
+        foreach ($request->rows as $row) {
+            if ($row->memberNumber !== null) {
+                $knownMemberNumbers[$row->memberNumber] = true;
+            }
+        }
+
+        foreach ($this->orderForProcessing($request->rows) as $index) {
+            $row = $request->rows[$index];
             try {
-                if ($this->importRow($row) === 'created') {
+                if ($this->importRow($row, $knownMemberNumbers) === 'created') {
                     ++$created;
                 } else {
                     ++$updated;
@@ -50,13 +61,15 @@ readonly class ImportMembersUseCase
     }
 
     /**
+     * @param array<string, true> $knownMemberNumbers
+     *
      * @return 'created'|'updated'
      */
-    private function importRow(CreateMemberRequest $row): string
+    private function importRow(CreateMemberRequest $row, array $knownMemberNumbers): string
     {
         $existing = $row->memberNumber === null ? null : $this->manager->findByMemberNumber($row->memberNumber);
         if ($existing === null) {
-            $this->orchestrator->createFromRequest($row, chargeOneTimeFees: false);
+            $this->orchestrator->createFromRequest($row, chargeOneTimeFees: false, knownMemberNumbers: $knownMemberNumbers);
 
             return 'created';
         }
@@ -70,6 +83,15 @@ readonly class ImportMembersUseCase
     private function toUpdateRequest(CreateMemberRequest $row, Member $existing): UpdateMemberRequest
     {
         $memberNumber = $row->memberNumber ?? $existing->memberNumber;
+
+        $payerMemberId = $row->payerMemberId;
+        if ($row->payerMemberNumber !== null) {
+            $payerMemberId = ($this->manager->findByMemberNumber($row->payerMemberNumber)
+                ?? throw new BusinessRuleViolationException(sprintf(
+                    'Es wurde kein zahlendes Mitglied mit der Mitgliedsnummer "%s" gefunden.',
+                    $row->payerMemberNumber,
+                )))->id;
+        }
 
         return new UpdateMemberRequest(
             id: $existing->id,
@@ -98,10 +120,72 @@ readonly class ImportMembersUseCase
             paymentInterval: $row->paymentInterval,
             paymentDay: $row->paymentDay,
             payerType: $row->payerType,
-            payerMemberId: $row->payerMemberId,
+            payerMemberId: $payerMemberId,
             nextBookingMonth: $row->nextBookingMonth ?? 3,
             nextBookingYear: $row->nextBookingYear ?? ((int) $row->joinedAt->format('Y') + 1),
             contributionLiable: $row->contributionLiable,
         );
+    }
+
+    /**
+     * Zeilen können sich gegenseitig referenzieren (z. B. zahlt ein Familienmitglied für ein
+     * anderes, dessen Zeile erst weiter hinten in der Import-Datei steht). Verweist eine neu
+     * anzulegende Zeile auf ein ebenfalls neu anzulegendes zahlendes Mitglied, muss dessen Zeile
+     * zuerst verarbeitet werden, sonst schlägt das Anlegen mit einer Fremdschlüsselverletzung fehl.
+     * Diese topologische Sortierung stellt das sicher, unabhängig von der Reihenfolge in der
+     * Importdatei — analog zu ImportSageGsMembersUseCase::orderForInsertion().
+     *
+     * @param list<CreateMemberRequest> $rows
+     *
+     * @return list<int>
+     */
+    private function orderForProcessing(array $rows): array
+    {
+        $positionByNumber = [];
+        foreach ($rows as $position => $row) {
+            if ($row->memberNumber !== null) {
+                $positionByNumber[$row->memberNumber] = $position;
+            }
+        }
+
+        $dependents = [];
+        $indegree = [];
+        foreach (array_keys($rows) as $position) {
+            $indegree[$position] = 0;
+        }
+        foreach ($rows as $position => $row) {
+            $payerPosition = $row->payerMemberNumber !== null ? ($positionByNumber[$row->payerMemberNumber] ?? null) : null;
+            if ($payerPosition !== null && $payerPosition !== $position) {
+                $dependents[$payerPosition][] = $position;
+                ++$indegree[$position];
+            }
+        }
+
+        $ready = [];
+        foreach ($indegree as $position => $degree) {
+            if ($degree === 0) {
+                $ready[] = $position;
+            }
+        }
+        sort($ready);
+        $ordered = [];
+        while ($ready !== []) {
+            $current = array_shift($ready);
+            $ordered[] = $current;
+            foreach ($dependents[$current] ?? [] as $dependent) {
+                if (--$indegree[$dependent] === 0) {
+                    $ready[] = $dependent;
+                }
+            }
+            sort($ready);
+        }
+
+        // Bei einer zyklischen Abhängigkeit (z. B. zwei Mitglieder zahlen wechselseitig
+        // füreinander) bleiben Positionen übrig; sie werden angehängt und scheitern dann regulär
+        // an der Geschäftsregel, statt den Import zu verwerfen.
+        $remaining = array_diff(array_keys($rows), $ordered);
+        sort($remaining);
+
+        return [...$ordered, ...$remaining];
     }
 }
