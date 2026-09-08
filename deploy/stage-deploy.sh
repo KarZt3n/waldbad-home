@@ -72,7 +72,6 @@ ensure_literal_secret db_user waldbad
 ensure_random_secret db_password
 ensure_random_secret db_root_password
 ensure_random_secret app_secret
-ensure_literal_secret membership_integration_token ''
 
 if [ ! -s "$secret_dir/stage_htpasswd" ]; then
     printf 'Es ist noch kein Stage-Zugangsbenutzer eingerichtet.\n' >&2

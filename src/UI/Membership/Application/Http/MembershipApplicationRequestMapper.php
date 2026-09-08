@@ -5,6 +5,7 @@ namespace App\UI\Membership\Application\Http;
 use App\Logic\Membership\Application\Dto\ApplicantInput;
 use App\Logic\Membership\Application\Dto\SubmitMembershipApplicationRequest;
 use App\Logic\Membership\Application\Model\MembershipType;
+use App\Logic\Membership\Member\Model\Salutation;
 use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -37,6 +38,7 @@ readonly class MembershipApplicationRequestMapper
             }
             $birthDate = $this->date($rawApplicant['birthDate'] ?? null);
             $applicants[] = new ApplicantInput(
+                salutation: $this->applicantSalutation($rawApplicant),
                 firstName: $this->arrayString($rawApplicant, 'firstName', 120),
                 lastName: $this->arrayString($rawApplicant, 'lastName', 120),
                 birthDate: $birthDate,
@@ -59,6 +61,27 @@ readonly class MembershipApplicationRequestMapper
             emailConsent: $data->getBoolean('emailConsent'),
             declarationVersion: self::DECLARATION_VERSION,
         );
+    }
+
+    public function reject(Request $request): ?string
+    {
+        return $this->nullableString($request->getPayload(), 'reason', 500);
+    }
+
+    /**
+     * @param array<mixed> $data
+     */
+    private function applicantSalutation(array $data): Salutation
+    {
+        $value = $data['salutation'] ?? null;
+        if (!is_string($value)) {
+            throw new BadRequestHttpException('Die Anrede ist für jede Person erforderlich.');
+        }
+        try {
+            return Salutation::from($value);
+        } catch (\ValueError) {
+            throw new BadRequestHttpException('Die Anrede ist ungültig.');
+        }
     }
 
     private function date(mixed $value): \DateTimeImmutable

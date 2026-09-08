@@ -2,9 +2,12 @@
 
 namespace App\Logic\Membership\Application\Dto;
 
+use App\Logic\Membership\Member\Model\Salutation;
+
 readonly class ApplicantInput
 {
     public function __construct(
+        public Salutation $salutation,
         public string $firstName,
         public string $lastName,
         public \DateTimeImmutable $birthDate,

@@ -8,7 +8,6 @@ use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Dto\SubmitMembershipApplicationRequest;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\Applicant;
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 
 readonly class SubmitMembershipApplicationUseCase
@@ -28,6 +27,7 @@ readonly class SubmitMembershipApplicationUseCase
             $applicants[] = new Applicant(
                 id: $this->identifierGenerator->generate(),
                 position: $position,
+                salutation: $applicant->salutation,
                 firstName: trim($applicant->firstName),
                 lastName: trim($applicant->lastName),
                 birthDate: $applicant->birthDate,
@@ -49,14 +49,9 @@ readonly class SubmitMembershipApplicationUseCase
             signerName: trim($request->signerName),
             emailConsent: $request->emailConsent,
             declarationVersion: trim($request->declarationVersion),
-            status: ApplicationStatus::Pending,
-            externalReference: null,
-            failureReason: null,
             version: 0,
             submittedAt: $now,
             updatedAt: $now,
-            processingAt: null,
-            completedAt: null,
         );
 
         return MembershipApplicationResponse::fromApplication($this->manager->save($application));

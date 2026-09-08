@@ -654,15 +654,7 @@ Diese offenen technischen Entscheidungen ändern nicht die verbindliche Vorgabe,
 
 Der digitale Mitgliedsantrag ist als erste gekapselte CMS-Erweiterung umgesetzt. Eine Seite bindet ihn über den Blocktyp `extension` mit dem Schlüssel `membership_application` ein. Das öffentliche Frontend rendert daraus ein Formular für Einzelpersonen oder Familien mit bis zu acht Personen, Kontaktdaten, SEPA-Daten und den erforderlichen Bestätigungen.
 
-Die API speichert Anträge normalisiert mit dem Status `pending`. IBAN-Daten werden auf ausdrücklichen fachlichen Wunsch im Klartext gespeichert und in der zugriffsgeschützten Redaktionsoberfläche vollständig ausgegeben. Der Zugriff bleibt auf Benutzer mit dem freigeschalteten Modul `membership_applications` beschränkt. Administratoren können den Bearbeitungsstand ansehen und fehlgeschlagene Übertragungen erneut bereitstellen.
-
-Für die Übergabe an ein Fremdsystem steht eine maschinenlesbare Pull-Schnittstelle bereit:
-
-- `POST /api/integration/v1/membership-applications/claim` reserviert offene Anträge und setzt sie auf `processing`.
-- `POST /api/integration/v1/membership-applications/{id}/complete` bestätigt die Übernahme mit einer Fremdsystem-Referenz und setzt den Status auf `done`.
-- `POST /api/integration/v1/membership-applications/{id}/fail` dokumentiert einen Übertragungsfehler und setzt den Status auf `failed`.
-
-Die Integrations-API ist standardmäßig deaktiviert. Für den Betrieb muss `MEMBERSHIP_INTEGRATION_TOKEN` als geheimes Deployment- beziehungsweise Laufzeit-Secret gesetzt werden. Der Client sendet es ausschließlich als `Authorization: Bearer <Token>`. Das Token gehört weder in das Repository noch in CMS-Inhalte.
+Die API speichert Anträge normalisiert. IBAN-Daten werden auf ausdrücklichen fachlichen Wunsch im Klartext gespeichert und in der zugriffsgeschützten Redaktionsoberfläche vollständig ausgegeben. Der Zugriff bleibt auf Benutzer mit dem freigeschalteten Modul `membership_applications` beschränkt. Administratoren sehen eingegangene Anträge und können sie entweder als Mitglied(er) anlegen (`POST /api/admin/v1/membership-applications/{id}/release`) oder ablehnen (`POST /api/admin/v1/membership-applications/{id}/reject`); beides ist je Antrag nur einmal und nur exklusiv möglich. Ein früher vorgesehener Übertragungsstatus an ein externes Fremdsystem (Pull-Schnittstelle mit Token-Authentifizierung) wurde mangels eines solchen Systems wieder entfernt.
 
 Die digitale Bestätigung besteht aus dem ausgeschriebenen Namen der unterzeichnenden Person und verpflichtenden Zustimmungen zu Satzung/Beitragsordnung, Datenschutz und SEPA-Ermächtigung. Eine qualifizierte elektronische Signatur ist nicht Bestandteil dieser Ausbaustufe.
 

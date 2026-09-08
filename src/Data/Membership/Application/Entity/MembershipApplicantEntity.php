@@ -19,6 +19,8 @@ class MembershipApplicantEntity
         private MembershipApplicationEntity $application,
         #[ORM\Column(type: Types::INTEGER)]
         private int $position,
+        #[ORM\Column(type: Types::STRING, length: 20)]
+        private string $salutation,
         #[ORM\Column(type: Types::STRING, length: 120)]
         private string $firstName,
         #[ORM\Column(type: Types::STRING, length: 120)]
@@ -42,6 +44,7 @@ class MembershipApplicantEntity
 
     public function getId(): string { return $this->id; }
     public function getPosition(): int { return $this->position; }
+    public function getSalutation(): string { return $this->salutation; }
     public function getFirstName(): string { return $this->firstName; }
     public function getLastName(): string { return $this->lastName; }
     public function getBirthDate(): \DateTimeImmutable { return $this->birthDate; }

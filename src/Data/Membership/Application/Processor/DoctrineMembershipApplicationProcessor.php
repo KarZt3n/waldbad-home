@@ -7,7 +7,6 @@ use App\Data\Membership\Application\Mapper\MembershipApplicationMapper;
 use App\Logic\Common\Exception\ConcurrencyException;
 use App\Logic\Membership\Application\Exception\MembershipApplicationNotFoundException;
 use App\Logic\Membership\Application\MembershipApplicationProcessorInterface;
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,30 +46,5 @@ readonly class DoctrineMembershipApplicationProcessor implements MembershipAppli
         }
 
         return $this->mapper->toModel($entity);
-    }
-
-    public function claimPending(int $limit, \DateTimeImmutable $at): array
-    {
-        $connection = $this->entityManager->getConnection();
-        $entities = [];
-        $connection->beginTransaction();
-        try {
-            $entities = $this->entityManager->getRepository(MembershipApplicationEntity::class)->findBy(
-                ['status' => ApplicationStatus::Pending->value],
-                ['submittedAt' => 'ASC'],
-                $limit,
-            );
-            foreach ($entities as $entity) {
-                $this->entityManager->lock($entity, LockMode::PESSIMISTIC_WRITE);
-                $entity->updateStatus(ApplicationStatus::Processing->value, null, null, $at, $at, null);
-            }
-            $this->entityManager->flush();
-            $connection->commit();
-        } catch (\Throwable $exception) {
-            $connection->rollBack();
-            throw $exception;
-        }
-
-        return array_map($this->mapper->toModel(...), $entities);
     }
 }

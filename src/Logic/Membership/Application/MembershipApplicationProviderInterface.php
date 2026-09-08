@@ -2,7 +2,6 @@
 
 namespace App\Logic\Membership\Application;
 
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 
 interface MembershipApplicationProviderInterface
@@ -12,5 +11,5 @@ interface MembershipApplicationProviderInterface
     /**
      * @return list<MembershipApplication>
      */
-    public function findByStatus(?ApplicationStatus $status = null): array;
+    public function findAll(): array;
 }

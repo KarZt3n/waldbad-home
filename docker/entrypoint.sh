@@ -19,10 +19,6 @@ db_password="$(read_secret /run/secrets/db_password)"
 export APP_SECRET="$(read_secret /run/secrets/app_secret)"
 export DATABASE_URL="mysql://${db_user}:${db_password}@database:3306/${db_name}?serverVersion=11.4.0-MariaDB&charset=utf8mb4"
 
-if [ -r /run/secrets/membership_integration_token ]; then
-    export MEMBERSHIP_INTEGRATION_TOKEN="$(read_secret /run/secrets/membership_integration_token)"
-fi
-
 mkdir -p var/cache var/log public/uploads/media
 
 if [ "$(id -u)" = '0' ]; then

@@ -48,7 +48,6 @@ services:
       - db_user
       - db_password
       - app_secret
-      - membership_integration_token
     volumes:
       - type: bind
         source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
@@ -87,7 +86,6 @@ services:
       - db_user
       - db_password
       - app_secret
-      - membership_integration_token
     volumes:
       - type: bind
         source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
@@ -136,8 +134,6 @@ secrets:
     file: /srv/webapps/waldbad-home/secrets/db_root_password
   app_secret:
     file: /srv/webapps/waldbad-home/secrets/app_secret
-  membership_integration_token:
-    file: /srv/webapps/waldbad-home/secrets/membership_integration_token
   stage_htpasswd:
     file: /srv/webapps/waldbad-home/secrets/stage_htpasswd
 

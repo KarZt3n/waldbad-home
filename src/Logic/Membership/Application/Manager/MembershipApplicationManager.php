@@ -5,7 +5,6 @@ namespace App\Logic\Membership\Application\Manager;
 use App\Logic\Membership\Application\Exception\MembershipApplicationNotFoundException;
 use App\Logic\Membership\Application\MembershipApplicationProcessorInterface;
 use App\Logic\Membership\Application\MembershipApplicationProviderInterface;
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 
 readonly class MembershipApplicationManager implements MembershipApplicationManagerInterface
@@ -21,18 +20,13 @@ readonly class MembershipApplicationManager implements MembershipApplicationMana
         return $this->provider->find($id) ?? throw new MembershipApplicationNotFoundException($id);
     }
 
-    public function list(?ApplicationStatus $status = null): array
+    public function list(): array
     {
-        return $this->provider->findByStatus($status);
+        return $this->provider->findAll();
     }
 
     public function save(MembershipApplication $application): MembershipApplication
     {
         return $this->processor->save($application);
-    }
-
-    public function claimPending(int $limit, \DateTimeImmutable $at): array
-    {
-        return $this->processor->claimPending($limit, $at);
     }
 }

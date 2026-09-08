@@ -32,7 +32,6 @@ readonly class PublicMembershipApplicationController
 
         return new JsonResponse([
             'id' => $result->id,
-            'status' => $result->status->value,
             'message' => 'Vielen Dank. Der Mitgliedsantrag wurde sicher übermittelt.',
         ], JsonResponse::HTTP_ACCEPTED);
     }

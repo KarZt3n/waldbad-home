@@ -9,8 +9,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'membership_application')]
-#[ORM\Index(name: 'idx_membership_status_submitted', columns: ['status', 'submitted_at'])]
-#[ORM\UniqueConstraint(name: 'uniq_membership_external_reference', columns: ['external_reference'])]
+#[ORM\Index(name: 'idx_membership_submitted_at', columns: ['submitted_at'])]
 class MembershipApplicationEntity
 {
     /**
@@ -42,20 +41,18 @@ class MembershipApplicationEntity
         private bool $emailConsent,
         #[ORM\Column(type: Types::STRING, length: 40)]
         private string $declarationVersion,
-        #[ORM\Column(type: Types::STRING, length: 20)]
-        private string $status,
-        #[ORM\Column(type: Types::STRING, length: 180, nullable: true)]
-        private ?string $externalReference,
-        #[ORM\Column(type: Types::STRING, length: 500, nullable: true)]
-        private ?string $failureReason,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $submittedAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $updatedAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
-        private ?\DateTimeImmutable $processingAt,
+        private ?\DateTimeImmutable $releasedAt = null,
+        #[ORM\Column(type: Types::TEXT, nullable: true)]
+        private ?string $releasedMemberIds = null,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
-        private ?\DateTimeImmutable $completedAt,
+        private ?\DateTimeImmutable $rejectedAt = null,
+        #[ORM\Column(type: Types::STRING, length: 500, nullable: true)]
+        private ?string $rejectionReason = null,
     ) {
         $this->applicants = new ArrayCollection();
     }
@@ -81,28 +78,25 @@ class MembershipApplicationEntity
     public function getSignerName(): string { return $this->signerName; }
     public function hasEmailConsent(): bool { return $this->emailConsent; }
     public function getDeclarationVersion(): string { return $this->declarationVersion; }
-    public function getStatus(): string { return $this->status; }
-    public function getExternalReference(): ?string { return $this->externalReference; }
-    public function getFailureReason(): ?string { return $this->failureReason; }
     public function getVersion(): int { return $this->version; }
     public function getSubmittedAt(): \DateTimeImmutable { return $this->submittedAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
-    public function getProcessingAt(): ?\DateTimeImmutable { return $this->processingAt; }
-    public function getCompletedAt(): ?\DateTimeImmutable { return $this->completedAt; }
+    public function getReleasedAt(): ?\DateTimeImmutable { return $this->releasedAt; }
+    public function getReleasedMemberIds(): ?string { return $this->releasedMemberIds; }
+    public function getRejectedAt(): ?\DateTimeImmutable { return $this->rejectedAt; }
+    public function getRejectionReason(): ?string { return $this->rejectionReason; }
 
-    public function updateStatus(
-        string $status,
-        ?string $externalReference,
-        ?string $failureReason,
-        \DateTimeImmutable $updatedAt,
-        ?\DateTimeImmutable $processingAt,
-        ?\DateTimeImmutable $completedAt,
-    ): void {
-        $this->status = $status;
-        $this->externalReference = $externalReference;
-        $this->failureReason = $failureReason;
+    public function release(?\DateTimeImmutable $releasedAt, ?string $releasedMemberIds, \DateTimeImmutable $updatedAt): void
+    {
+        $this->releasedAt = $releasedAt;
+        $this->releasedMemberIds = $releasedMemberIds;
         $this->updatedAt = $updatedAt;
-        $this->processingAt = $processingAt;
-        $this->completedAt = $completedAt;
+    }
+
+    public function reject(?\DateTimeImmutable $rejectedAt, ?string $rejectionReason, \DateTimeImmutable $updatedAt): void
+    {
+        $this->rejectedAt = $rejectedAt;
+        $this->rejectionReason = $rejectionReason;
+        $this->updatedAt = $updatedAt;
     }
 }

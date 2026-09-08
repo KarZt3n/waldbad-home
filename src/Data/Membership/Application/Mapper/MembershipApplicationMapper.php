@@ -5,9 +5,9 @@ namespace App\Data\Membership\Application\Mapper;
 use App\Data\Membership\Application\Entity\MembershipApplicantEntity;
 use App\Data\Membership\Application\Entity\MembershipApplicationEntity;
 use App\Logic\Membership\Application\Model\Applicant;
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
+use App\Logic\Membership\Member\Model\Salutation;
 
 readonly class MembershipApplicationMapper
 {
@@ -20,6 +20,7 @@ readonly class MembershipApplicationMapper
                 static fn (MembershipApplicantEntity $applicant): Applicant => new Applicant(
                     id: $applicant->getId(),
                     position: $applicant->getPosition(),
+                    salutation: Salutation::from($applicant->getSalutation()),
                     firstName: $applicant->getFirstName(),
                     lastName: $applicant->getLastName(),
                     birthDate: $applicant->getBirthDate(),
@@ -38,14 +39,13 @@ readonly class MembershipApplicationMapper
             signerName: $entity->getSignerName(),
             emailConsent: $entity->hasEmailConsent(),
             declarationVersion: $entity->getDeclarationVersion(),
-            status: ApplicationStatus::from($entity->getStatus()),
-            externalReference: $entity->getExternalReference(),
-            failureReason: $entity->getFailureReason(),
             version: $entity->getVersion(),
             submittedAt: $entity->getSubmittedAt(),
             updatedAt: $entity->getUpdatedAt(),
-            processingAt: $entity->getProcessingAt(),
-            completedAt: $entity->getCompletedAt(),
+            releasedAt: $entity->getReleasedAt(),
+            releasedMemberIds: $this->decodeMemberIds($entity->getReleasedMemberIds()),
+            rejectedAt: $entity->getRejectedAt(),
+            rejectionReason: $entity->getRejectionReason(),
         );
     }
 
@@ -60,19 +60,19 @@ readonly class MembershipApplicationMapper
             signerName: $application->signerName,
             emailConsent: $application->emailConsent,
             declarationVersion: $application->declarationVersion,
-            status: $application->status->value,
-            externalReference: $application->externalReference,
-            failureReason: $application->failureReason,
             submittedAt: $application->submittedAt,
             updatedAt: $application->updatedAt,
-            processingAt: $application->processingAt,
-            completedAt: $application->completedAt,
+            releasedAt: $application->releasedAt,
+            releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
+            rejectedAt: $application->rejectedAt,
+            rejectionReason: $application->rejectionReason,
         );
         foreach ($application->applicants as $applicant) {
             $entity->addApplicant(new MembershipApplicantEntity(
                 id: $applicant->id,
                 application: $entity,
                 position: $applicant->position,
+                salutation: $applicant->salutation->value,
                 firstName: $applicant->firstName,
                 lastName: $applicant->lastName,
                 birthDate: $applicant->birthDate,
@@ -90,14 +90,37 @@ readonly class MembershipApplicationMapper
 
     public function updateEntity(MembershipApplication $application, MembershipApplicationEntity $entity): void
     {
-        $entity->updateStatus(
-            status: $application->status->value,
-            externalReference: $application->externalReference,
-            failureReason: $application->failureReason,
+        $entity->release(
+            releasedAt: $application->releasedAt,
+            releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
             updatedAt: $application->updatedAt,
-            processingAt: $application->processingAt,
-            completedAt: $application->completedAt,
+        );
+        $entity->reject(
+            rejectedAt: $application->rejectedAt,
+            rejectionReason: $application->rejectionReason,
+            updatedAt: $application->updatedAt,
         );
     }
 
+    /**
+     * @return list<string>|null
+     */
+    private function decodeMemberIds(?string $releasedMemberIds): ?array
+    {
+        if ($releasedMemberIds === null) {
+            return null;
+        }
+        /** @var list<string> $decoded */
+        $decoded = json_decode($releasedMemberIds, true, flags: JSON_THROW_ON_ERROR);
+
+        return $decoded;
+    }
+
+    /**
+     * @param list<string>|null $memberIds
+     */
+    private function encodeMemberIds(?array $memberIds): ?string
+    {
+        return $memberIds === null ? null : json_encode($memberIds, JSON_THROW_ON_ERROR);
+    }
 }
