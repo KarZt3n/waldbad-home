@@ -4,12 +4,15 @@ namespace App\UI\Membership\Member\Http;
 
 use App\Logic\Membership\Member\Dto\ImportMembersRequest;
 use App\Logic\Membership\Member\Dto\ImportRowError;
+use App\Logic\Membership\Member\Dto\MemberRecalculationError;
 use App\Logic\Membership\Member\Query\GetMemberHouseholdQuery;
 use App\Logic\Membership\Member\Query\GetMemberQuery;
 use App\Logic\Membership\Member\Query\ListMembersQuery;
 use App\Logic\Membership\Member\UseCase\AddMemberRemarkUseCase;
 use App\Logic\Membership\Member\UseCase\CreateMemberUseCase;
+use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
 use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
+use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
@@ -66,6 +69,29 @@ class AdminMemberController extends AbstractController
         $response->headers->set('Content-Disposition', sprintf('attachment; filename="mitglieder.%s"', $format));
 
         return $response;
+    }
+
+    /**
+     * Berechnet den Beitrag für alle Mitglieder neu (z. B. nach Änderungen an den
+     * Beitragssätzen). Ein fehlender Beitragssatz für einzelne Mitglieder bricht den Lauf nicht
+     * ab; betroffene Datensätze werden übersprungen und in `errors` gemeldet.
+     */
+    #[Route('/recalculate-contributions', name: 'api_admin_member_recalculate_all_contributions', methods: ['POST'])]
+    public function recalculateAllContributions(RecalculateAllMemberContributionsUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        $result = $useCase->execute();
+
+        return new JsonResponse([
+            'updated' => $result->updated,
+            'errors' => array_map(
+                static fn (MemberRecalculationError $error): array => [
+                    'memberNumber' => $error->memberNumber,
+                    'message' => $error->message,
+                ],
+                $result->errors,
+            ),
+        ]);
     }
 
     #[Route('/import', name: 'api_admin_member_import', methods: ['POST'])]
@@ -142,6 +168,15 @@ class AdminMemberController extends AbstractController
         $updateRequest = $this->requestMapper->update($id, $version, $data->all());
 
         return new JsonResponse($this->responseFactory->member($useCase->execute($updateRequest)));
+    }
+
+    #[Route('/{id}', name: 'api_admin_member_delete', methods: ['DELETE'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function delete(string $id, DeleteMemberUseCase $useCase): Response
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        $useCase->execute($id);
+
+        return new Response(null, Response::HTTP_NO_CONTENT);
     }
 
     #[Route('/{id}/remarks', name: 'api_admin_member_add_remark', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]

@@ -15,7 +15,8 @@ readonly class MemberExportFormatter
     private const array COLUMNS = [
         'memberNumber', 'primaryMemberNumber', 'salutation', 'lastName', 'firstName', 'birthDate',
         'street', 'postalCode', 'city', 'email', 'phone', 'familyRole', 'joinedAt', 'leftAt',
-        'active', 'function', 'accountHolder', 'iban', 'bankName', 'mandateReference',
+        'active', 'function', 'contributionLiable', 'accountHolder', 'iban', 'bankName', 'mandateReference',
+        'mandateValidFrom', 'mandateValidUntil',
         'paymentMethod', 'paymentInterval', 'paymentDay', 'payerType', 'payerMemberId',
         'payerDisplayName', 'nextBookingMonth', 'nextBookingYear', 'contributionCategory',
         'contributionAmountCents', 'workAssignmentSurchargeCents',

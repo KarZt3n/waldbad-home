@@ -6,7 +6,6 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\Applicant;
-use App\Logic\Membership\Application\Model\ApplicationStatus;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
@@ -59,13 +58,18 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertSame(FamilyRole::Head, $head->familyRole);
         self::assertNull($head->primaryMemberNumber);
         self::assertSame(PayerType::SelfPayer, $head->payerType);
+        // Die im Antrag je Person erfasste Anrede wird übernommen, statt wie zuvor pauschal auf
+        // „Divers“ zu defaulten.
+        self::assertSame(Salutation::Ms, $head->salutation);
 
         self::assertSame(FamilyRole::Partner, $partner->familyRole);
         self::assertSame(PayerType::OtherMember, $partner->payerType);
         self::assertSame($createdMembers[0]['member']->id, $partner->payerMemberId);
+        self::assertSame(Salutation::Mr, $partner->salutation);
 
         self::assertSame(FamilyRole::Child, $child->familyRole);
         self::assertSame(PayerType::OtherMember, $child->payerType);
+        self::assertSame(Salutation::Diverse, $child->salutation);
     }
 
     public function testCannotReleaseTheSameApplicationTwice(): void
@@ -93,9 +97,9 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             id: 'application-1',
             membershipType: MembershipType::Family,
             applicants: [
-                new Applicant('a-1', 0, 'Maria', 'Muster', new \DateTimeImmutable('1985-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, 'maria@example.com'),
-                new Applicant('a-2', 1, 'Max', 'Muster', new \DateTimeImmutable('1983-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
-                new Applicant('a-3', 2, 'Mia', 'Muster', new \DateTimeImmutable('2015-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
+                new Applicant('a-1', 0, Salutation::Ms, 'Maria', 'Muster', new \DateTimeImmutable('1985-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, 'maria@example.com'),
+                new Applicant('a-2', 1, Salutation::Mr, 'Max', 'Muster', new \DateTimeImmutable('1983-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
+                new Applicant('a-3', 2, Salutation::Diverse, 'Mia', 'Muster', new \DateTimeImmutable('2015-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
             ],
             accountHolder: 'Maria Muster',
             iban: 'DE89370400440532013000',
@@ -103,14 +107,9 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             signerName: 'Maria Muster',
             emailConsent: true,
             declarationVersion: '2026-01',
-            status: ApplicationStatus::Pending,
-            externalReference: null,
-            failureReason: null,
             version: 1,
             submittedAt: $now,
             updatedAt: $now,
-            processingAt: null,
-            completedAt: null,
         );
     }
 

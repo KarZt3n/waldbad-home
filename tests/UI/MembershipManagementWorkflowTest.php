@@ -120,6 +120,71 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
     }
 
+    public function testMemberCannotBeDeletedWhileAnotherMemberPaysThroughItButCanAfterwards(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $payer = $this->responseData();
+
+        $dependent = $this->validMember();
+        $dependent['firstName'] = 'Deps';
+        $dependent['payerType'] = 'other_member';
+        $dependent['payerMemberId'] = $payer['id'];
+        $dependent['accountHolder'] = null;
+        $dependent['iban'] = null;
+        $dependent['bankName'] = null;
+        $dependent['mandateReference'] = null;
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $dependent, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $dependentId = $this->responseData()['id'];
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$payer['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('zahlen über dieses Mitglied', $this->responseData()['error']['message']);
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$dependentId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$payer['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('GET', '/api/admin/v1/members', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['total']);
+    }
+
+    public function testMemberCannotBeDeletedWhileUsedAsPrimaryMemberNumberButCanAfterwards(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $head = $this->validMember();
+        $head['familyRole'] = 'head';
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $head, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $headMember = $this->responseData();
+
+        // Bewusst als Selbstzahler (statt über den Kopf zahlend): so greift beim Löschversuch des
+        // Kopfes ausschließlich die Hauptnummer-Abhängigkeit, nicht zusätzlich die Zahler-Prüfung.
+        $child = $this->validMember();
+        $child['firstName'] = 'Kind';
+        $child['birthDate'] = '2015-01-01';
+        $child['familyRole'] = 'child';
+        $child['primaryMemberNumber'] = $headMember['memberNumber'];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $child, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $childId = $this->responseData()['id'];
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMember['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Hauptnummer', $this->responseData()['error']['message']);
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$childId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMember['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(204);
+    }
+
     public function testContributionRateCanBeUpdatedAndAffectsAnnualAmount(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
@@ -233,11 +298,43 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame(1, $secondImport['updated']);
     }
 
+    public function testSearchMatchesMultipleWordsAcrossDifferentFieldsRegardlessOfOrder(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $other = $this->validMember();
+        $other['lastName'] = 'Beispiel';
+        $other['firstName'] = 'Hans';
+        $other['city'] = 'Potsdam';
+        $other['email'] = 'hans@example.test';
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $other, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        // Nachname und Ort, in umgekehrter Reihenfolge zur Eingabe und über zwei verschiedene
+        // Felder verteilt — eine reine Teilstring-Suche über einen einzelnen kombinierten Begriff
+        // würde das nicht finden.
+        $this->client->request('GET', '/api/admin/v1/members?search='.urlencode('Borkheide Musterfrau'), server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $result = $this->responseData();
+        self::assertSame(1, $result['total']);
+        self::assertSame('Musterfrau', $this->arrayList($result, 'items')[0]['lastName']);
+
+        $this->client->request('GET', '/api/admin/v1/members?search='.urlencode('Hans Beispiel'), server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['total']);
+
+        $this->client->request('GET', '/api/admin/v1/members?search='.urlencode('Musterfrau Potsdam'), server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['total']);
+    }
+
     public function testMembershipApplicationCanBeReleasedIntoMembersExactlyOnce(): void
     {
         $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', [
             'membershipType' => 'individual',
             'applicants' => [[
+                'salutation' => 'ms',
                 'firstName' => 'Erika',
                 'lastName' => 'Musterfrau',
                 'birthDate' => '1990-06-15',
@@ -274,6 +371,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $member = $this->responseData();
         self::assertSame('Musterfrau', $member['lastName']);
+        // Die im Antrag erfasste Anrede wird übernommen, statt pauschal auf „Divers“ zu defaulten.
+        self::assertSame('ms', $member['salutation']);
         self::assertSame('none', $member['familyRole']);
         self::assertSame('self_payer', $member['payerType']);
         $oneTimeCharges = $this->arrayList($member, 'oneTimeCharges');
@@ -292,12 +391,12 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             'membershipType' => 'family',
             'applicants' => [
                 [
-                    'firstName' => 'Maria', 'lastName' => 'Muster', 'birthDate' => '1985-01-01',
+                    'salutation' => 'ms', 'firstName' => 'Maria', 'lastName' => 'Muster', 'birthDate' => '1985-01-01',
                     'street' => 'Kirchanger', 'houseNumber' => '14', 'postalCode' => '14822', 'city' => 'Borkheide',
                     'phone' => null, 'email' => 'maria@example.test',
                 ],
                 [
-                    'firstName' => 'Max', 'lastName' => 'Muster', 'birthDate' => '1983-01-01',
+                    'salutation' => 'mr', 'firstName' => 'Max', 'lastName' => 'Muster', 'birthDate' => '1983-01-01',
                     'street' => 'Kirchanger', 'houseNumber' => '14', 'postalCode' => '14822', 'city' => 'Borkheide',
                     'phone' => null, 'email' => null,
                 ],
@@ -424,6 +523,77 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $reloadedHead = $this->responseData();
         self::assertSame('family_adult', $reloadedHead['contributionCategory']);
         self::assertSame(5500, $this->int($reloadedHead, 'contributionAmountCents') + $this->int($reloadedHead, 'workAssignmentSurchargeCents'));
+    }
+
+    public function testDashboardReportsMemberCountsAndTotalContribution(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        $inactive = array_replace($this->validMember(), ['lastName' => 'Inaktiv', 'active' => false]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $inactive, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/admin/v1/membership-dashboard', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $dashboard = $this->responseData();
+        self::assertSame(2, $dashboard['totalMembers']);
+        self::assertSame(1, $dashboard['activeMembers']);
+        self::assertSame(0, $dashboard['pendingApplications']);
+        // Je Mitglied: 5000 Beitrag (individual_senior) + 1500 Arbeitseinsatz-Zuschlag.
+        self::assertSame(13000, $dashboard['totalContributionCents']);
+    }
+
+    public function testRecalculateAllUpdatesEveryMemberIncludingWholeHouseholds(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        $standalone = array_replace($this->validMember(), ['lastName' => 'Einzelperson']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $standalone, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $standaloneId = $this->string($this->responseData(), 'id');
+
+        $head = array_replace($this->validMember(), [
+            'lastName' => 'Familie', 'firstName' => 'Kopf', 'birthDate' => '1980-01-01', 'familyRole' => 'head',
+        ]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $head, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $headData = $this->responseData();
+        $headId = $this->string($headData, 'id');
+        $headNumber = $this->string($headData, 'memberNumber');
+        self::assertSame(5000, $this->int($headData, 'contributionAmountCents')); // individual_senior, noch ohne Kind im Haushalt
+
+        $child = array_replace($this->validMember(), [
+            'lastName' => 'Familie', 'firstName' => 'Kind', 'birthDate' => '2016-01-01', 'familyRole' => 'child',
+            'primaryMemberNumber' => $headNumber, 'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'accountHolder' => null, 'iban' => null, 'mandateReference' => null,
+        ]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $child, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        // Zum Zeitpunkt der Anlage des Kindes wurde nur dessen eigener (neuer) Datensatz berechnet
+        // — der Familienrabatt des bereits vorher angelegten Kopfes wird erst durch die
+        // Sammel-Neuberechnung nachgezogen.
+        $this->client->request('GET', '/api/admin/v1/members/'.$headId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
+
+        $this->client->request('POST', '/api/admin/v1/members/recalculate-contributions', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $result = $this->responseData();
+        self::assertSame(3, $result['updated']);
+        self::assertSame([], $result['errors']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$headId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $reloadedHead = $this->responseData();
+        self::assertSame('family_adult', $reloadedHead['contributionCategory']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$standaloneId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
     }
 
     /**

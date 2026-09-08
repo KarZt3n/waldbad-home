@@ -19,17 +19,14 @@ readonly class MembershipApplication
         public string $signerName,
         public bool $emailConsent,
         public string $declarationVersion,
-        public ApplicationStatus $status,
-        public ?string $externalReference,
-        public ?string $failureReason,
         public int $version,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
-        public ?\DateTimeImmutable $processingAt,
-        public ?\DateTimeImmutable $completedAt,
         public ?\DateTimeImmutable $releasedAt = null,
         /** @var list<string>|null */
         public ?array $releasedMemberIds = null,
+        public ?\DateTimeImmutable $rejectedAt = null,
+        public ?string $rejectionReason = null,
     ) {
         $count = count($this->applicants);
         if ($count < 1 || $count > 8) {
@@ -55,51 +52,8 @@ readonly class MembershipApplication
         }
     }
 
-    public function claim(\DateTimeImmutable $at): self
-    {
-        if ($this->status !== ApplicationStatus::Pending) {
-            throw new BusinessRuleViolationException('Nur offene Anträge können zur Verarbeitung übernommen werden.');
-        }
-
-        return $this->withStatus(ApplicationStatus::Processing, $at, $at, null, null, null);
-    }
-
-    public function complete(string $externalReference, \DateTimeImmutable $at): self
-    {
-        if ($this->status === ApplicationStatus::Done && $this->externalReference === $externalReference) {
-            return $this;
-        }
-        if ($this->status !== ApplicationStatus::Processing) {
-            throw new BusinessRuleViolationException('Nur ein Antrag in Verarbeitung kann abgeschlossen werden.');
-        }
-        if (trim($externalReference) === '') {
-            throw new BusinessRuleViolationException('Die Referenz des Fremdsystems ist erforderlich.');
-        }
-
-        return $this->withStatus(ApplicationStatus::Done, $at, $this->processingAt, $at, trim($externalReference), null);
-    }
-
-    public function fail(string $reason, \DateTimeImmutable $at): self
-    {
-        if ($this->status !== ApplicationStatus::Processing) {
-            throw new BusinessRuleViolationException('Nur ein Antrag in Verarbeitung kann als fehlgeschlagen markiert werden.');
-        }
-
-        return $this->withStatus(ApplicationStatus::Failed, $at, $this->processingAt, null, null, trim($reason));
-    }
-
-    public function retry(\DateTimeImmutable $at): self
-    {
-        if ($this->status !== ApplicationStatus::Failed) {
-            throw new BusinessRuleViolationException('Nur ein fehlgeschlagener Antrag kann erneut bereitgestellt werden.');
-        }
-
-        return $this->withStatus(ApplicationStatus::Pending, $at, null, null, null, null);
-    }
-
     /**
-     * Markiert den Antrag als in Mitglieder überführt. Unabhängig vom Übertragungsstatus an das
-     * Fremdsystem, da beide Vorgänge getrennt voneinander laufen können.
+     * Markiert den Antrag als in Mitglieder überführt.
      *
      * @param list<string> $memberIds
      */
@@ -107,6 +61,9 @@ readonly class MembershipApplication
     {
         if ($this->releasedAt !== null) {
             throw new BusinessRuleViolationException('Der Mitgliedsantrag wurde bereits als Mitglied angelegt.');
+        }
+        if ($this->rejectedAt !== null) {
+            throw new BusinessRuleViolationException('Ein abgelehnter Mitgliedsantrag kann nicht mehr als Mitglied angelegt werden.');
         }
         if ($memberIds === []) {
             throw new BusinessRuleViolationException('Bei der Freigabe muss mindestens ein Mitglied angelegt werden.');
@@ -122,27 +79,28 @@ readonly class MembershipApplication
             signerName: $this->signerName,
             emailConsent: $this->emailConsent,
             declarationVersion: $this->declarationVersion,
-            status: $this->status,
-            externalReference: $this->externalReference,
-            failureReason: $this->failureReason,
             version: $this->version,
             submittedAt: $this->submittedAt,
             updatedAt: $at,
-            processingAt: $this->processingAt,
-            completedAt: $this->completedAt,
             releasedAt: $at,
             releasedMemberIds: $memberIds,
+            rejectedAt: $this->rejectedAt,
+            rejectionReason: $this->rejectionReason,
         );
     }
 
-    private function withStatus(
-        ApplicationStatus $status,
-        \DateTimeImmutable $updatedAt,
-        ?\DateTimeImmutable $processingAt,
-        ?\DateTimeImmutable $completedAt,
-        ?string $externalReference,
-        ?string $failureReason,
-    ): self {
+    /**
+     * Lehnt den Antrag ab: die Person(en) werden nicht als Mitglied angelegt.
+     */
+    public function reject(?string $reason, \DateTimeImmutable $at): self
+    {
+        if ($this->releasedAt !== null) {
+            throw new BusinessRuleViolationException('Ein bereits als Mitglied angelegter Antrag kann nicht mehr abgelehnt werden.');
+        }
+        if ($this->rejectedAt !== null) {
+            throw new BusinessRuleViolationException('Der Mitgliedsantrag wurde bereits abgelehnt.');
+        }
+
         return new self(
             id: $this->id,
             membershipType: $this->membershipType,
@@ -153,16 +111,13 @@ readonly class MembershipApplication
             signerName: $this->signerName,
             emailConsent: $this->emailConsent,
             declarationVersion: $this->declarationVersion,
-            status: $status,
-            externalReference: $externalReference,
-            failureReason: $failureReason,
             version: $this->version,
             submittedAt: $this->submittedAt,
-            updatedAt: $updatedAt,
-            processingAt: $processingAt,
-            completedAt: $completedAt,
+            updatedAt: $at,
             releasedAt: $this->releasedAt,
             releasedMemberIds: $this->releasedMemberIds,
+            rejectedAt: $at,
+            rejectionReason: $reason !== null && trim($reason) !== '' ? trim($reason) : null,
         );
     }
 

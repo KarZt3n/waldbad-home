@@ -13,7 +13,6 @@ use App\Logic\Membership\Member\Model\MemberFunction;
 use App\Logic\Membership\Member\Model\PayerType;
 use App\Logic\Membership\Member\Model\PaymentDay;
 use App\Logic\Membership\Member\Model\PaymentMethod;
-use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\PaymentInterval;
 
@@ -22,10 +21,9 @@ use App\Logic\Membership\PaymentInterval;
  * unabhängig vom Übertragungsstatus an das Fremdsystem (Claim/Complete/Fail/Retry), da beide
  * Vorgänge getrennt voneinander sind. Ein Antrag kann nur einmal freigegeben werden.
  *
- * Da ein Mitgliedsantrag keine Anrede erfasst, wird sie vorläufig auf „Divers“ gesetzt und muss im
- * neu angelegten Mitglied nachgepflegt werden. Bei einer Familienmitgliedschaft wird die erste
- * Person als Hauptmitglied geführt, weitere Personen ab 21 Jahren als Partner, jüngere als Kind
- * (eine im Antrag nicht erfasste Zuordnung, die später im Freigabeprozess verfeinert werden kann).
+ * Bei einer Familienmitgliedschaft wird die erste Person als Hauptmitglied geführt, weitere
+ * Personen ab 21 Jahren als Partner, jüngere als Kind (eine im Antrag nicht erfasste Zuordnung,
+ * die später im Freigabeprozess verfeinert werden kann).
  */
 readonly class ReleaseMembershipApplicationUseCase
 {
@@ -61,7 +59,7 @@ readonly class ReleaseMembershipApplicationUseCase
             $member = $this->orchestrator->createFromRequest(new CreateMemberRequest(
                 memberNumber: null,
                 primaryMemberNumber: $isHead ? null : $headMemberNumber,
-                salutation: Salutation::Diverse,
+                salutation: $applicant->salutation,
                 lastName: $applicant->lastName,
                 firstName: $applicant->firstName,
                 birthDate: $applicant->birthDate,

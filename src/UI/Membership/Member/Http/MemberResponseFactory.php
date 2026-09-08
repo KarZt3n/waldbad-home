@@ -53,10 +53,13 @@ readonly class MemberResponseFactory
             'leftAt' => $member->leftAt?->format('Y-m-d'),
             'active' => $member->active,
             'function' => $member->function->value,
+            'contributionLiable' => $member->contributionLiable,
             'accountHolder' => $member->accountHolder,
             'iban' => $member->iban,
             'bankName' => $member->bankName,
             'mandateReference' => $member->mandateReference,
+            'mandateValidFrom' => $member->mandateValidFrom?->format('Y-m-d'),
+            'mandateValidUntil' => $member->mandateValidUntil?->format('Y-m-d'),
             'paymentMethod' => $member->paymentMethod->value,
             'paymentInterval' => $member->paymentInterval->value,
             'paymentDay' => $member->paymentDay->value,
@@ -98,9 +101,12 @@ readonly class MemberResponseFactory
             'firstName' => $member->firstName,
             'lastName' => $member->lastName,
             'familyRole' => $member->familyRole->value,
+            'function' => $member->function->value,
             'contributionCategory' => $member->contributionCategory?->value,
             'contributionAmountCents' => $member->contributionAmountCents,
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
+            'contributionLiable' => $member->contributionLiable,
+            'leftAt' => $member->leftAt?->format('Y-m-d'),
         ];
     }
 

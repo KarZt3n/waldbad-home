@@ -56,6 +56,9 @@ readonly class MemberRequestMapper
             payerMemberNumber: $this->nullableString($data, 'payerMemberNumber', 20),
             nextBookingMonth: $this->optionalInt($data, 'nextBookingMonth', 1, 12),
             nextBookingYear: $this->optionalInt($data, 'nextBookingYear', 2000, 2200),
+            contributionLiable: $this->bool($data, 'contributionLiable', true),
+            mandateValidFrom: $this->nullableDate($data, 'mandateValidFrom'),
+            mandateValidUntil: $this->nullableDate($data, 'mandateValidUntil'),
         );
     }
 
@@ -94,6 +97,9 @@ readonly class MemberRequestMapper
             payerMemberId: $this->nullableString($data, 'payerMemberId', 36),
             nextBookingMonth: $this->optionalInt($data, 'nextBookingMonth', 1, 12) ?? 3,
             nextBookingYear: $this->optionalInt($data, 'nextBookingYear', 2000, 2200) ?? (int) date('Y'),
+            contributionLiable: $this->bool($data, 'contributionLiable', true),
+            mandateValidFrom: $this->nullableDate($data, 'mandateValidFrom'),
+            mandateValidUntil: $this->nullableDate($data, 'mandateValidUntil'),
         );
     }
 
@@ -146,6 +152,9 @@ readonly class MemberRequestMapper
             payerMemberNumber: $this->nullableString($row, 'payerMemberNumber', 20),
             nextBookingMonth: $this->optionalInt($row, 'nextBookingMonth', 1, 12),
             nextBookingYear: $this->optionalInt($row, 'nextBookingYear', 2000, 2200),
+            contributionLiable: $this->bool($row, 'contributionLiable', true),
+            mandateValidFrom: $this->nullableDate($row, 'mandateValidFrom'),
+            mandateValidUntil: $this->nullableDate($row, 'mandateValidUntil'),
         );
     }
 

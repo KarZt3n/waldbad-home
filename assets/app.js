@@ -46,7 +46,7 @@ const CMS_MODULES = [
 const SALUTATION_LABELS = {mr: 'Herr', ms: 'Frau', diverse: 'Divers'};
 const FAMILY_ROLE_LABELS = {none: 'Einzelperson', head: 'Hauptmitglied', partner: 'Familienangehöriger', child: 'Kind'};
 const MEMBER_FUNCTION_LABELS = {board: 'Vorstand', member: 'Mitglied', supporter: 'Unterstützer', treasurer: 'Kassenwart'};
-const PAYMENT_METHOD_LABELS = {sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar'};
+const PAYMENT_METHOD_LABELS = {sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar', not_specified: 'Keine Angabe'};
 const PAYMENT_INTERVAL_LABELS = {
     once: 'Einmalig', yearly: 'Jährlich', half_yearly: 'Halbjährlich', quarterly: 'Quartalsweise', bimonthly: 'Zweimonatlich', monthly: 'Monatlich',
 };
@@ -481,6 +481,17 @@ const renderMembershipApplicationForm = (preview = false) => {
         if (required) input.required = true;
         return wrapper;
     };
+    const applicantSalutationField = () => {
+        const wrapper = selectField('Anrede', `${instanceId}-salutation-${applicants.children.length}`, [
+            ['', 'Bitte wählen'],
+            ...Object.entries(SALUTATION_LABELS),
+        ], '');
+        const select = wrapper.querySelector('select');
+        select.dataset.applicantField = 'salutation';
+        select.required = true;
+        wrapper.classList.add('membership-person-salutation');
+        return wrapper;
+    };
     const refreshApplicantCards = () => {
         [...applicants.children].forEach((card, index) => {
             card.querySelector('.membership-person-title').textContent = `Person ${index + 1}`;
@@ -501,6 +512,7 @@ const renderMembershipApplicationForm = (preview = false) => {
                 remove,
             ]}),
             element('div', {className: 'form-grid', children: [
+                applicantSalutationField(),
                 applicantField('Vorname', 'firstName'),
                 applicantField('Nachname', 'lastName'),
                 applicantField('Geburtsdatum', 'birthDate', 'date'),
@@ -1230,6 +1242,12 @@ const field = (label, name, value = '', type = 'text') => {
 
     return element('label', {className: 'field', children: [element('span', {text: label}), input]});
 };
+
+// Stellt mehrere Felder in einer Zeile nebeneinander dar (z. B. Mitgliedsnummer/Hauptnummer);
+// auf schmalen Bildschirmen fällt die Zeile per CSS-Media-Query auf eine Spalte zurück, wie es
+// beim einspaltigen Layout ohnehin schon der Fall war. Standardmäßig zwei feste Spalten (auch bei
+// nur einem Feld, das dann nur die halbe Breite einnimmt); `columns: 3` für Dreier-Zeilen.
+const fieldRow = (fields, columns = 2) => element('div', {className: `field-row field-row-${columns}`, children: fields});
 
 const parentPageField = (pages, page, initialParentId) => {
     const select = element('select', {attributes: {name: 'parentId', id: 'parentId'}});
@@ -2926,7 +2944,7 @@ const renderAdmin = async () => {
                 body: JSON.stringify({participated, intervals}),
             });
             toast(participated ? 'Teilnahme und Helferstunden wurden gespeichert.' : 'Die Person wurde als nicht teilgenommen markiert.');
-            await showEventHelpers();
+            await showEventManagement();
         };
         const openParticipationDialog = (requestItem) => {
             const dialog = element('dialog', {className: 'participation-dialog'});
@@ -3162,35 +3180,23 @@ const renderAdmin = async () => {
         );
     };
 
-    let membershipStatusFilter = '';
     const showMembership = async () => {
-        const query = membershipStatusFilter ? `?status=${encodeURIComponent(membershipStatusFilter)}` : '';
-        const data = await request('/api/admin/v1/membership-applications' + query);
-        const statusLabels = {pending: 'Offen', processing: 'In Übertragung', done: 'Übernommen', failed: 'Fehlgeschlagen'};
-        const filter = element('select', {attributes: {'aria-label': 'Mitgliedsanträge nach Status filtern'}, children: [
-            element('option', {text: 'Alle Status', attributes: {value: ''}}),
-            ...Object.entries(statusLabels).map(([value, label]) => element('option', {text: label, attributes: {value}})),
-        ]});
-        filter.value = membershipStatusFilter;
-        filter.addEventListener('change', async () => {
-            membershipStatusFilter = filter.value;
-            await showMembershipManagement();
-        });
-        const cards = data.items.map((application) => {
+        const data = await request('/api/admin/v1/membership-applications');
+
+        const renderApplicationCard = (application) => {
             const primary = application.applicants[0];
             const people = application.applicants.map((person) => element('li', {children: [
-                element('strong', {text: `${person.firstName} ${person.lastName}`}),
+                element('strong', {text: `${SALUTATION_LABELS[person.salutation] || person.salutation} ${person.firstName} ${person.lastName}`}),
                 element('span', {text: ` · ${new Date(`${person.birthDate}T00:00:00`).toLocaleDateString('de-DE')} · ${person.street} ${person.houseNumber}, ${person.postalCode} ${person.city} · `}),
                 ...(person.email ? [element('a', {text: `${person.email}`, attributes: {href: `mailto:${person.email} · `}})] : []),
                 ...(person.phone ? [element('a', {text: `${person.phone}`, attributes: {href: `tel:${person.phone}`}})] : []),
             ]}));
+            // Sobald ein Antrag als Mitglied angelegt oder abgelehnt wurde, sind beide Aktionen
+            // (Freigabe/Ablehnung) hinfällig — für abgeschlossene Anträge bleibt `actions` dadurch
+            // automatisch leer, ohne das hier gesondert abfragen zu müssen.
+            const open = !application.releasedAt && !application.rejectedAt;
             const actions = [];
-            if (canEditModule('membership_applications') && application.status === 'failed') {
-                actions.push(actionButton('Erneut zur Übertragung freigeben', `/api/admin/v1/membership-applications/${application.id}/retry`, showMembershipManagement, 'button', {
-                    success: 'Der Antrag steht erneut zur Übertragung bereit.',
-                }));
-            }
-            if (canEditModule('membership_applications') && canEditModule('members') && !application.releasedAt) {
+            if (canEditModule('membership_applications') && canEditModule('members') && open) {
                 actions.push(actionButton('Als Mitglied anlegen', `/api/admin/v1/membership-applications/${application.id}/release`, showMembershipManagement, 'button', {
                     confirm: {
                         title: 'Mitglied anlegen',
@@ -3200,34 +3206,74 @@ const renderAdmin = async () => {
                     success: 'Die Person(en) wurden als Mitglied angelegt.',
                 }));
             }
-            return element('article', {className: `management-card membership-admin-card status-${application.status}`, children: [
+            if (canEditModule('membership_applications') && open) {
+                actions.push(actionButton('Ablehnen', `/api/admin/v1/membership-applications/${application.id}/reject`, showMembershipManagement, 'secondary-button', {
+                    confirm: {
+                        title: 'Mitgliedsantrag ablehnen',
+                        description: 'Der Antrag wird als abgelehnt markiert und kann danach nicht mehr als Mitglied angelegt werden. Das kann nicht rückgängig gemacht werden.',
+                        label: 'Ablehnen',
+                    },
+                    success: 'Der Mitgliedsantrag wurde abgelehnt.',
+                }));
+            }
+            return element('article', {className: `management-card membership-admin-card${application.releasedAt ? ' is-released' : ''}${application.rejectedAt ? ' is-rejected' : ''}`, children: [
                 element('header', {children: [
                     element('div', {children: [
                         element('strong', {text: primary ? `${primary.firstName} ${primary.lastName}` : application.id}),
                         element('small', {text: `${application.membershipType === 'family' ? 'Familie' : 'Einzelperson'} · ${application.applicants.length} ${application.applicants.length === 1 ? 'Person' : 'Personen'}`}),
                     ]}),
-                    element('span', {className: `status-badge status-${application.status}`, text: statusLabels[application.status] || application.status}),
+                    element('div', {className: 'membership-admin-card-badges', children: [
+                        ...(open ? [element('span', {className: 'status-badge status-pending', text: 'Offen'})] : []),
+                        ...(application.releasedAt ? [element('span', {className: 'status-badge status-released', text: 'Mitglied angelegt'})] : []),
+                        ...(application.rejectedAt ? [element('span', {className: 'status-badge status-rejected', text: 'Abgelehnt'})] : []),
+                    ]}),
                 ]}),
                 element('dl', {className: 'membership-meta', children: [
                     element('div', {children: [element('dt', {text: 'Eingang'}), element('dd', {text: new Date(application.submittedAt).toLocaleString('de-DE')})]}),
                     element('div', {children: [element('dt', {text: 'Kontoinhaber'}), element('dd', {text: application.accountHolder})]}),
                     element('div', {children: [element('dt', {text: 'IBAN'}), element('dd', {text: application.iban})]}),
                     element('div', {children: [element('dt', {text: 'Vorgang'}), element('dd', {text: application.id})]}),
-                    ...(application.externalReference ? [element('div', {children: [element('dt', {text: 'Fremdsystem'}), element('dd', {text: application.externalReference})]})] : []),
                     ...(application.releasedAt ? [element('div', {children: [element('dt', {text: 'Mitglied angelegt'}), element('dd', {text: new Date(application.releasedAt).toLocaleString('de-DE')})]})] : []),
+                    ...(application.rejectedAt ? [element('div', {children: [element('dt', {text: 'Abgelehnt am'}), element('dd', {text: new Date(application.rejectedAt).toLocaleString('de-DE')})]})] : []),
                 ]}),
                 element('details', {children: [
                     element('summary', {text: 'Personen und Kontaktdaten anzeigen'}),
                     element('ol', {className: 'membership-admin-people', children: people}),
                 ]}),
-                ...(application.failureReason ? [element('p', {className: 'failure-message', text: application.failureReason})] : []),
+                ...(application.rejectionReason ? [element('p', {className: 'failure-message', text: application.rejectionReason})] : []),
                 ...(actions.length ? [element('div', {className: 'card-actions', children: actions})] : []),
             ]});
+        };
+
+        const activeApplications = data.items.filter((application) => !application.releasedAt && !application.rejectedAt);
+        const completedApplications = data.items.filter((application) => application.releasedAt || application.rejectedAt);
+        const completedByYear = new Map();
+        completedApplications.forEach((application) => {
+            const year = new Date(application.releasedAt || application.rejectedAt).getFullYear();
+            if (!completedByYear.has(year)) completedByYear.set(year, []);
+            completedByYear.get(year).push(application);
         });
+        completedByYear.forEach((yearApplications) => yearApplications.sort(
+            (left, right) => new Date(right.releasedAt || right.rejectedAt) - new Date(left.releasedAt || left.rejectedAt),
+        ));
+        const archive = (title, yearApplications) => element('details', {className: 'event-helper-archive', children: [
+            element('summary', {children: [
+                element('strong', {text: title}),
+                element('span', {className: 'status-badge', text: String(yearApplications.length)}),
+            ]}),
+            element('div', {className: 'event-helper-archive-list', children: [
+                element('div', {className: 'card-list', children: yearApplications.map(renderApplicationCard)}),
+            ]}),
+        ]});
+        const archiveSections = [...completedByYear.entries()]
+            .sort(([firstYear], [secondYear]) => secondYear - firstYear)
+            .map(([year, yearApplications]) => archive(`Abgeschlossen ${year}`, yearApplications));
+
         workspace.replaceChildren(
-            sectionHeading('Mitgliedsanträge', 'Offene Anträge prüfen und die Übergabe an das Fremdsystem überwachen'),
-            element('div', {className: 'management-toolbar', children: [filter, element('span', {text: `${data.total} Anträge`})]}),
-            element('div', {className: 'card-list', children: cards.length ? cards : [emptyState('Keine Mitgliedsanträge für diesen Status vorhanden.')]}),
+            sectionHeading('Mitgliedsanträge', 'Eingegangene Anträge prüfen, als Mitglied anlegen oder ablehnen'),
+            element('div', {className: 'management-toolbar', children: [element('span', {text: `${activeApplications.length} offene Anträge`})]}),
+            element('div', {className: 'card-list', children: activeApplications.length ? activeApplications.map(renderApplicationCard) : [emptyState('Keine offenen Mitgliedsanträge vorhanden.')]}),
+            ...(archiveSections.length ? [element('div', {className: 'event-helper-groups membership-archive-groups', children: archiveSections})] : []),
         );
     };
 
@@ -3243,6 +3289,7 @@ const renderAdmin = async () => {
                 tile('Mitglieder gesamt', stats.totalMembers),
                 tile('davon aktiv', stats.activeMembers),
                 tile('Offene Mitgliedsanträge', stats.pendingApplications),
+                tile('Beiträge gesamt pro Jahr', formatEuro(stats.totalContributionCents)),
             ]}),
             element('p', {className: 'empty-copy', text: 'Weitere Auswertungen folgen.'}),
         );
@@ -3296,14 +3343,39 @@ const renderAdmin = async () => {
         ]});
     };
 
+    // Ist das Austrittsdatum erreicht (heute oder in der Vergangenheit), gilt das Mitglied als
+    // ausgetreten — unabhängig von „Beitragspflichtig“, das dann seine Bedeutung verliert.
+    const hasMemberLeft = (leftAt) => !!leftAt && leftAt <= new Date().toISOString().slice(0, 10);
+
+    // Grund, warum für ein Mitglied kein Beitrag anfällt (falls zutreffend). Ausgetreten hat
+    // Vorrang vor Vorstand, da die Vorstandsfunktion nach dem Austritt keine Rolle mehr spielt.
+    // „Vorstand“ als Hinweis erscheint nur, wenn die Funktion tatsächlich Vorstand ist — wurde bei
+    // einem „Mitglied“ nur das Häkchen „Beitragspflichtig“ entfernt, steht stattdessen der
+    // allgemeinere Hinweis „Nicht beitragspflichtig“.
+    const contributionExemptionReason = (entry) => {
+        if (hasMemberLeft(entry.leftAt)) return 'Ausgetreten';
+        if (entry.contributionLiable === false) return entry.function === 'board' ? 'Vorstand' : 'Nicht beitragspflichtig';
+
+        return null;
+    };
+
     // Die einzelnen Beitragssatz-Positionen, aus denen sich der Beitrag eines Mitglieds
     // zusammensetzt (laufender Beitrag nach Kategorie + ggf. Arbeitseinsatz-Zuschlag).
-    const contributionPositions = (entry) => [
-        ...(entry.contributionCategory
-            ? [[CONTRIBUTION_CATEGORY_LABELS[entry.contributionCategory] || entry.contributionCategory, entry.contributionAmountCents]]
-            : []),
-        ...(entry.workAssignmentSurchargeCents != null ? [['Arbeitseinsatz-Zuschlag', entry.workAssignmentSurchargeCents]] : []),
-    ];
+    // Ausgetretene bzw. Vorstandsmitglieder sind beitragsfrei und werden unabhängig von (ggf.
+    // noch nicht neu berechneten) gespeicherten Werten sofort mit 0 € und entsprechendem Hinweis
+    // ausgewiesen.
+    const contributionPositions = (entry) => {
+        const exemptionReason = contributionExemptionReason(entry);
+
+        return exemptionReason
+            ? [[exemptionReason, 0]]
+            : [
+                ...(entry.contributionCategory
+                    ? [[CONTRIBUTION_CATEGORY_LABELS[entry.contributionCategory] || entry.contributionCategory, entry.contributionAmountCents]]
+                    : []),
+                ...(entry.workAssignmentSurchargeCents != null ? [['Arbeitseinsatz-Zuschlag', entry.workAssignmentSurchargeCents]] : []),
+            ];
+    };
 
     const payerListItem = (entry, currentId, openOther) => {
         const openButton = memberOpenButton(entry, currentId, openOther);
@@ -3349,6 +3421,23 @@ const renderAdmin = async () => {
         const lastName = field('Name', `member-last-name-${suffix}`, member?.lastName || '');
         const firstName = field('Vorname', `member-first-name-${suffix}`, member?.firstName || '');
         const birthDate = field('Geburtsdatum', `member-birth-date-${suffix}`, member?.birthDate || '', 'date');
+        const birthDateLabel = birthDate.querySelector('span');
+        const birthDateInput = birthDate.querySelector('input');
+        const updateBirthDateLabel = () => {
+            const born = birthDateInput.value ? new Date(`${birthDateInput.value}T00:00:00`) : null;
+            if (!born || Number.isNaN(born.getTime())) {
+                birthDateLabel.textContent = 'Geburtsdatum';
+                return;
+            }
+            const today = new Date();
+            let age = today.getFullYear() - born.getFullYear();
+            const hadBirthdayThisYear = today.getMonth() > born.getMonth()
+                || (today.getMonth() === born.getMonth() && today.getDate() >= born.getDate());
+            if (!hadBirthdayThisYear) age -= 1;
+            birthDateLabel.textContent = `Geburtsdatum (${age} ${age === 1 ? 'Jahr' : 'Jahre'})`;
+        };
+        birthDateInput.addEventListener('input', updateBirthDateLabel);
+        updateBirthDateLabel();
         const street = field('Straße', `member-street-${suffix}`, member?.street || '');
         const postalCode = field('PLZ', `member-postal-code-${suffix}`, member?.postalCode || '');
         const city = field('Ort', `member-city-${suffix}`, member?.city || '');
@@ -3376,8 +3465,11 @@ const renderAdmin = async () => {
         const iban = field('IBAN', `member-iban-${suffix}`, member?.iban || '');
         const bankName = field('Bank (optional)', `member-bank-name-${suffix}`, member?.bankName || '');
         const mandateReference = field('Mandatsreferenz', `member-mandate-reference-${suffix}`, member?.mandateReference || '');
+        const mandateValidFrom = field('Mandat gültig von', `member-mandate-valid-from-${suffix}`, member?.mandateValidFrom || '', 'date');
+        const mandateValidUntil = field('Mandat gültig bis', `member-mandate-valid-until-${suffix}`, member?.mandateValidUntil || '', 'date');
 
         const paymentMethod = selectField('Zahlart', `member-payment-method-${suffix}`, Object.entries(PAYMENT_METHOD_LABELS), member?.paymentMethod || 'sepa_direct_debit');
+        const paymentMethodSelect = paymentMethod.querySelector('select');
         const paymentInterval = selectField('Zahlintervall', `member-payment-interval-${suffix}`, Object.entries(PAYMENT_INTERVAL_LABELS).filter(([value]) => value !== 'once'), member?.paymentInterval || 'yearly');
         const paymentDay = radioGroup(`member-payment-day-${suffix}`, 'Zahlung am', Object.entries(PAYMENT_DAY_LABELS), member?.paymentDay || 'first');
         const payerType = selectField('Zahler', `member-payer-type-${suffix}`, Object.entries(PAYER_TYPE_LABELS), member?.payerType || 'self_payer');
@@ -3391,18 +3483,75 @@ const renderAdmin = async () => {
         const nextBookingMonth = selectField('Nächste Buchung (Monat)', `member-next-booking-month-${suffix}`, Array.from({length: 12}, (_, index) => [String(index + 1), String(index + 1).padStart(2, '0')]), String(member?.nextBookingMonth || 3));
         const nextBookingYear = field('Nächste Buchung (Jahr)', `member-next-booking-year-${suffix}`, String(member?.nextBookingYear || (new Date().getFullYear() + 1)), 'number');
 
+        // Vorstandsmitglieder sind laut Satzung beitragsfrei: Ist das Mitglied nicht
+        // beitragspflichtig, werden Konto-, Bank- und Zahlungsdaten gesperrt (bleiben aber
+        // gespeichert) und der Beitrag wird bei der nächsten Berechnung mit 0 € geführt. Ist das
+        // Austrittsdatum bereits erreicht, ist „Beitragspflichtig“ ohnehin bedeutungslos — die
+        // Checkbox wird dann gesperrt (Wert bleibt erhalten) und dieselben Felder gesperrt.
+        const contributionLiable = element('input', {attributes: {type: 'checkbox'}});
+        contributionLiable.checked = member ? member.contributionLiable !== false : true;
+        // Zahlungsdaten hängen nur an „Beitragspflichtig“; Kontodaten zusätzlich daran, dass
+        // überhaupt SEPA-Lastschrift als Zahlart gewählt ist — nur dafür existiert ein Mandat.
+        const paymentRestrictedFields = [paymentMethod, paymentInterval, payerType, nextBookingMonth, nextBookingYear];
+        const accountRestrictedFields = [accountHolder, iban, bankName, mandateReference, mandateValidFrom, mandateValidUntil];
+        const applyContributionLiableState = () => {
+            const left = hasMemberLeft(leftAt.querySelector('input').value);
+            contributionLiable.disabled = left;
+            const liable = contributionLiable.checked && !left;
+            paymentRestrictedFields.forEach((wrapper) => {
+                const control = wrapper.querySelector('input, select');
+                if (control) control.disabled = !liable;
+            });
+            accountRestrictedFields.forEach((wrapper) => {
+                const control = wrapper.querySelector('input, select');
+                if (control) control.disabled = !liable || paymentMethodSelect.value !== 'sepa_direct_debit';
+            });
+            paymentDay.querySelectorAll('input').forEach((input) => { input.disabled = !liable; });
+            const payerSearchInput = payerMember.querySelector('input[type="text"]');
+            if (payerSearchInput) payerSearchInput.disabled = !liable;
+        };
+        contributionLiable.addEventListener('change', applyContributionLiableState);
+        leftAt.querySelector('input').addEventListener('input', applyContributionLiableState);
+        paymentMethodSelect.addEventListener('change', applyContributionLiableState);
+        applyContributionLiableState();
+
         const message = formMessage();
         const submit = element('button', {className: 'button', text: member ? 'Änderungen speichern' : 'Mitglied anlegen', attributes: {type: 'submit'}});
         const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
         const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const deleteButton = member && canEditModule('members')
+            ? element('button', {className: 'secondary-button danger-button', text: 'Mitglied löschen', attributes: {type: 'button'}})
+            : null;
+        if (deleteButton) {
+            deleteButton.addEventListener('click', async () => {
+                const confirmed = await confirmAction(
+                    'Mitglied löschen',
+                    `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird endgültig gelöscht, inklusive Bemerkungen und Beitragshistorie. Das kann nicht rückgängig gemacht werden.`,
+                    'Löschen',
+                );
+                if (!confirmed) return;
+                deleteButton.disabled = true;
+                try {
+                    await request(`/api/admin/v1/members/${member.id}`, {method: 'DELETE'});
+                    toast('Das Mitglied wurde gelöscht.');
+                    dialog.close();
+                    await onSaved();
+                } catch (error) {
+                    toast(error.message, 'error');
+                    deleteButton.disabled = false;
+                }
+            });
+        }
 
+        const memberExemptionReason = contributionExemptionReason(member ?? {});
         const contributionSection = member ? element('fieldset', {children: [
             element('legend', {text: 'Beitrag'}),
             element('p', {children: [
-                element('strong', {text: member.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[member.contributionCategory] || member.contributionCategory : 'Noch nicht berechnet'}),
-                element('span', {text: ` · ${formatEuro(member.contributionAmountCents)} pro Jahr`}),
+                element('strong', {text: memberExemptionReason
+                    ?? (member.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[member.contributionCategory] || member.contributionCategory : 'Noch nicht berechnet')}),
+                element('span', {text: ` · ${formatEuro(memberExemptionReason ? 0 : member.contributionAmountCents)} pro Jahr`}),
             ]}),
-            ...(member.workAssignmentSurchargeCents != null ? [element('p', {children: [
+            ...(!memberExemptionReason && member.workAssignmentSurchargeCents != null ? [element('p', {children: [
                 element('strong', {text: 'Arbeitseinsatz-Zuschlag'}),
                 element('span', {text: ` · zzgl. ${formatEuro(member.workAssignmentSurchargeCents)} pro Jahr (bei Ableistung der Gemeinschaftsstunden erstattungsfähig)`}),
             ]})] : []),
@@ -3475,7 +3624,13 @@ const renderAdmin = async () => {
             element('ul', {className: 'member-payer-list', children: household.payerEntries.map((entry) => payerListItem(entry, member.id, openOther))}),
             element('div', {className: 'member-payer-total', children: [
                 element('span', {text: 'Gesamtbeitrag pro Jahr'}),
-                element('span', {text: formatEuro(household.payerTotalAnnualCents)}),
+                // Aus denselben Positionen wie die Liste darüber berechnet (statt aus dem vom
+                // Server gelieferten Rohwert), damit ein gerade erst gesetztes „Beitragspflichtig“-
+                // Häkchen die Summe sofort auf 0 € zieht, statt erst nach „Beitrag neu berechnen“.
+                element('span', {text: formatEuro(household.payerEntries.reduce(
+                    (sum, entry) => sum + contributionPositions(entry).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
+                    0,
+                ))}),
             ]}),
         ]}) : null;
 
@@ -3483,13 +3638,16 @@ const renderAdmin = async () => {
             ['stammdaten', 'Stammdaten', [
                 element('fieldset', {children: [
                     element('legend', {text: 'Persönliche Daten'}),
-                    memberNumberField, primaryMemberNumber, salutation, lastName, firstName, birthDate, familyRole,
+                    fieldRow([memberNumberField, primaryMemberNumber]),
+                    fieldRow([salutation]),
+                    fieldRow([firstName, lastName]),
+                    fieldRow([birthDate, familyRole]),
                     element('small', {text: 'Familienangehörige erhalten hier die Mitgliedsnummer des Hauptmitglieds.'}),
                 ]}),
                 ...(householdSection ? [householdSection] : []),
             ]],
             ['kontakt', 'Kontaktdaten', [
-                element('fieldset', {children: [element('legend', {text: 'Adresse'}), street, postalCode, city]}),
+                element('fieldset', {children: [element('legend', {text: 'Adresse'}), street, fieldRow([postalCode, city])]}),
                 element('fieldset', {children: [element('legend', {text: 'Kontakt'}), email, phone]}),
             ]],
             ['verein', 'Vereinsdaten', [
@@ -3497,18 +3655,27 @@ const renderAdmin = async () => {
                     element('legend', {text: 'Vereinsdaten'}),
                     memberFunction,
                     element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktives Mitglied'})]}),
-                    joinedAt, leftAt,
+                    fieldRow([joinedAt, leftAt]),
                 ]}),
             ]],
             ['beitrag', 'Beitragsdaten', [
                 element('fieldset', {children: [
-                    element('legend', {text: 'Kontodaten'}),
-                    accountHolder, iban, bankName, mandateReference,
-                    element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich.'}),
+                    element('legend', {text: 'Beitragspflicht'}),
+                    element('label', {className: 'check-field', children: [contributionLiable, element('span', {text: 'Beitragspflichtig'})]}),
+                    element('small', {text: 'Vorstandsmitglieder sind laut Satzung beitragsfrei: Häkchen entfernen, um Konto-, Bank- und Zahlungsdaten zu sperren. Der Beitrag wird dann bei „Beitrag neu berechnen“ mit 0 € und dem Hinweis „Vorstand“ geführt.'}),
                 ]}),
                 element('fieldset', {children: [
                     element('legend', {text: 'Zahlungsdaten'}),
-                    paymentMethod, paymentInterval, paymentDay, payerType, payerMember, nextBookingMonth, nextBookingYear,
+                    fieldRow([paymentMethod, paymentInterval]),
+                    paymentDay,
+                    fieldRow([payerType, payerMember]),
+                    nextBookingMonth, nextBookingYear,
+                ]}),
+                element('fieldset', {children: [
+                    element('legend', {text: 'Kontodaten'}),
+                    accountHolder, iban, bankName,
+                    fieldRow([mandateReference, mandateValidFrom, mandateValidUntil], 3),
+                    element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich und werden nur bei dieser Zahlart bearbeitbar. „Gültig von/bis“ stammt aus dem Sage-GS-Bestand (MANDATABDATUM/MANDATBISDATUM) und kann hier gepflegt werden.'}),
                 ]}),
                 ...(contributionSection ? [contributionSection] : []),
                 ...(payerSection ? [payerSection] : []),
@@ -3545,7 +3712,7 @@ const renderAdmin = async () => {
             tabStrip,
             ...tabPanels.map(([, panel]) => panel),
             message,
-            element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+            element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), cancel, submit]}),
         ]});
         [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
             wrapper.querySelector('input').required = true;
@@ -3575,6 +3742,8 @@ const renderAdmin = async () => {
                 iban: iban.querySelector('input').value || null,
                 bankName: bankName.querySelector('input').value || null,
                 mandateReference: mandateReference.querySelector('input').value || null,
+                mandateValidFrom: mandateValidFrom.querySelector('input').value || null,
+                mandateValidUntil: mandateValidUntil.querySelector('input').value || null,
                 paymentMethod: paymentMethod.querySelector('select').value,
                 paymentInterval: paymentInterval.querySelector('select').value,
                 paymentDay: dialog.querySelector(`input[name="member-payment-day-${suffix}"]:checked`)?.value || 'first',
@@ -3582,6 +3751,7 @@ const renderAdmin = async () => {
                 payerMemberId: payerTypeSelect.value === 'other_member' ? (payerMemberSelect.value || null) : null,
                 nextBookingMonth: Number.parseInt(nextBookingMonth.querySelector('select').value, 10),
                 nextBookingYear: Number.parseInt(nextBookingYear.querySelector('input').value, 10),
+                contributionLiable: contributionLiable.checked,
             };
             try {
                 if (member) {
@@ -3608,107 +3778,228 @@ const renderAdmin = async () => {
         dialog.showModal();
     };
 
-    let memberSearchTerm = '';
-    const showMembers = async () => {
-        const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
-        const data = await request('/api/admin/v1/members' + query);
-        const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
-        if (canEditModule('members')) {
-            const create = element('button', {className: 'button', text: '＋ Neues Mitglied', attributes: {type: 'button'}});
-            create.addEventListener('click', () => openMemberDialog(null, showMembershipManagement));
-            heading.append(create);
-        }
-
-        const search = element('input', {attributes: {type: 'search', placeholder: 'Suche nach Nummer, Name oder Ort', value: memberSearchTerm}});
-        search.addEventListener('change', async () => {
-            memberSearchTerm = search.value.trim();
-            await showMembershipManagement();
-        });
-
-        const importInput = element('input', {attributes: {type: 'file', accept: '.csv,.json,.xml'}});
-        const importFormat = element('select', {children: [
-            element('option', {text: 'CSV', attributes: {value: 'csv'}}),
-            element('option', {text: 'JSON', attributes: {value: 'json'}}),
-            element('option', {text: 'XML', attributes: {value: 'xml'}}),
+    const openMemberImportDialog = (onImported) => {
+        const dialog = element('dialog', {className: 'activity-dialog'});
+        const fileInput = element('input', {attributes: {type: 'file', accept: '.csv,.json,.xml'}});
+        const fileField = element('label', {className: 'field', children: [element('span', {text: 'Datei'}), fileInput]});
+        const format = selectField('Dateiformat', 'member-import-format', [['csv', 'CSV'], ['json', 'JSON'], ['xml', 'XML']], 'csv');
+        const message = formMessage();
+        const submit = element('button', {className: 'button', text: 'Importieren', attributes: {type: 'submit'}});
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const form = element('form', {className: 'activity-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: 'Mitglieder'}),
+                    element('h2', {text: 'Mitglieder importieren'}),
+                ]}),
+            ]}),
+            fileField, format,
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
         ]});
-        const importButton = element('button', {className: 'secondary-button', text: 'Importieren', attributes: {type: 'button'}});
-        importButton.addEventListener('click', async () => {
-            const file = importInput.files[0];
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const file = fileInput.files[0];
             if (!file) {
-                toast('Bitte zuerst eine Datei auswählen.', 'error');
+                message.textContent = 'Bitte zuerst eine Datei auswählen.';
                 return;
             }
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('format', importFormat.value);
-            importButton.disabled = true;
+            formData.append('format', format.querySelector('select').value);
+            submit.disabled = true;
             try {
                 const result = await request('/api/admin/v1/members/import', {method: 'POST', body: formData});
                 const errorSuffix = result.errors.length ? `, ${result.errors.length} Zeile(n) mit Fehlern` : '';
                 toast(`${result.created} Mitglied(er) angelegt, ${result.updated} aktualisiert${errorSuffix}.`, result.errors.length ? 'info' : 'success');
-                importInput.value = '';
-                await showMembershipManagement();
+                dialog.close();
+                await onImported();
             } catch (error) {
+                message.textContent = error.message;
                 toast(error.message, 'error');
-            } finally {
-                importButton.disabled = false;
+                submit.disabled = false;
             }
         });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+    };
 
-        const exportFormat = element('select', {children: [
-            element('option', {text: 'CSV', attributes: {value: 'csv'}}),
-            element('option', {text: 'JSON', attributes: {value: 'json'}}),
-            element('option', {text: 'XML', attributes: {value: 'xml'}}),
+    const openMemberExportDialog = () => {
+        const dialog = element('dialog', {className: 'activity-dialog'});
+        const format = selectField('Dateiformat', 'member-export-format', [['csv', 'CSV'], ['json', 'JSON'], ['xml', 'XML']], 'csv');
+        const message = formMessage();
+        const submit = element('button', {className: 'button', text: 'Exportieren', attributes: {type: 'submit'}});
+        const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const form = element('form', {className: 'activity-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: 'Mitglieder'}),
+                    element('h2', {text: 'Mitglieder exportieren'}),
+                ]}),
+            ]}),
+            format,
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
         ]});
-        const exportButton = element('button', {className: 'secondary-button', text: 'Exportieren', attributes: {type: 'button'}});
-        exportButton.addEventListener('click', async () => {
+        cancel.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            submit.disabled = true;
+            const selectedFormat = format.querySelector('select').value;
             try {
-                const response = await fetch(`/api/admin/v1/members/export?format=${exportFormat.value}`, {credentials: 'same-origin'});
+                const response = await fetch(`/api/admin/v1/members/export?format=${selectedFormat}`, {credentials: 'same-origin'});
                 if (!response.ok) throw new Error('Der Export ist fehlgeschlagen.');
                 const blob = await response.blob();
                 const url = URL.createObjectURL(blob);
-                const link = element('a', {attributes: {href: url, download: `mitglieder.${exportFormat.value}`}});
+                const link = element('a', {attributes: {href: url, download: `mitglieder.${selectedFormat}`}});
                 document.body.append(link);
                 link.click();
                 link.remove();
                 URL.revokeObjectURL(url);
+                dialog.close();
             } catch (error) {
+                message.textContent = error.message;
                 toast(error.message, 'error');
+            } finally {
+                submit.disabled = false;
             }
         });
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, form);
+        document.body.append(dialog);
+        dialog.showModal();
+    };
 
-        const columns = ['Mitgl.-Nr.', 'Hauptnr.', 'Anrede', 'Name', 'Vorname', 'Geburtsdatum', 'Straße', 'PLZ', 'Ort'];
-        const rows = data.items.map((memberItem) => {
-            const row = element('tr', {
-                className: 'member-row',
-                attributes: {tabindex: '0', role: 'button'},
-                children: [
-                    memberItem.memberNumber,
-                    memberItem.primaryMemberNumber,
-                    SALUTATION_LABELS[memberItem.salutation] || memberItem.salutation,
-                    memberItem.lastName,
-                    memberItem.firstName,
-                    new Date(`${memberItem.birthDate}T00:00:00`).toLocaleDateString('de-DE'),
-                    memberItem.street,
-                    memberItem.postalCode,
-                    memberItem.city,
-                ].map((text) => element('td', {text})),
-            });
-            const open = () => openMemberDialog(memberItem, showMembershipManagement);
-            row.addEventListener('click', open);
-            row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+    let memberSearchTerm = '';
+    let memberSortField = 'memberNumber';
+    let memberSortDirection = 'asc';
+    const showMembers = async () => {
+        const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
+        const data = await request('/api/admin/v1/members' + query);
+        const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
+        const actions = [];
+        if (canEditModule('members')) {
+            const create = element('button', {className: 'button', text: '＋ Neues Mitglied', attributes: {type: 'button'}});
+            create.addEventListener('click', () => openMemberDialog(null, showMembershipManagement));
+            actions.push(create);
+        }
+        if (canEditModule('members')) {
+            actions.push(actionButton('Beiträge für alle Mitglieder neu berechnen', '/api/admin/v1/members/recalculate-contributions', showMembershipManagement, 'secondary-button', {
+                confirm: {
+                    title: 'Beiträge neu berechnen',
+                    description: 'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.',
+                    label: 'Neu berechnen',
+                },
+                success: 'Die Beiträge wurden für alle Mitglieder neu berechnet.',
+            }));
+        }
+        actions.push(actionMenu('Datenbank', [
+            {label: 'Importieren …', run: () => openMemberImportDialog(showMembershipManagement)},
+            {label: 'Exportieren …', run: () => openMemberExportDialog()},
+        ]));
 
-            return row;
+        const search = searchField('Volltextsuche: Nummer, Name, Straße, PLZ, Ort, E-Mail, Telefon …', memberSearchTerm, async (value) => {
+            memberSearchTerm = value;
+            await showMembershipManagement();
         });
-        const table = element('table', {className: 'data-table', children: [
-            element('thead', {children: [element('tr', {children: columns.map((text) => element('th', {text}))})]}),
-            element('tbody', {children: rows}),
-        ]});
+
+        const columns = [
+            {key: 'memberNumber', label: 'Mitgl.-Nr.'},
+            {key: 'primaryMemberNumber', label: 'Hauptnr.'},
+            {key: 'salutation', label: 'Anrede'},
+            {key: 'lastName', label: 'Name'},
+            {key: 'firstName', label: 'Vorname'},
+            {key: 'birthDate', label: 'Geburtsdatum'},
+            {key: 'street', label: 'Straße'},
+            {key: 'postalCode', label: 'PLZ'},
+            {key: 'city', label: 'Ort'},
+        ];
+        const compareMemberValues = (left, right) => {
+            if (left == null && right == null) return 0;
+            if (left == null) return -1;
+            if (right == null) return 1;
+
+            return String(left).localeCompare(String(right), 'de', {numeric: true, sensitivity: 'base'});
+        };
+
+        const buildTable = () => {
+            const sortedItems = [...data.items].sort((left, right) => {
+                const direction = memberSortDirection === 'desc' ? -1 : 1;
+
+                return compareMemberValues(left[memberSortField], right[memberSortField]) * direction;
+            });
+            const rows = sortedItems.map((memberItem) => {
+                const row = element('tr', {
+                    className: 'member-row',
+                    attributes: {tabindex: '0', role: 'button'},
+                    children: [
+                        memberItem.memberNumber,
+                        memberItem.primaryMemberNumber,
+                        SALUTATION_LABELS[memberItem.salutation] || memberItem.salutation,
+                        memberItem.lastName,
+                        memberItem.firstName,
+                        new Date(`${memberItem.birthDate}T00:00:00`).toLocaleDateString('de-DE'),
+                        memberItem.street,
+                        memberItem.postalCode,
+                        memberItem.city,
+                    ].map((text) => element('td', {text})),
+                });
+                const open = () => openMemberDialog(memberItem, showMembershipManagement);
+                row.addEventListener('click', open);
+                row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+
+                return row;
+            });
+            const headerCells = columns.map((column) => {
+                const isActive = column.key === memberSortField;
+                const arrow = isActive ? (memberSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+                const th = element('th', {
+                    className: 'sortable-column',
+                    text: `${column.label}${arrow}`,
+                    attributes: {
+                        tabindex: '0',
+                        role: 'button',
+                        'aria-sort': isActive ? (memberSortDirection === 'asc' ? 'ascending' : 'descending') : 'none',
+                    },
+                });
+                const toggleSort = () => {
+                    if (memberSortField === column.key) {
+                        memberSortDirection = memberSortDirection === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        memberSortField = column.key;
+                        memberSortDirection = 'asc';
+                    }
+                    const newTable = buildTable();
+                    table.replaceWith(newTable);
+                    table = newTable;
+                };
+                th.addEventListener('click', toggleSort);
+                th.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    toggleSort();
+                });
+
+                return th;
+            });
+
+            return element('table', {className: 'data-table', children: [
+                element('thead', {children: [element('tr', {children: headerCells})]}),
+                element('tbody', {children: rows}),
+            ]});
+        };
+        let table = buildTable();
 
         workspace.replaceChildren(
-            heading,
+            element('div', {className: 'management-header', children: [heading, element('div', {className: 'management-actions', children: actions})]}),
             element('div', {className: 'management-toolbar', children: [search, element('span', {text: `${data.total} Mitglieder`})]}),
-            element('div', {className: 'management-toolbar', children: [importInput, importFormat, importButton, exportFormat, exportButton]}),
             data.items.length ? table : emptyState('Noch keine Mitglieder angelegt.'),
         );
     };
@@ -3975,7 +4266,7 @@ const renderAdmin = async () => {
         const heading = sectionHeading('Aktivitäten', 'Wiederverwendbare Tätigkeiten für Veranstaltungen und gemeinsame Arbeitseinsätze');
         if (canEditModule('activities')) {
             const create = element('button', {className: 'button', text: '＋ Neue Aktivität', attributes: {type: 'button'}});
-            create.addEventListener('click', () => openActivityDialog(null, showActivities));
+            create.addEventListener('click', () => openActivityDialog(null, showEventManagement));
             heading.append(create);
         }
         const rows = data.items.map((activity) => {
@@ -3993,7 +4284,7 @@ const renderAdmin = async () => {
                     ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
             });
-            if (canEditModule('activities')) row.addEventListener('click', () => openActivityDialog(activity, showActivities));
+            if (canEditModule('activities')) row.addEventListener('click', () => openActivityDialog(activity, showEventManagement));
             return row;
         });
         workspace.replaceChildren(
@@ -4405,7 +4696,7 @@ const renderAdmin = async () => {
         filterSelect.value = eventScheduleKindFilter;
         filterSelect.addEventListener('change', async () => {
             eventScheduleKindFilter = filterSelect.value;
-            await showEvents();
+            await showEventManagement();
         });
 
         const items = scheduleData.items.filter((item) => !eventScheduleKindFilter || item.kind === eventScheduleKindFilter);
@@ -4424,7 +4715,7 @@ const renderAdmin = async () => {
                     ...(canEditModule('events') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
             });
-            if (canEditModule('events')) row.addEventListener('click', () => openEventDialog(item, item.kind, showEvents, handlers));
+            if (canEditModule('events')) row.addEventListener('click', () => openEventDialog(item, item.kind, showEventManagement, handlers));
             return row;
         };
 
@@ -4459,8 +4750,8 @@ const renderAdmin = async () => {
         if (canEditModule('events')) {
             const createEvent = element('button', {className: 'button event-create-button event-create-event', text: '＋ Veranstaltung erstellen', attributes: {type: 'button'}});
             const createWorkAssignment = element('button', {className: 'button event-create-button event-create-work-assignment', text: '＋ Arbeitseinsatz erstellen', attributes: {type: 'button'}});
-            createEvent.addEventListener('click', () => openEventDialog(null, 'event', showEvents, handlers));
-            createWorkAssignment.addEventListener('click', () => openEventDialog(null, 'work_assignment', showEvents, handlers));
+            createEvent.addEventListener('click', () => openEventDialog(null, 'event', showEventManagement, handlers));
+            createWorkAssignment.addEventListener('click', () => openEventDialog(null, 'work_assignment', showEventManagement, handlers));
             heading.append(createEvent, createWorkAssignment);
         }
 
@@ -4469,6 +4760,41 @@ const renderAdmin = async () => {
             element('div', {className: 'management-toolbar', children: [filterSelect, element('span', {text: `${items.length} Einträge`})]}),
             element('div', {className: 'event-helper-groups', children: sections.length ? sections : [emptyState('Noch keine Veranstaltungen oder Arbeitseinsätze angelegt.')]}),
         );
+    };
+
+    let activeEventTab = null;
+    const showEventManagement = async () => {
+        const tabs = [
+            ...(hasModule('events') ? [['events', 'Veranstaltungen', showEvents]] : []),
+            ...(hasModule('event_helpers') ? [['helpers', 'Veranstaltungshelfer', showEventHelpers]] : []),
+            ...(hasModule('activities') ? [['activities', 'Aktivitäten', showActivities]] : []),
+        ];
+        if (!tabs.some(([key]) => key === activeEventTab)) activeEventTab = tabs[0]?.[0] || null;
+
+        const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Veranstaltung'}, children: tabs.map(([key, label]) => {
+            const button = element('button', {
+                className: `sub-tab${key === activeEventTab ? ' active' : ''}`,
+                text: label,
+                attributes: {type: 'button'},
+            });
+            button.addEventListener('click', async () => {
+                activeEventTab = key;
+                await showEventManagement();
+            });
+
+            return button;
+        })});
+        const active = tabs.find(([key]) => key === activeEventTab);
+        if (!active) {
+            workspace.replaceChildren(tabStrip, emptyState('Für diesen Zugang ist kein Bereich der Veranstaltungsverwaltung freigeschaltet.'));
+            return;
+        }
+        // showEvents/showEventHelpers/showActivities schreiben wie jedes andere Modul direkt in
+        // `workspace`. Deren Ergebnis wird danach in ein Tab-Panel umgehängt, damit Tab-Leiste und
+        // Inhalt gemeinsam sichtbar bleiben.
+        await active[2]();
+        const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
+        workspace.replaceChildren(tabStrip, panel);
     };
 
     const addMenu = (label, action) => {
@@ -4488,9 +4814,9 @@ const renderAdmin = async () => {
     const menuItems = [];
     if (hasModule('pages')) menuItems.push(addMenu('Seiten', showPages));
 
-    if (hasModule('events')) menuItems.push(addMenu('Veranstaltungen', showEvents));
-    if (hasModule('event_helpers')) menuItems.push(addMenu('Veranstaltungshelfer', showEventHelpers));
-    if (hasModule('activities')) menuItems.push(addMenu('Aktivitäten', showActivities));
+    if (hasModule('events') || hasModule('event_helpers') || hasModule('activities')) {
+        menuItems.push(addMenu('Veranstaltung', showEventManagement));
+    }
 
     if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications')) {
         menuItems.push(addMenu('Mitgliederverwaltung', showMembershipManagement));
@@ -4541,6 +4867,66 @@ const sectionHeading = (title, description) => element('header', {className: 'se
 ]});
 
 const emptyState = (text) => element('p', {className: 'empty-copy', text});
+
+// Generisches Pulldown-Menü (natives <details>/<summary>, kein eigener Öffnen/Schließen-Zustand
+// nötig) für mehrere Aktionen unter einem Sammelbegriff, z. B. "Datenbank" mit Import/Export.
+// Schließt sich beim Klick auf einen Menüpunkt sowie automatisch, sobald ein anderes Menü dieser
+// Art auf derselben Seite geöffnet wird.
+const actionMenu = (label, items) => {
+    const menu = element('details', {className: 'action-menu'});
+    const summary = element('summary', {className: 'action-menu-toggle', text: `${label} ▾`});
+    const popover = element('div', {className: 'action-menu-popover', children: items.map((item) => {
+        const button = element('button', {className: 'action-menu-item', text: item.label, attributes: {type: 'button'}});
+        button.addEventListener('click', () => {
+            menu.removeAttribute('open');
+            item.run();
+        });
+
+        return button;
+    })});
+    // Schließt das Menü bei einem Klick außerhalb — der Klick auf den Umschalter selbst zählt
+    // wegen `menu.contains()` nicht als „außerhalb“, öffnet das Menü also nicht sofort wieder zu.
+    const closeOnOutsideClick = (event) => {
+        if (!menu.contains(event.target)) menu.removeAttribute('open');
+    };
+    menu.addEventListener('toggle', () => {
+        if (menu.open) {
+            document.querySelectorAll('.action-menu[open]').forEach((other) => {
+                if (other !== menu) other.removeAttribute('open');
+            });
+            document.addEventListener('click', closeOnOutsideClick);
+        } else {
+            document.removeEventListener('click', closeOnOutsideClick);
+        }
+    });
+    menu.append(summary, popover);
+
+    return menu;
+};
+
+// Suchfeld mit Icon und Rücksetzen-Button (nur sichtbar, solange Text eingegeben ist). Löst
+// `onSearch(value)` beim Bestätigen (Enter/Fokus verlassen) sowie sofort beim Zurücksetzen aus.
+const searchField = (placeholder, value, onSearch) => {
+    const input = element('input', {attributes: {type: 'search', placeholder, 'aria-label': placeholder}});
+    input.value = value;
+    const clear = element('button', {className: 'search-field-clear', text: '×', attributes: {type: 'button', 'aria-label': 'Suche zurücksetzen'}});
+    const updateClearVisibility = () => { clear.hidden = input.value === ''; };
+    input.addEventListener('input', updateClearVisibility);
+    input.addEventListener('change', () => onSearch(input.value.trim()));
+    clear.addEventListener('click', () => {
+        input.value = '';
+        updateClearVisibility();
+        input.focus();
+        onSearch('');
+    });
+    updateClearVisibility();
+
+    return element('div', {className: 'search-field', children: [
+        element('span', {className: 'search-field-icon', text: '🔍', attributes: {'aria-hidden': 'true'}}),
+        input,
+        clear,
+    ]});
+};
 
 const actionButton = (label, url, refresh, className = 'secondary-button', options = {}) => {
     const button = element('button', {className, text: label, attributes: {type: 'button'}});

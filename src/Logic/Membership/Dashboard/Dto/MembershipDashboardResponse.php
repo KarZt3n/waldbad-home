@@ -8,6 +8,8 @@ readonly class MembershipDashboardResponse
         public int $totalMembers,
         public int $activeMembers,
         public int $pendingApplications,
+        /** Summe aus Mitgliedsbeitrag + Arbeitseinsatz-Zuschlag über alle Mitglieder, in Cent. */
+        public int $totalContributionCents,
     ) {
     }
 }

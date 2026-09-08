@@ -55,6 +55,14 @@ readonly class MemberContributionCalculator
      */
     public function calculate(Member $candidate, array $householdMembers, \DateTimeImmutable $at): ContributionOutcome
     {
+        // Ausgetretene Mitglieder (Austrittsdatum erreicht) sowie laut Satzung beitragsfreie
+        // Vorstandsmitglieder werden unabhängig davon, welche Kategorie sonst zuträfe, direkt mit
+        // 0 € ohne Kategorie gemeldet; die Oberfläche zeigt dafür den passenden Hinweis
+        // („Ausgetreten“ bzw. „Vorstand“) an.
+        if ($candidate->hasLeft($at) || !$candidate->contributionLiable) {
+            return new ContributionOutcome(null, 0, null);
+        }
+
         $category = $this->resolveCategory($candidate, $householdMembers, $at);
         $rate = $this->rates->findByCategory($category)
             ?? throw new BusinessRuleViolationException(sprintf(

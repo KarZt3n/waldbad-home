@@ -67,6 +67,8 @@ class MemberEntity
         private bool $active,
         #[ORM\Column(type: Types::STRING, length: 20)]
         private string $function,
+        #[ORM\Column(type: Types::BOOLEAN)]
+        private bool $contributionLiable,
         #[ORM\Column(type: Types::STRING, length: 180, nullable: true)]
         private ?string $accountHolder,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
@@ -75,6 +77,10 @@ class MemberEntity
         private ?string $bankName,
         #[ORM\Column(type: Types::STRING, length: 60, nullable: true)]
         private ?string $mandateReference,
+        #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
+        private ?\DateTimeImmutable $mandateValidFrom,
+        #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
+        private ?\DateTimeImmutable $mandateValidUntil,
         #[ORM\Column(type: Types::STRING, length: 20)]
         private string $paymentMethod,
         #[ORM\Column(type: Types::STRING, length: 20)]
@@ -147,10 +153,13 @@ class MemberEntity
     public function getLeftAt(): ?\DateTimeImmutable { return $this->leftAt; }
     public function isActive(): bool { return $this->active; }
     public function getFunction(): string { return $this->function; }
+    public function isContributionLiable(): bool { return $this->contributionLiable; }
     public function getAccountHolder(): ?string { return $this->accountHolder; }
     public function getIban(): ?string { return $this->iban; }
     public function getBankName(): ?string { return $this->bankName; }
     public function getMandateReference(): ?string { return $this->mandateReference; }
+    public function getMandateValidFrom(): ?\DateTimeImmutable { return $this->mandateValidFrom; }
+    public function getMandateValidUntil(): ?\DateTimeImmutable { return $this->mandateValidUntil; }
     public function getPaymentMethod(): string { return $this->paymentMethod; }
     public function getPaymentInterval(): string { return $this->paymentInterval; }
     public function getPaymentDay(): string { return $this->paymentDay; }
@@ -182,10 +191,13 @@ class MemberEntity
         ?\DateTimeImmutable $leftAt,
         bool $active,
         string $function,
+        bool $contributionLiable,
         ?string $accountHolder,
         ?string $iban,
         ?string $bankName,
         ?string $mandateReference,
+        ?\DateTimeImmutable $mandateValidFrom,
+        ?\DateTimeImmutable $mandateValidUntil,
         string $paymentMethod,
         string $paymentInterval,
         string $paymentDay,
@@ -214,10 +226,13 @@ class MemberEntity
         $this->leftAt = $leftAt;
         $this->active = $active;
         $this->function = $function;
+        $this->contributionLiable = $contributionLiable;
         $this->accountHolder = $accountHolder;
         $this->iban = $iban;
         $this->bankName = $bankName;
         $this->mandateReference = $mandateReference;
+        $this->mandateValidFrom = $mandateValidFrom;
+        $this->mandateValidUntil = $mandateValidUntil;
         $this->paymentMethod = $paymentMethod;
         $this->paymentInterval = $paymentInterval;
         $this->paymentDay = $paymentDay;

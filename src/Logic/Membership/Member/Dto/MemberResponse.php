@@ -55,6 +55,9 @@ readonly class MemberResponse
         public array $remarks,
         public array $oneTimeCharges,
         public int $version,
+        public bool $contributionLiable = true,
+        public ?\DateTimeImmutable $mandateValidFrom = null,
+        public ?\DateTimeImmutable $mandateValidUntil = null,
     ) {
     }
 
@@ -95,6 +98,9 @@ readonly class MemberResponse
             remarks: $member->remarks,
             oneTimeCharges: $member->oneTimeCharges,
             version: $member->version,
+            contributionLiable: $member->contributionLiable,
+            mandateValidFrom: $member->mandateValidFrom,
+            mandateValidUntil: $member->mandateValidUntil,
         );
     }
 }

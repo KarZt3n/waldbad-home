@@ -8,8 +8,6 @@
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
     media_upload_directory: '%kernel.project_dir%/public/uploads/media'
-    membership_integration_token_default: ''
-    membership_integration_token: '%env(default:membership_integration_token_default:MEMBERSHIP_INTEGRATION_TOKEN)%'
 
 services:
     # default configuration for services in *this* file
@@ -22,7 +20,6 @@ services:
             $membershipApplicationLimiter: '@limiter.membership_application'
             $eventHelpFormLimiter: '@limiter.event_help_form'
             $mediaUploadDirectory: '%media_upload_directory%'
-            $membershipIntegrationToken: '%membership_integration_token%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

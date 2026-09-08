@@ -101,6 +101,7 @@ readonly class ImportMembersUseCase
             payerMemberId: $row->payerMemberId,
             nextBookingMonth: $row->nextBookingMonth ?? 3,
             nextBookingYear: $row->nextBookingYear ?? ((int) $row->joinedAt->format('Y') + 1),
+            contributionLiable: $row->contributionLiable,
         );
     }
 }

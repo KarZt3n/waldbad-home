@@ -58,6 +58,9 @@ readonly class MemberModelFactory
             remarks: [],
             oneTimeCharges: [],
             version: 0,
+            contributionLiable: $request->contributionLiable,
+            mandateValidFrom: $request->mandateValidFrom,
+            mandateValidUntil: $request->mandateValidUntil,
         );
     }
 
@@ -103,6 +106,9 @@ readonly class MemberModelFactory
             remarks: $current->remarks,
             oneTimeCharges: $current->oneTimeCharges,
             version: $request->version,
+            contributionLiable: $request->contributionLiable,
+            mandateValidFrom: $request->mandateValidFrom,
+            mandateValidUntil: $request->mandateValidUntil,
         );
     }
 }

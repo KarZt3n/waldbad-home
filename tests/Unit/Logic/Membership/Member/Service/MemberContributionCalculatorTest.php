@@ -54,6 +54,30 @@ final class MemberContributionCalculatorTest extends TestCase
         self::assertSame(5000, $outcome->amountCents);
     }
 
+    public function testContributionExemptMemberIsChargedNothingRegardlessOfCategory(): void
+    {
+        $calculator = $this->calculator();
+        $board = $this->member(birthDate: '1985-01-01', contributionLiable: false);
+
+        $outcome = $calculator->calculate($board, [], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertNull($outcome->category);
+        self::assertSame(0, $outcome->amountCents);
+        self::assertNull($outcome->workAssignmentSurchargeCents);
+    }
+
+    public function testMemberWhoHasLeftIsChargedNothingRegardlessOfCategory(): void
+    {
+        $calculator = $this->calculator();
+        $former = $this->member(birthDate: '1985-01-01', leftAt: '2026-05-01');
+
+        $outcome = $calculator->calculate($former, [], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertNull($outcome->category);
+        self::assertSame(0, $outcome->amountCents);
+        self::assertNull($outcome->workAssignmentSurchargeCents);
+    }
+
     public function testFamilyHeadWithQualifyingChildGetsFamilyDiscount(): void
     {
         $calculator = $this->calculator();
@@ -246,6 +270,8 @@ final class MemberContributionCalculatorTest extends TestCase
         FamilyRole $familyRole = FamilyRole::None,
         string $id = 'member',
         string $primaryMemberNumber = 'M-0001',
+        bool $contributionLiable = true,
+        ?string $leftAt = null,
     ): Member {
         return new Member(
             id: $id,
@@ -262,7 +288,7 @@ final class MemberContributionCalculatorTest extends TestCase
             phone: null,
             familyRole: $familyRole,
             joinedAt: new \DateTimeImmutable('2026-01-01'),
-            leftAt: null,
+            leftAt: $leftAt === null ? null : new \DateTimeImmutable($leftAt),
             active: true,
             function: MemberFunction::Member,
             accountHolder: 'Max Muster',
@@ -282,6 +308,7 @@ final class MemberContributionCalculatorTest extends TestCase
             remarks: [],
             oneTimeCharges: [],
             version: 1,
+            contributionLiable: $contributionLiable,
         );
     }
 }

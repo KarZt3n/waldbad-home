@@ -34,16 +34,13 @@ readonly class MembershipApplicationResponseFactory
             'signerName' => $application->signerName,
             'emailConsent' => $application->emailConsent,
             'declarationVersion' => $application->declarationVersion,
-            'status' => $application->status->value,
-            'externalReference' => $application->externalReference,
-            'failureReason' => $application->failureReason,
             'version' => $application->version,
             'submittedAt' => $application->submittedAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $application->updatedAt->format(\DateTimeInterface::ATOM),
-            'processingAt' => $application->processingAt?->format(\DateTimeInterface::ATOM),
-            'completedAt' => $application->completedAt?->format(\DateTimeInterface::ATOM),
             'releasedAt' => $application->releasedAt?->format(\DateTimeInterface::ATOM),
             'releasedMemberIds' => $application->releasedMemberIds,
+            'rejectedAt' => $application->rejectedAt?->format(\DateTimeInterface::ATOM),
+            'rejectionReason' => $application->rejectionReason,
         ];
     }
 
@@ -55,6 +52,7 @@ readonly class MembershipApplicationResponseFactory
         return [
             'id' => $applicant->id,
             'position' => $applicant->position,
+            'salutation' => $applicant->salutation->value,
             'firstName' => $applicant->firstName,
             'lastName' => $applicant->lastName,
             'birthDate' => $applicant->birthDate->format('Y-m-d'),

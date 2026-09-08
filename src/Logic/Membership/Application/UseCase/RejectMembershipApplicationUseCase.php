@@ -6,7 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 
-readonly class FailMembershipApplicationUseCase
+readonly class RejectMembershipApplicationUseCase
 {
     public function __construct(
         private MembershipApplicationManagerInterface $manager,
@@ -14,9 +14,9 @@ readonly class FailMembershipApplicationUseCase
     ) {
     }
 
-    public function execute(string $id, string $reason): MembershipApplicationResponse
+    public function execute(string $id, ?string $reason): MembershipApplicationResponse
     {
-        $application = $this->manager->get($id)->fail($reason, $this->clock->now());
+        $application = $this->manager->get($id)->reject($reason, $this->clock->now());
 
         return MembershipApplicationResponse::fromApplication($this->manager->save($application));
     }

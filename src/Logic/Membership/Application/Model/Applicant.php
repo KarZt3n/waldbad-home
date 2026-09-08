@@ -3,12 +3,14 @@
 namespace App\Logic\Membership\Application\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Membership\Member\Model\Salutation;
 
 readonly class Applicant
 {
     public function __construct(
         public string $id,
         public int $position,
+        public Salutation $salutation,
         public string $firstName,
         public string $lastName,
         public \DateTimeImmutable $birthDate,

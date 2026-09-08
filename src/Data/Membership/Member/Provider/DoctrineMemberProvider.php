@@ -52,12 +52,24 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
             ->orderBy('m.lastName', 'ASC')
             ->addOrderBy('m.firstName', 'ASC');
 
+        // Echte Volltextsuche: Der Suchbegriff wird an Leerzeichen in einzelne Wörter zerlegt, und
+        // jedes Wort muss (unabhängig von Feld und Reihenfolge) irgendwo unter den durchsuchten
+        // Feldern vorkommen — "Muster Max" findet damit z. B. auch einen Datensatz mit
+        // firstName=Max/lastName=Muster, nicht nur eine wortwörtliche Übereinstimmung in einem
+        // einzelnen Feld.
         $term = trim((string) $term);
         if ($term !== '') {
-            $queryBuilder->andWhere(
-                'm.memberNumber LIKE :term OR m.primaryMemberNumber LIKE :term '
-                .'OR m.lastName LIKE :term OR m.firstName LIKE :term OR m.city LIKE :term',
-            )->setParameter('term', '%'.$term.'%');
+            $words = preg_split('/\s+/', $term, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            foreach ($words as $index => $word) {
+                $parameter = 'term'.$index;
+                $queryBuilder->andWhere(
+                    'm.memberNumber LIKE :'.$parameter.' OR m.primaryMemberNumber LIKE :'.$parameter
+                    .' OR m.lastName LIKE :'.$parameter.' OR m.firstName LIKE :'.$parameter
+                    .' OR m.street LIKE :'.$parameter.' OR m.postalCode LIKE :'.$parameter
+                    .' OR m.city LIKE :'.$parameter.' OR m.email LIKE :'.$parameter
+                    .' OR m.phone LIKE :'.$parameter,
+                )->setParameter($parameter, '%'.$word.'%');
+            }
         }
 
         $result = $queryBuilder->getQuery()->getResult();

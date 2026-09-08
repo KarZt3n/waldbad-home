@@ -50,6 +50,16 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         return $this->mapper->toModel($entity);
     }
 
+    public function delete(string $id): void
+    {
+        $entity = $this->entityManager->find(MemberEntity::class, $id);
+        if ($entity === null) {
+            throw new MemberNotFoundException($id);
+        }
+        $this->entityManager->remove($entity);
+        $this->entityManager->flush();
+    }
+
     private function create(Member $member): Member
     {
         $entity = $this->mapper->createEntity($member, $this->clock->now());

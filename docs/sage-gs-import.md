@@ -8,6 +8,17 @@ php bin/console sage-gs:importer /Users/SassK/Downloads/mitglieder-export.XML --
 
 Standard ist ein Prüflauf. Erst `--execute` schreibt nach vollständig erfolgreicher Prüfung in einer Transaktion. Bestehende Mitgliedsnummern werden übersprungen, nicht überschrieben. Ein erneuter Import erzeugt keine Dubletten. Die Mitgliedertabellen aus den vorhandenen Migrationen müssen installiert sein. Es werden keine Migrationen automatisch ausgeführt.
 
+## Mandatsreferenz/-gültigkeit nachträglich ergänzen
+
+Für bereits importierte Mitglieder, bei denen MANDATSREFERENZ/MANDATABDATUM/MANDATBISDATUM (noch) nicht übernommen wurden:
+
+```sh
+php bin/console sage-gs:backfill-mandate /Users/SassK/Downloads/mitglieder-export.XML
+php bin/console sage-gs:backfill-mandate /Users/SassK/Downloads/mitglieder-export.XML --execute
+```
+
+Ordnet Datensätze ausschließlich über MITNUM = member_number bestehenden Mitgliedern zu; legt keine neuen Mitglieder an, unbekannte Mitgliedsnummern werden nur gezählt. Ergänzt (überschreibt), wenn die Quelle einen Wert enthält; ist ein Feld in der Quelle leer, bleibt der vorhandene Datenbankwert unangetastet, statt ihn zu löschen. Am 2026-09-08 gegen den realen Bestand (996 Datensätze) ausgeführt: 520 Mitglieder aktualisiert, 476 unverändert, 0 nicht gefunden.
+
 ## Feldzuordnung zum aktuellen Entity-Schema
 
 | Sage-Attribut | Zielfeld |
@@ -24,6 +35,7 @@ Standard ist ein Prüflauf. Erst `--execute` schreibt nach vollständig erfolgre
 | FUNKTION | function: Mitglied bzw. leer → member, Vorstand → board |
 | KTOINHABER / IBAN / BANK | account_holder / iban / bank_name |
 | MANDATSREFERENZ | mandate_reference; leer → Mitgliedsnummer |
+| MANDATABDATUM / MANDATBISDATUM | mandate_valid_from / mandate_valid_until; striktes DD.MM.YYYY, leer → NULL; bei abweichendem Zahler (ZAHLFREMD) wie die übrigen Bankfelder auf NULL gesetzt |
 | ZAHLART | payment_method: Bankeinzug, Überweisung, Bar |
 | ZAHLWEISE | payment_interval: jährlich, halbjährlich, vierteljährlich, monatlich |
 | ZAHLANFANG | payment_day: Wahr → first, Falsch → fifteenth |
@@ -53,7 +65,7 @@ Die Feldnamen entsprechen `CreateMemberRequest`. Datums-Korrekturen verwenden YY
 
 Die vorhandene DB verlangt unter anderem Geburtsdatum, Eintritt, Anschrift, Buchungstermin und (nur bei Selbstzahlern mit SEPA-Lastschrift) gültige Bankdaten. Unvollständige historische Datensätze bleiben deshalb zunächst Fehler und müssen fachlich bereinigt werden. Ein Fehler verhindert sämtliche Schreibvorgänge.
 
-Sage-Beitragscodes SATZ/TITEL*, JAHRESBEITRAG, Guthaben und Buchungshistorie werden nicht in aktuelle Beitragstarife umgedeutet. Neue Mitglieder erhalten weder Aufnahmegebühren noch automatisch berechnete Beiträge. Die Beitragszuordnung muss anschließend separat erfolgen. BEMERK, BIC, Mandatsgültigkeitsdaten, weitere Telefonnummern, Zusatzfelder und andere nicht aufgeführte Felder werden derzeit nicht übernommen; die Originaldatei ist dafür aufzubewahren. Bestehende Mitglieder behalten sämtliche Daten, Bemerkungen und Beiträge.
+Sage-Beitragscodes SATZ/TITEL*, JAHRESBEITRAG, Guthaben und Buchungshistorie werden nicht in aktuelle Beitragstarife umgedeutet. Neue Mitglieder erhalten weder Aufnahmegebühren noch automatisch berechnete Beiträge. Die Beitragszuordnung muss anschließend separat erfolgen. BEMERK, BIC, weitere Telefonnummern, Zusatzfelder und andere nicht aufgeführte Felder werden derzeit nicht übernommen; die Originaldatei ist dafür aufzubewahren. Bestehende Mitglieder behalten sämtliche Daten, Bemerkungen und Beiträge.
 
 ## Analyse des bereitgestellten Exports
 

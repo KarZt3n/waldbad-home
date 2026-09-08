@@ -28,7 +28,10 @@ final readonly class SageGsRowMapper
         }
         $data['phone'] = ($row['TELEFON'] ?? '') ?: (($row['MOBIL'] ?? '') ?: null);
         $data['iban'] = isset($data['iban']) ? strtoupper(str_replace(' ', '', $data['iban'])) : null;
-        foreach (['GEBURT' => 'birthDate', 'MITSEIT' => 'joinedAt', 'AUSTRITT' => 'leftAt'] as $source => $target) {
+        foreach ([
+            'GEBURT' => 'birthDate', 'MITSEIT' => 'joinedAt', 'AUSTRITT' => 'leftAt',
+            'MANDATABDATUM' => 'mandateValidFrom', 'MANDATBISDATUM' => 'mandateValidUntil',
+        ] as $source => $target) {
             if (array_key_exists($target, $overrides)) {
                 continue;
             }
@@ -93,6 +96,8 @@ final readonly class SageGsRowMapper
             $data['iban'] = null;
             $data['bankName'] = null;
             $data['mandateReference'] = null;
+            $data['mandateValidFrom'] = null;
+            $data['mandateValidUntil'] = null;
         }
         if ($data['familyRole'] === null) {
             throw new BadRequestHttpException('Familienrolle partner/child muss in der Mapping-Datei festgelegt werden.');
