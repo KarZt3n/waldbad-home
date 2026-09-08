@@ -20,13 +20,6 @@ readonly class MembershipApplicationRequestMapper
         if (!$data->getBoolean('privacyAccepted') || !$data->getBoolean('termsAccepted') || !$data->getBoolean('sepaAccepted')) {
             throw new BadRequestHttpException('Datenschutz, Satzung/Beitragsordnung und SEPA-Ermächtigung müssen bestätigt werden.');
         }
-        $typeValue = $this->requiredString($data, 'membershipType', 20);
-        try {
-            $membershipType = MembershipType::from($typeValue);
-        } catch (\ValueError) {
-            throw new BadRequestHttpException('Die Mitgliedschaftsart ist ungültig.');
-        }
-
         $rawApplicants = $data->all('applicants');
         if (!array_is_list($rawApplicants) || $rawApplicants === [] || count($rawApplicants) > 8) {
             throw new BadRequestHttpException('Der Antrag muss zwischen einer und acht Personen enthalten.');
@@ -50,6 +43,10 @@ readonly class MembershipApplicationRequestMapper
                 email: $this->nullableArrayString($rawApplicant, 'email', 180),
             );
         }
+
+        // Die Art der Mitgliedschaft wird nicht vom Formular übernommen, sondern eindeutig aus der
+        // Personenzahl abgeleitet: eine Person = Einzelmitgliedschaft, mehrere = Familienmitgliedschaft.
+        $membershipType = count($applicants) === 1 ? MembershipType::Individual : MembershipType::Family;
 
         return new SubmitMembershipApplicationRequest(
             membershipType: $membershipType,

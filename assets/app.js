@@ -468,10 +468,6 @@ const renderMembershipApplicationForm = (preview = false) => {
     const instanceId = `membership-${Math.random().toString(36).slice(2)}`;
     const message = formMessage();
     const applicants = element('div', {className: 'membership-applicants'});
-    const membershipType = element('select', {attributes: {name: 'membershipType', id: `${instanceId}-type`}, children: [
-        element('option', {text: 'Einzelmitgliedschaft', attributes: {value: 'individual'}}),
-        element('option', {text: 'Familienmitgliedschaft', attributes: {value: 'family'}}),
-    ]});
     const addPerson = element('button', {className: 'secondary-button', text: '＋ Weitere Person', attributes: {type: 'button'}});
 
     const applicantField = (label, key, type = 'text', required = true) => {
@@ -501,7 +497,7 @@ const renderMembershipApplicationForm = (preview = false) => {
             const remove = card.querySelector('.membership-remove-person');
             remove.hidden = index === 0 && applicants.children.length === 1;
         });
-        addPerson.disabled = membershipType.value !== 'family' || applicants.children.length >= 8;
+        addPerson.disabled = applicants.children.length >= 8;
     };
     const appendApplicant = () => {
         if (applicants.children.length >= 8) return;
@@ -536,13 +532,6 @@ const renderMembershipApplicationForm = (preview = false) => {
     };
 
     appendApplicant();
-    membershipType.addEventListener('change', () => {
-        if (membershipType.value === 'individual' && applicants.children.length > 1) {
-            membershipType.value = 'family';
-            toast('Eine Einzelmitgliedschaft kann nur eine Person enthalten. Entferne zuerst die weiteren Personen.', 'error');
-        }
-        refreshApplicantCards();
-    });
     addPerson.addEventListener('click', appendApplicant);
 
     const consent = (name, text, required = true) => {
@@ -555,7 +544,6 @@ const renderMembershipApplicationForm = (preview = false) => {
             element('h2', {text: 'Beitrittserklärung'}),
             element('p', {text: 'Fülle den Antrag für dich oder deine Familie aus. Weitere Familienmitglieder können direkt ergänzt werden.'}),
         ]}),
-        element('label', {className: 'field', children: [element('span', {text: 'Art der Mitgliedschaft'}), membershipType]}),
         applicants,
         addPerson,
         element('section', {className: 'membership-section', children: [
@@ -595,7 +583,6 @@ const renderMembershipApplicationForm = (preview = false) => {
         message.classList.remove('success');
         try {
             const response = await request('/api/public/v1/membership-applications', {method: 'POST', body: JSON.stringify({
-                membershipType: data.get('membershipType'),
                 applicants: applicantPayload,
                 accountHolder: data.get('accountHolder'),
                 iban: data.get('iban'),
