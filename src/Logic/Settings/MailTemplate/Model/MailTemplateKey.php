@@ -72,6 +72,7 @@ enum MailTemplateKey: string
                 {{personen}}
 
                 Beiträge:
+
                 {{beitraege}}
 
                 Bei Fragen melde dich gerne bei uns.

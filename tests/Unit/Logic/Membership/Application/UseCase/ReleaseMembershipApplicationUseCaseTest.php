@@ -9,6 +9,9 @@ use App\Logic\Membership\Application\Model\Applicant;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
+use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
+use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
+use App\Logic\Membership\ContributionRate\Model\ContributionRate;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -25,9 +28,17 @@ use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
+use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
+use App\Logic\Settings\MailTemplate\Model\MailTemplate;
+use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
+use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
+use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
+use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mime\Email;
 
 final class ReleaseMembershipApplicationUseCaseTest extends TestCase
 {
@@ -71,6 +82,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $householdRecalculator,
             $memberManager,
+            $this->contributionRates(),
             $logger,
         ))->execute('application-1');
 
@@ -96,6 +108,84 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertSame(Salutation::Diverse, $child->salutation);
     }
 
+    /**
+     * Die Bestätigungsmail soll je Person nicht nur den Betrag, sondern auch die Bezeichnung des
+     * zugrunde liegenden Beitragssatzes nennen, damit der Gesamtbetrag nachvollziehbar ist.
+     */
+    public function testConfirmationEmailListsTheContributionRateLabelPerPerson(): void
+    {
+        $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
+        $application = $this->familyApplication($now);
+
+        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
+        $applications->method('get')->willReturn($application);
+        $applications->method('save')->willReturnCallback(static fn (MembershipApplication $saved): MembershipApplication => $saved);
+
+        $createdMembers = [];
+        $orchestrator = $this->createStub(MemberOnboardingOrchestrator::class);
+        $orchestrator->method('createFromRequest')->willReturnCallback(
+            function (CreateMemberRequest $request) use (&$createdMembers): Member {
+                $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1))
+                    ->withContribution(ContributionCategory::FamilyAdult, 5000, null);
+                $createdMembers[] = $member;
+
+                return $member;
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn($now);
+
+        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $memberManager = $this->createStub(MemberManagerInterface::class);
+        $memberManager->method('findByPrimaryMemberNumber')->willReturnCallback(static fn (): array => $createdMembers);
+
+        $contributionRates = $this->createStub(ContributionRateManagerInterface::class);
+        $contributionRates->method('findByCategory')->willReturn(
+            new ContributionRate('rate-1', ContributionCategory::FamilyAdult, 'Familienbeitrag Erwachsene', 5000, PaymentInterval::Yearly),
+        );
+
+        $capturedEmail = null;
+        $transport = $this->createStub(TransportInterface::class);
+        $transport->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
+            $capturedEmail = $email;
+        });
+        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
+        $transportFactory->method('create')->willReturn($transport);
+
+        $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
+        $emailSettingsManager->method('get')->willReturn(
+            new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []),
+        );
+        $templateManager = $this->createStub(MailTemplateManagerInterface::class);
+        $templateManager->method('resolve')->willReturnCallback(
+            static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
+        );
+        $mailer = new NotificationMailer(
+            $emailSettingsManager,
+            $transportFactory,
+            new MailTemplateRenderer($templateManager, new MailContentRenderer()),
+            new BrandedEmailLayout(),
+            $this->createStub(EmailLogoProviderInterface::class),
+            $this->createStub(LoggerInterface::class),
+        );
+
+        (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $mailer,
+            $householdRecalculator,
+            $memberManager,
+            $contributionRates,
+            $this->createStub(LoggerInterface::class),
+        ))->execute('application-1');
+
+        self::assertNotNull($capturedEmail);
+        self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getTextBody());
+        self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getHtmlBody());
+    }
+
     public function testCannotReleaseTheSameApplicationTwice(): void
     {
         $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
@@ -119,6 +209,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $this->createStub(HouseholdContributionRecalculator::class),
             $this->createStub(MemberManagerInterface::class),
+            $this->contributionRates(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
     }
@@ -164,6 +255,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $householdRecalculator,
             $this->createStub(MemberManagerInterface::class),
+            $this->contributionRates(),
             $logger,
         ))->execute('application-1');
 
@@ -247,7 +339,18 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $emailSettingsManager,
             $this->createStub(ConfiguredMailTransportFactory::class),
             $this->createStub(MailTemplateRenderer::class),
+            new BrandedEmailLayout(),
+            $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
         );
+    }
+
+    /**
+     * Kein Beitragssatz hinterlegt: `formatContributions()` lässt die Bezeichnung dann einfach weg,
+     * statt einen Fehler auszulösen.
+     */
+    private function contributionRates(): ContributionRateManagerInterface
+    {
+        return $this->createStub(ContributionRateManagerInterface::class);
     }
 }

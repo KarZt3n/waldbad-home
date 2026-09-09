@@ -7,6 +7,8 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\MembershipType;
+use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
+use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -51,6 +53,7 @@ readonly class ReleaseMembershipApplicationUseCase
         private NotificationMailer $notificationMailer,
         private HouseholdContributionRecalculator $householdRecalculator,
         private MemberManagerInterface $memberManager,
+        private ContributionRateManagerInterface $contributionRates,
         private LoggerInterface $logger,
     ) {
     }
@@ -166,9 +169,10 @@ readonly class ReleaseMembershipApplicationUseCase
                     'mitgliedsnummer' => $head->memberNumber,
                     'beitrittsdatum' => $now->format('d.m.Y'),
                     'personen' => $this->formatMembers($members),
-                    'beitraege' => $this->formatContributions($members),
+                    'beitraege' => $this->formatContributionsAsText($members),
                     'vereinsname' => self::ASSOCIATION_NAME,
                 ],
+                ['beitraege' => $this->formatContributionsAsHtml($members)],
             );
         } catch (\Throwable $exception) {
             // Die Mitglieder sind zu diesem Zeitpunkt bereits angelegt und der Antrag bereits als
@@ -203,24 +207,100 @@ readonly class ReleaseMembershipApplicationUseCase
     }
 
     /**
+     * Text-Fallback der Beitragsübersicht: je Person eine Zeile mit den Gesamtkosten, darunter
+     * eingerückt die einzelnen Positionen (Beitragssatz, ggf. Arbeitseinsatz-Zuschlag) — siehe
+     * `contributionPositions()`.
+     *
      * @param list<Member> $members
      */
-    private function formatContributions(array $members): string
+    private function formatContributionsAsText(array $members): string
     {
         $lines = [];
         $totalCents = 0;
         foreach ($members as $member) {
-            $amountCents = ($member->contributionAmountCents ?? 0) + ($member->workAssignmentSurchargeCents ?? 0);
-            $totalCents += $amountCents;
-            $lines[] = sprintf('- %s %s: %s pro Jahr', $member->firstName, $member->lastName, $this->formatEuro($amountCents));
+            $positions = $this->contributionPositions($member);
+            $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
+            $totalCents += $memberTotalCents;
+
+            $lines[] = sprintf('- %s %s: %s pro Jahr', $member->firstName, $member->lastName, $this->formatEuro($memberTotalCents));
+            foreach ($positions as $position) {
+                $lines[] = sprintf('  - %s: %s pro Jahr', $position['label'], $this->formatEuro($position['amountCents']));
+            }
         }
         $lines[] = sprintf('Gesamt: %s pro Jahr', $this->formatEuro($totalCents));
 
         return implode("\n", $lines);
     }
 
+    /**
+     * Dieselbe Beitragsübersicht als verschachtelte HTML-Liste (Person → Positionen), siehe
+     * `MailContentRenderer` (verarbeitet `rawBlocks`) und `formatContributionsAsText()` für den
+     * Text-Fallback derselben Daten.
+     *
+     * @param list<Member> $members
+     */
+    private function formatContributionsAsHtml(array $members): string
+    {
+        $totalCents = 0;
+        $items = '';
+        foreach ($members as $member) {
+            $positions = $this->contributionPositions($member);
+            $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
+            $totalCents += $memberTotalCents;
+
+            $subItems = implode('', array_map(
+                fn (array $position): string => sprintf(
+                    '<li>%s: %s pro Jahr</li>',
+                    $this->escapeHtml($position['label']),
+                    $this->formatEuro($position['amountCents']),
+                ),
+                $positions,
+            ));
+            $items .= sprintf(
+                '<li style="margin-bottom:8px;">%s %s: %s pro Jahr<ul style="margin:4px 0 0;padding-left:20px;">%s</ul></li>',
+                $this->escapeHtml($member->firstName),
+                $this->escapeHtml($member->lastName),
+                $this->formatEuro($memberTotalCents),
+                $subItems,
+            );
+        }
+
+        return sprintf('<ul style="margin:0 0 12px;padding-left:20px;">%s</ul>', $items)
+            .sprintf('<p style="margin:0;font-weight:bold;">Gesamt: %s pro Jahr</p>', $this->formatEuro($totalCents));
+    }
+
+    /**
+     * Die einzelnen Positionen, aus denen sich der Jahresbeitrag einer Person zusammensetzt: der
+     * eigentliche Beitragssatz (dessen admin-editierbare Bezeichnung, z. B. „Familienbeitrag
+     * Erwachsene“) sowie — nur wenn die Person laut Berechnung dafür in Frage kommt (siehe
+     * `MemberContributionCalculator`) — der Arbeitseinsatz-Zuschlag als eigene Position.
+     *
+     * @return list<array{label: string, amountCents: int}>
+     */
+    private function contributionPositions(Member $member): array
+    {
+        $rateLabel = $member->contributionCategory !== null
+            ? $this->contributionRates->findByCategory($member->contributionCategory)?->label
+            : null;
+        $positions = [
+            ['label' => $rateLabel ?? 'Mitgliedsbeitrag', 'amountCents' => $member->contributionAmountCents ?? 0],
+        ];
+
+        if ($member->workAssignmentSurchargeCents !== null) {
+            $surchargeLabel = $this->contributionRates->findByCategory(ContributionCategory::WorkAssignmentSurcharge)?->label;
+            $positions[] = ['label' => $surchargeLabel ?? 'Arbeitseinsatz-Zuschlag', 'amountCents' => $member->workAssignmentSurchargeCents];
+        }
+
+        return $positions;
+    }
+
     private function formatEuro(int $cents): string
     {
         return number_format($cents / 100, 2, ',', '.').' €';
+    }
+
+    private function escapeHtml(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
     }
 }

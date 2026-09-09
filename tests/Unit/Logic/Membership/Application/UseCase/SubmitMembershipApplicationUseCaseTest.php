@@ -16,6 +16,8 @@ use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
+use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
+use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use App\Logic\Membership\Application\UseCase\SubmitMembershipApplicationUseCase;
 use PHPUnit\Framework\TestCase;
@@ -126,7 +128,8 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
         $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
         // Wird durch das nicht konfigurierte $emailSettingsManager oben nie tatsächlich aufgerufen.
         $templateRenderer = $this->createStub(MailTemplateRenderer::class);
-        $notificationMailer = new NotificationMailer($emailSettingsManager, $transportFactory, $templateRenderer, new NullLogger());
+        $logoProvider = $this->createStub(EmailLogoProviderInterface::class);
+        $notificationMailer = new NotificationMailer($emailSettingsManager, $transportFactory, $templateRenderer, new BrandedEmailLayout(), $logoProvider, new NullLogger());
 
         (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker))
             ->execute($request);

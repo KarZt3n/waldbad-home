@@ -8,6 +8,7 @@
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
     media_upload_directory: '%kernel.project_dir%/public/uploads/media'
+    email_logo_path: '%kernel.project_dir%/public/downloads/waldbad-borkheide-logo-email.png'
 
 services:
     # default configuration for services in *this* file
@@ -21,6 +22,7 @@ services:
             $eventHelpFormLimiter: '@limiter.event_help_form'
             $pinVerificationLimiter: '@limiter.pin_verification'
             $mediaUploadDirectory: '%media_upload_directory%'
+            $logoPath: '%email_logo_path%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

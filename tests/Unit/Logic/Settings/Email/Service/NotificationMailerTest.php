@@ -10,6 +10,9 @@ use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
 use App\Logic\Settings\MailTemplate\Model\MailTemplate;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
+use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
+use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
+use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -28,7 +31,7 @@ final class NotificationMailerTest extends TestCase
         $factory = $this->createMock(ConfiguredMailTransportFactory::class);
         $factory->expects(self::never())->method('create');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new NullLogger()))
+        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
     }
 
@@ -39,7 +42,7 @@ final class NotificationMailerTest extends TestCase
         $factory = $this->createMock(ConfiguredMailTransportFactory::class);
         $factory->expects(self::never())->method('create');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new NullLogger()))
+        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
     }
 
@@ -56,7 +59,7 @@ final class NotificationMailerTest extends TestCase
         $factory = $this->createStub(ConfiguredMailTransportFactory::class);
         $factory->method('create')->willReturn($transport);
 
-        (new NotificationMailer($manager, $factory, $this->renderer('Hallo {{vorname}}'), new NullLogger()))
+        (new NotificationMailer($manager, $factory, $this->renderer('Hallo {{vorname}}'), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, ['vorname' => 'Erika']);
     }
 
@@ -76,7 +79,7 @@ final class NotificationMailerTest extends TestCase
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('error');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), $logger))
+        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), $logger))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
     }
 
@@ -87,7 +90,7 @@ final class NotificationMailerTest extends TestCase
         $factory = $this->createMock(ConfiguredMailTransportFactory::class);
         $factory->expects(self::never())->method('create');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new NullLogger()))
+        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
             ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, []);
     }
 
@@ -102,7 +105,7 @@ final class NotificationMailerTest extends TestCase
         $factory = $this->createStub(ConfiguredMailTransportFactory::class);
         $factory->method('create')->willReturn($transport);
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new NullLogger()))
+        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
             ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, ['vorname' => 'Erika']);
     }
 
@@ -113,6 +116,18 @@ final class NotificationMailerTest extends TestCase
             static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $body),
         );
 
-        return new MailTemplateRenderer($manager);
+        return new MailTemplateRenderer($manager, new MailContentRenderer());
+    }
+
+    /**
+     * Kein Logo hinterlegt (entspricht z. B. einer minimalen Testumgebung ohne die Logo-Datei) —
+     * die Mail wird dann ohne Logo im Kopfbereich zusammengebaut, siehe `BrandedEmailLayout`.
+     */
+    private function logoProvider(): EmailLogoProviderInterface
+    {
+        $provider = $this->createStub(EmailLogoProviderInterface::class);
+        $provider->method('getLogoDataUri')->willReturn(null);
+
+        return $provider;
     }
 }

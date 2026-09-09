@@ -4761,6 +4761,7 @@ const renderAdmin = async () => {
                 element('p', {className: 'field-hint', text: `Verfügbare Platzhalter: ${template.placeholders.map((name) => `{{${name}}}`).join(', ')}`}),
                 subject,
                 body,
+                element('p', {className: 'field-hint', text: 'Die Mail wird zusätzlich als gestaltete HTML-Ansicht im Design des Vereins verschickt — Leerzeilen im Text werden dabei zu Absätzen.'}),
                 element('div', {className: 'confirm-dialog-actions', children: template.isDefault ? [save] : [save, reset]}),
                 message,
             ]});
