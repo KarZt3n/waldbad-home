@@ -3276,6 +3276,8 @@ const renderAdmin = async () => {
                 tile('Mitglieder gesamt', stats.totalMembers),
                 tile('davon aktiv', stats.activeMembers),
                 tile('Offene Mitgliedsanträge', stats.pendingApplications),
+                tile('Austritte zum Jahresende', stats.leavingAtYearEnd),
+                tile('Austritte aus Vorjahr', stats.leftLastYearEnd),
                 tile('Beiträge gesamt pro Jahr', formatEuro(stats.totalContributionCents)),
             ]}),
             element('p', {className: 'empty-copy', text: 'Weitere Auswertungen folgen.'}),
@@ -3392,7 +3394,7 @@ const renderAdmin = async () => {
     const openMemberDialog = async (member, onSaved) => {
         // Immer die vollständige, ungefilterte Mitgliederliste laden (unabhängig von einer evtl.
         // aktiven Suche in der Tabelle), damit die Zahler-Suche jedes Mitglied findet.
-        const [household, payerCandidates] = await Promise.all([
+        let [household, payerCandidates] = await Promise.all([
             member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null),
             request('/api/admin/v1/members').then((data) => data.items),
         ]);
@@ -3502,6 +3504,18 @@ const renderAdmin = async () => {
         paymentMethodSelect.addEventListener('change', applyContributionLiableState);
         applyContributionLiableState();
 
+        // Vorstandsmitglieder sind laut Satzung beitragsfrei: Beim Umstellen der Funktion auf
+        // „Vorstand“ wird „Beitragspflichtig“ direkt im Formular deaktiviert, beim Umstellen weg
+        // von „Vorstand“ wieder aktiviert — maßgeblich (auch ohne JavaScript bzw. bei einem
+        // direkten API-Aufruf) ist aber der serverseitige Automatismus in `UpdateMemberUseCase`,
+        // der beim Speichern denselben Wechsel erkennt, den Haken entsprechend setzt und danach den
+        // Beitrag für das Mitglied und seinen ganzen Haushalt automatisch neu berechnet.
+        const memberFunctionSelect = memberFunction.querySelector('select');
+        memberFunctionSelect.addEventListener('change', () => {
+            contributionLiable.checked = memberFunctionSelect.value !== 'board';
+            applyContributionLiableState();
+        });
+
         const message = formMessage();
         const submit = element('button', {className: 'button', text: member ? 'Änderungen speichern' : 'Mitglied anlegen', attributes: {type: 'submit'}});
         const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -3530,43 +3544,69 @@ const renderAdmin = async () => {
             });
         }
 
-        const memberExemptionReason = contributionExemptionReason(member ?? {});
+        // In eine eigene Funktion ausgelagert, damit „Beitrag neu berechnen“ nur diesen Ausschnitt
+        // austauschen kann, statt den ganzen Dialog zu schließen (siehe Klick-Handler unten).
+        const contributionInfoContent = (currentMember) => {
+            const exemptionReason = contributionExemptionReason(currentMember);
+
+            return [
+                element('p', {children: [
+                    element('strong', {text: exemptionReason
+                        ?? (currentMember.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[currentMember.contributionCategory] || currentMember.contributionCategory : 'Noch nicht berechnet')}),
+                    element('span', {text: ` · ${formatEuro(exemptionReason ? 0 : currentMember.contributionAmountCents)} pro Jahr`}),
+                ]}),
+                ...(!exemptionReason && currentMember.workAssignmentSurchargeCents != null ? [element('p', {children: [
+                    element('strong', {text: 'Arbeitseinsatz-Zuschlag'}),
+                    element('span', {text: ` · zzgl. ${formatEuro(currentMember.workAssignmentSurchargeCents)} pro Jahr (bei Ableistung der Gemeinschaftsstunden erstattungsfähig)`}),
+                ]})] : []),
+                element('p', {className: 'field-hint', text: 'Erhaltene Beitragssätze (einmalige Gebühren):'}),
+                element('ul', {className: 'member-remarks', children: currentMember.oneTimeCharges.length
+                    ? currentMember.oneTimeCharges.map((charge) => element('li', {children: [
+                        element('strong', {text: charge.label}),
+                        element('span', {text: ` · ${formatEuro(charge.amountCents)} · ${new Date(charge.chargedAt).toLocaleDateString('de-DE')}`}),
+                    ]}))
+                    : [element('li', {className: 'empty-copy', text: 'Keine einmaligen Gebühren berechnet.'})]}),
+            ];
+        };
+        const contributionInfo = member ? element('div', {children: contributionInfoContent(member)}) : null;
         const contributionSection = member ? element('fieldset', {children: [
             element('legend', {text: 'Beitrag'}),
-            element('p', {children: [
-                element('strong', {text: memberExemptionReason
-                    ?? (member.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[member.contributionCategory] || member.contributionCategory : 'Noch nicht berechnet')}),
-                element('span', {text: ` · ${formatEuro(memberExemptionReason ? 0 : member.contributionAmountCents)} pro Jahr`}),
-            ]}),
-            ...(!memberExemptionReason && member.workAssignmentSurchargeCents != null ? [element('p', {children: [
-                element('strong', {text: 'Arbeitseinsatz-Zuschlag'}),
-                element('span', {text: ` · zzgl. ${formatEuro(member.workAssignmentSurchargeCents)} pro Jahr (bei Ableistung der Gemeinschaftsstunden erstattungsfähig)`}),
-            ]})] : []),
-            element('p', {className: 'field-hint', text: 'Erhaltene Beitragssätze (einmalige Gebühren):'}),
-            element('ul', {className: 'member-remarks', children: member.oneTimeCharges.length
-                ? member.oneTimeCharges.map((charge) => element('li', {children: [
-                    element('strong', {text: charge.label}),
-                    element('span', {text: ` · ${formatEuro(charge.amountCents)} · ${new Date(charge.chargedAt).toLocaleDateString('de-DE')}`}),
-                ]}))
-                : [element('li', {className: 'empty-copy', text: 'Keine einmaligen Gebühren berechnet.'})]}),
+            contributionInfo,
         ]}) : null;
         const recalculate = member ? element('button', {className: 'secondary-button', text: 'Beitrag neu berechnen', attributes: {type: 'button'}}) : null;
         if (recalculate) {
             recalculate.addEventListener('click', async () => {
+                // Erst die aktuell im Formular eingetragenen Werte speichern (z. B. eine gerade erst
+                // umgestellte Funktion), sonst würde die Berechnung mit dem zuletzt gespeicherten
+                // Stand aus der Datenbank rechnen statt mit den noch ungespeicherten Änderungen.
+                // `reportValidity()` entspricht derselben Pflichtfeld-Prüfung wie beim „Speichern“.
+                if (!form.reportValidity()) return;
                 recalculate.disabled = true;
                 try {
-                    await request(`/api/admin/v1/members/${member.id}/recalculate-contribution`, {method: 'POST'});
-                    toast('Der Beitrag wurde für die ganze Familie neu berechnet.');
-                    dialog.close();
+                    member = await persistMember();
+                    member = await request(`/api/admin/v1/members/${member.id}/recalculate-contribution`, {method: 'POST'});
+                    // Bewusst kein dialog.close(): nur die Beitragsdaten des gerade geöffneten
+                    // Mitglieds werden hier neu geladen und ausgetauscht — der Dialog bleibt offen.
+                    household = await request(`/api/admin/v1/members/${member.id}/household`);
+                    contributionInfo.replaceChildren(...contributionInfoContent(member));
+                    if (payerBody) payerBody.replaceChildren(...payerContent(household, member));
+                    // Speichern bzw. die Neuberechnung können „Beitragspflichtig“ serverseitig
+                    // verändert haben (z. B. wenn jetzt ein Vorstandsmitglied im Haushalt ist) —
+                    // Haken und davon abhängige gesperrte Felder im offenen Formular nachziehen.
+                    contributionLiable.checked = member.contributionLiable !== false;
+                    applyContributionLiableState();
+                    toast('Die Änderungen wurden gespeichert und der Beitrag für die ganze Familie neu berechnet.');
                     await onSaved();
                 } catch (error) {
+                    message.textContent = error.message;
                     toast(error.message, 'error');
+                } finally {
                     recalculate.disabled = false;
                 }
             });
             contributionSection.append(
                 recalculate,
-                element('small', {text: 'Berechnet den Beitrag für die gesamte Familie (alle Mitglieder mit derselben Hauptnummer) neu.'}),
+                element('small', {text: 'Speichert zuerst alle Änderungen auf diesem Formular und berechnet danach den Beitrag für die gesamte Familie (alle Mitglieder mit derselben Hauptnummer) neu.'}),
             );
         }
 
@@ -3603,22 +3643,28 @@ const renderAdmin = async () => {
                 : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})]}),
         ]}) : null;
 
-        const payerSection = member ? element('fieldset', {children: [
-            element('legend', {text: 'Gesamtberechnung für den Zahler'}),
-            element('p', {className: 'field-hint', text: household.payer.id === member.id
+        // Ebenfalls ausgelagert, damit „Beitrag neu berechnen“ diesen Ausschnitt austauschen kann,
+        // ohne den Dialog zu schließen (siehe Klick-Handler oben bei `recalculate`).
+        const payerContent = (currentHousehold, currentMember) => [
+            element('p', {className: 'field-hint', text: currentHousehold.payer.id === currentMember.id
                 ? 'Dieses Mitglied zahlt selbst, zusammen für:'
-                : `Der Beitrag wird gezahlt von ${household.payer.firstName} ${household.payer.lastName} (${household.payer.memberNumber}), zusammen für:`}),
-            element('ul', {className: 'member-payer-list', children: household.payerEntries.map((entry) => payerListItem(entry, member.id, openOther))}),
+                : `Der Beitrag wird gezahlt von ${currentHousehold.payer.firstName} ${currentHousehold.payer.lastName} (${currentHousehold.payer.memberNumber}), zusammen für:`}),
+            element('ul', {className: 'member-payer-list', children: currentHousehold.payerEntries.map((entry) => payerListItem(entry, currentMember.id, openOther))}),
             element('div', {className: 'member-payer-total', children: [
                 element('span', {text: 'Gesamtbeitrag pro Jahr'}),
                 // Aus denselben Positionen wie die Liste darüber berechnet (statt aus dem vom
                 // Server gelieferten Rohwert), damit ein gerade erst gesetztes „Beitragspflichtig“-
                 // Häkchen die Summe sofort auf 0 € zieht, statt erst nach „Beitrag neu berechnen“.
-                element('span', {text: formatEuro(household.payerEntries.reduce(
+                element('span', {text: formatEuro(currentHousehold.payerEntries.reduce(
                     (sum, entry) => sum + contributionPositions(entry).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
                     0,
                 ))}),
             ]}),
+        ];
+        const payerBody = member ? element('div', {children: payerContent(household, member)}) : null;
+        const payerSection = member ? element('fieldset', {children: [
+            element('legend', {text: 'Gesamtberechnung für den Zahler'}),
+            payerBody,
         ]}) : null;
 
         const tabs = [
@@ -3649,7 +3695,7 @@ const renderAdmin = async () => {
                 element('fieldset', {children: [
                     element('legend', {text: 'Beitragspflicht'}),
                     element('label', {className: 'check-field', children: [contributionLiable, element('span', {text: 'Beitragspflichtig'})]}),
-                    element('small', {text: 'Vorstandsmitglieder sind laut Satzung beitragsfrei: Häkchen entfernen, um Konto-, Bank- und Zahlungsdaten zu sperren. Der Beitrag wird dann bei „Beitrag neu berechnen“ mit 0 € und dem Hinweis „Vorstand“ geführt.'}),
+                    element('small', {text: 'Vorstandsmitglieder sind laut Satzung beitragsfrei — und mit ihnen ihre ganze Familie: Sobald „Beitrag neu berechnen“ läuft (hier direkt oder über „Beiträge für alle Mitglieder neu berechnen“), wird dieser Haken bei allen Mitgliedern der Familie automatisch entfernt, sobald mindestens eines von ihnen Vorstand ist. Beim Umstellen der Funktion auf/von „Vorstand“ (Reiter „Vereinsdaten“) passiert dasselbe zusätzlich direkt beim Speichern. Ist der Haken entfernt, werden Konto-, Bank- und Zahlungsdaten gesperrt und der Beitrag mit 0 € und dem Hinweis „Vorstand“ geführt.'}),
                 ]}),
                 element('fieldset', {children: [
                     element('legend', {text: 'Zahlungsdaten'}),
@@ -3706,51 +3752,55 @@ const renderAdmin = async () => {
         });
         cancel.addEventListener('click', () => dialog.close());
         close.addEventListener('click', () => dialog.close());
+        // In eine eigene Funktion ausgelagert, damit „Beitrag neu berechnen“ (siehe oben bei
+        // `recalculate`) dieselben, gerade im Formular eingetragenen Werte speichern kann, statt
+        // die zuletzt gespeicherten Daten aus der Datenbank neu zu berechnen — sonst müsste man vor
+        // „Beitrag neu berechnen“ immer erst manuell „Änderungen speichern“ klicken, z. B. nach
+        // einer Umstellung der Funktion auf „Vorstand“.
+        const buildPayload = () => ({
+            primaryMemberNumber: primaryMemberNumber.querySelector('input').value.trim() || null,
+            salutation: salutation.querySelector('select').value,
+            lastName: lastName.querySelector('input').value,
+            firstName: firstName.querySelector('input').value,
+            birthDate: birthDate.querySelector('input').value,
+            street: street.querySelector('input').value,
+            postalCode: postalCode.querySelector('input').value,
+            city: city.querySelector('input').value,
+            email: email.querySelector('input').value || null,
+            phone: phone.querySelector('input').value || null,
+            familyRole: familyRole.querySelector('select').value,
+            joinedAt: joinedAt.querySelector('input').value,
+            leftAt: leftAt.querySelector('input').value || null,
+            active: active.checked,
+            function: memberFunction.querySelector('select').value,
+            accountHolder: accountHolder.querySelector('input').value || null,
+            iban: iban.querySelector('input').value || null,
+            bankName: bankName.querySelector('input').value || null,
+            mandateReference: mandateReference.querySelector('input').value || null,
+            mandateValidFrom: mandateValidFrom.querySelector('input').value || null,
+            mandateValidUntil: mandateValidUntil.querySelector('input').value || null,
+            paymentMethod: paymentMethod.querySelector('select').value,
+            paymentInterval: paymentInterval.querySelector('select').value,
+            paymentDay: dialog.querySelector(`input[name="member-payment-day-${suffix}"]:checked`)?.value || 'first',
+            payerType: payerTypeSelect.value,
+            payerMemberId: payerTypeSelect.value === 'other_member' ? (payerMemberSelect.value || null) : null,
+            nextBookingMonth: Number.parseInt(nextBookingMonth.querySelector('select').value, 10),
+            nextBookingYear: Number.parseInt(nextBookingYear.querySelector('input').value, 10),
+            contributionLiable: contributionLiable.checked,
+        });
+        const persistMember = () => member
+            ? request(`/api/admin/v1/members/${member.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({...buildPayload(), memberNumber: member.memberNumber, version: member.version}),
+            })
+            : request('/api/admin/v1/members', {method: 'POST', body: JSON.stringify(buildPayload())});
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             submit.disabled = true;
-            const payload = {
-                primaryMemberNumber: primaryMemberNumber.querySelector('input').value.trim() || null,
-                salutation: salutation.querySelector('select').value,
-                lastName: lastName.querySelector('input').value,
-                firstName: firstName.querySelector('input').value,
-                birthDate: birthDate.querySelector('input').value,
-                street: street.querySelector('input').value,
-                postalCode: postalCode.querySelector('input').value,
-                city: city.querySelector('input').value,
-                email: email.querySelector('input').value || null,
-                phone: phone.querySelector('input').value || null,
-                familyRole: familyRole.querySelector('select').value,
-                joinedAt: joinedAt.querySelector('input').value,
-                leftAt: leftAt.querySelector('input').value || null,
-                active: active.checked,
-                function: memberFunction.querySelector('select').value,
-                accountHolder: accountHolder.querySelector('input').value || null,
-                iban: iban.querySelector('input').value || null,
-                bankName: bankName.querySelector('input').value || null,
-                mandateReference: mandateReference.querySelector('input').value || null,
-                mandateValidFrom: mandateValidFrom.querySelector('input').value || null,
-                mandateValidUntil: mandateValidUntil.querySelector('input').value || null,
-                paymentMethod: paymentMethod.querySelector('select').value,
-                paymentInterval: paymentInterval.querySelector('select').value,
-                paymentDay: dialog.querySelector(`input[name="member-payment-day-${suffix}"]:checked`)?.value || 'first',
-                payerType: payerTypeSelect.value,
-                payerMemberId: payerTypeSelect.value === 'other_member' ? (payerMemberSelect.value || null) : null,
-                nextBookingMonth: Number.parseInt(nextBookingMonth.querySelector('select').value, 10),
-                nextBookingYear: Number.parseInt(nextBookingYear.querySelector('input').value, 10),
-                contributionLiable: contributionLiable.checked,
-            };
             try {
-                if (member) {
-                    await request(`/api/admin/v1/members/${member.id}`, {
-                        method: 'PUT',
-                        body: JSON.stringify({...payload, memberNumber: member.memberNumber, version: member.version}),
-                    });
-                    toast('Das Mitglied wurde gespeichert.');
-                } else {
-                    await request('/api/admin/v1/members', {method: 'POST', body: JSON.stringify(payload)});
-                    toast('Das Mitglied wurde angelegt.');
-                }
+                const wasNew = !member;
+                member = await persistMember();
+                toast(wasNew ? 'Das Mitglied wurde angelegt.' : 'Das Mitglied wurde gespeichert.');
                 dialog.close();
                 await onSaved();
             } catch (error) {
@@ -3864,9 +3914,46 @@ const renderAdmin = async () => {
         dialog.showModal();
     };
 
+    // Zeigt, welche Mitglieder eine Sammel-Neuberechnung übersprungen hat und warum — damit z. B.
+    // eine fehlende/ungültige IBAN nicht als anonyme Fehlermeldung ohne erkennbaren Bezug zu einem
+    // Mitglied endet (`RecalculateAllMemberContributionsUseCase` liefert dafür je übersprungenem
+    // Datensatz die Mitgliedsnummer mit).
+    const openRecalculationErrorsDialog = (errors) => {
+        const dialog = element('dialog', {className: 'activity-dialog'});
+        const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+        const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
+        const content = element('div', {className: 'activity-dialog-content', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('p', {className: 'eyebrow', text: 'Mitglieder'}),
+                    element('h2', {text: 'Nicht neu berechnete Mitglieder'}),
+                ]}),
+            ]}),
+            element('p', {className: 'field-hint', text: `${errors.length} Mitglied(er) konnten nicht neu berechnet werden und blieben unverändert:`}),
+            element('ul', {className: 'member-remarks', children: errors.map((error) => element('li', {children: [
+                element('strong', {text: error.memberNumber}),
+                element('p', {text: error.message}),
+            ]}))}),
+            element('div', {className: 'confirm-dialog-actions', children: [closeButton]}),
+        ]});
+        closeButton.addEventListener('click', () => dialog.close());
+        close.addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(close, content);
+        document.body.append(dialog);
+        dialog.showModal();
+    };
+
     let memberSearchTerm = '';
     let memberSortField = 'memberNumber';
     let memberSortDirection = 'asc';
+    let memberStatusFilter = '';
+
+    // Laut Beitrags- und Kassenordnung ist eine Kündigung nur fristgemäß zum Jahresende möglich —
+    // ein gesetztes Austrittsdatum liegt praktisch immer auf den 31.12. des jeweiligen Jahres (siehe
+    // auch `GetMembershipDashboardQuery::$leavingAtYearEnd`/`$leftLastYearEnd`, dieselbe Definition).
+    const isLeavingAtYearEnd = (leftAt) => !!leftAt && leftAt === `${new Date().getFullYear()}-12-31`;
+    const isLeftLastYearEnd = (leftAt) => !!leftAt && leftAt === `${new Date().getFullYear() - 1}-12-31`;
     const showMembers = async () => {
         const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
         const data = await request('/api/admin/v1/members' + query);
@@ -3878,14 +3965,34 @@ const renderAdmin = async () => {
             actions.push(create);
         }
         if (canEditModule('members')) {
-            actions.push(actionButton('Beiträge für alle Mitglieder neu berechnen', '/api/admin/v1/members/recalculate-contributions', showMembershipManagement, 'secondary-button', {
-                confirm: {
-                    title: 'Beiträge neu berechnen',
-                    description: 'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.',
-                    label: 'Neu berechnen',
-                },
-                success: 'Die Beiträge wurden für alle Mitglieder neu berechnet.',
-            }));
+            // Bewusst kein generischer `actionButton`: der Antwortkörper enthält je übersprungenem
+            // Mitglied dessen Mitgliedsnummer und den Grund (`errors`) — die müssen sichtbar
+            // gemacht werden, statt wie bei `actionButton` ungelesen zu verfallen.
+            const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge für alle Mitglieder neu berechnen', attributes: {type: 'button'}});
+            recalculateAll.addEventListener('click', async () => {
+                const confirmed = await confirmAction(
+                    'Beiträge neu berechnen',
+                    'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.',
+                    'Neu berechnen',
+                );
+                if (!confirmed) return;
+                recalculateAll.disabled = true;
+                try {
+                    const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST'});
+                    if (result.errors.length) {
+                        toast(`${result.updated} Mitglied(er) aktualisiert, ${result.errors.length} übersprungen — siehe Liste.`, 'info');
+                        openRecalculationErrorsDialog(result.errors);
+                    } else {
+                        toast(`Die Beiträge wurden für alle ${result.updated} Mitglieder neu berechnet.`);
+                    }
+                    await showMembershipManagement();
+                } catch (error) {
+                    toast(error.message, 'error');
+                } finally {
+                    recalculateAll.disabled = false;
+                }
+            });
+            actions.push(recalculateAll);
         }
         actions.push(actionMenu('Datenbank', [
             {label: 'Importieren …', run: () => openMemberImportDialog(showMembershipManagement)},
@@ -3895,6 +4002,28 @@ const renderAdmin = async () => {
         const search = searchField('Volltextsuche: Nummer, Name, Straße, PLZ, Ort, E-Mail, Telefon …', memberSearchTerm, async (value) => {
             memberSearchTerm = value;
             await showMembershipManagement();
+        });
+
+        const statusFilter = element('select', {attributes: {'aria-label': 'Nach Status filtern'}, children: [
+            element('option', {text: 'Alle', attributes: {value: ''}}),
+            element('option', {text: 'Aktiv', attributes: {value: 'active'}}),
+            element('option', {text: 'Inaktiv', attributes: {value: 'inactive'}}),
+            element('option', {text: 'Austritte zum Jahresende', attributes: {value: 'leaving_year_end'}}),
+            element('option', {text: 'Austritte aus Vorjahr', attributes: {value: 'left_last_year_end'}}),
+        ]});
+        statusFilter.value = memberStatusFilter;
+        statusFilter.addEventListener('change', async () => {
+            memberStatusFilter = statusFilter.value;
+            await showMembershipManagement();
+        });
+
+        const filteredItems = data.items.filter((memberItem) => {
+            if (memberStatusFilter === 'active') return memberItem.active;
+            if (memberStatusFilter === 'inactive') return !memberItem.active;
+            if (memberStatusFilter === 'leaving_year_end') return isLeavingAtYearEnd(memberItem.leftAt);
+            if (memberStatusFilter === 'left_last_year_end') return isLeftLastYearEnd(memberItem.leftAt);
+
+            return true;
         });
 
         const columns = [
@@ -3917,7 +4046,7 @@ const renderAdmin = async () => {
         };
 
         const buildTable = () => {
-            const sortedItems = [...data.items].sort((left, right) => {
+            const sortedItems = [...filteredItems].sort((left, right) => {
                 const direction = memberSortDirection === 'desc' ? -1 : 1;
 
                 return compareMemberValues(left[memberSortField], right[memberSortField]) * direction;
@@ -3986,8 +4115,12 @@ const renderAdmin = async () => {
 
         workspace.replaceChildren(
             element('div', {className: 'management-header', children: [heading, element('div', {className: 'management-actions', children: actions})]}),
-            element('div', {className: 'management-toolbar', children: [search, element('span', {text: `${data.total} Mitglieder`})]}),
-            data.items.length ? table : emptyState('Noch keine Mitglieder angelegt.'),
+            element('div', {className: 'management-toolbar', children: [search, statusFilter, element('span', {text: memberStatusFilter
+                ? `${filteredItems.length} von ${data.total} Mitglieder`
+                : `${data.total} Mitglieder`})]}),
+            filteredItems.length
+                ? table
+                : emptyState(data.items.length ? 'Keine Mitglieder für diesen Filter.' : 'Noch keine Mitglieder angelegt.'),
         );
     };
 

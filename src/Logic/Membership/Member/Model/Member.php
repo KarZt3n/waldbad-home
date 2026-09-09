@@ -216,6 +216,49 @@ readonly class Member
         );
     }
 
+    public function withContributionLiable(bool $contributionLiable): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            active: $this->active,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+        );
+    }
+
     public function withRemark(Remark $remark): self
     {
         return new self(

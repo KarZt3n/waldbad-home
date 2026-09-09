@@ -536,14 +536,32 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $inactive, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
 
+        // Kündigung ist laut Beitrags- und Kassenordnung nur fristgemäß zum Jahresende möglich.
+        $leavingAtYearEnd = array_replace($this->validMember(), [
+            'lastName' => 'Kündigt', 'leftAt' => (new \DateTimeImmutable('today'))->format('Y').'-12-31',
+        ]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $leavingAtYearEnd, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        $leftLastYearEnd = array_replace($this->validMember(), [
+            'lastName' => 'Ausgetreten', 'joinedAt' => '2020-01-01',
+            'leftAt' => (new \DateTimeImmutable('today'))->modify('-1 year')->format('Y').'-12-31',
+        ]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $leftLastYearEnd, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
         $this->client->request('GET', '/api/admin/v1/membership-dashboard', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $dashboard = $this->responseData();
-        self::assertSame(2, $dashboard['totalMembers']);
-        self::assertSame(1, $dashboard['activeMembers']);
+        self::assertSame(4, $dashboard['totalMembers']);
+        self::assertSame(3, $dashboard['activeMembers']);
         self::assertSame(0, $dashboard['pendingApplications']);
-        // Je Mitglied: 5000 Beitrag (individual_senior) + 1500 Arbeitseinsatz-Zuschlag.
-        self::assertSame(13000, $dashboard['totalContributionCents']);
+        self::assertSame(1, $dashboard['leavingAtYearEnd']);
+        self::assertSame(1, $dashboard['leftLastYearEnd']);
+        // Je beitragspflichtigem Mitglied: 5000 Beitrag (individual_senior) + 1500
+        // Arbeitseinsatz-Zuschlag — das bereits letztes Jahr ausgetretene Mitglied ist laut
+        // MemberContributionCalculator (hasLeft()) beitragsfrei und zählt hier mit 0 €.
+        self::assertSame(19500, $dashboard['totalContributionCents']);
     }
 
     public function testRecalculateAllUpdatesEveryMemberIncludingWholeHouseholds(): void

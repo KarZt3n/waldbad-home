@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\Dashboard\Query;
 
+use App\Logic\Common\ClockInterface;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Dashboard\Dto\MembershipDashboardResponse;
@@ -17,6 +18,7 @@ readonly class GetMembershipDashboardQuery
     public function __construct(
         private MemberManagerInterface $members,
         private MembershipApplicationManagerInterface $applications,
+        private ClockInterface $clock,
     ) {
     }
 
@@ -35,11 +37,28 @@ readonly class GetMembershipDashboardQuery
             $members,
         ));
 
+        $currentYear = (int) $this->clock->now()->format('Y');
+
         return new MembershipDashboardResponse(
             totalMembers: count($members),
             activeMembers: count(array_filter($members, static fn (Member $member): bool => $member->active)),
             pendingApplications: count($pendingApplications),
             totalContributionCents: $totalContributionCents,
+            leavingAtYearEnd: $this->countLeavingAtYearEnd($members, $currentYear),
+            leftLastYearEnd: $this->countLeavingAtYearEnd($members, $currentYear - 1),
         );
+    }
+
+    /**
+     * @param list<Member> $members
+     */
+    private function countLeavingAtYearEnd(array $members, int $year): int
+    {
+        $yearEnd = sprintf('%d-12-31', $year);
+
+        return count(array_filter(
+            $members,
+            static fn (Member $member): bool => $member->leftAt !== null && $member->leftAt->format('Y-m-d') === $yearEnd,
+        ));
     }
 }

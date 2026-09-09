@@ -8,6 +8,7 @@ use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Dto\ContributionOutcome;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\{FamilyRole, Member, MemberFunction, PayerType, PaymentDay, PaymentMethod, Salutation};
+use App\Logic\Membership\Member\Service\BoardFamilyExemptionResolver;
 use App\Logic\Membership\Member\Service\MemberContributionCalculator;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\PaymentInterval;
@@ -44,7 +45,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
 
-        $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock))->execute();
+        $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
 
         self::assertSame(2, $result->updated);
         self::assertCount(1, $result->errors);
@@ -52,8 +53,121 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         self::assertSame('Kein passender Beitragssatz.', $result->errors[0]->message);
     }
 
-    private function member(string $id, string $memberNumber): Member
+    public function testHouseholdWithBoardMemberIsExemptFromContributionRegardlessOfStoredValue(): void
     {
+        // Vorstandsmitglied (Kopf) war noch als beitragspflichtig gespeichert (z. B. weil die
+        // Funktion nicht über das Bearbeitungsformular, sondern per Import gesetzt wurde) — die
+        // Neuberechnung korrigiert das für den ganzen Haushalt, ohne den Beitragsrechner überhaupt
+        // erst zu befragen.
+        $board = $this->member('board', 'M-0001', MemberFunction::Board, contributionLiable: true);
+        $partner = $this->member('partner', 'M-0001', MemberFunction::Member, contributionLiable: true);
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$board, $partner]);
+        $saved = [];
+        $members->expects(self::exactly(2))->method('save')->willReturnCallback(
+            static function (Member $member) use (&$saved): Member {
+                $saved[] = $member;
+
+                return $member;
+            },
+        );
+
+        $calculator = $this->createMock(MemberContributionCalculator::class);
+        $calculator->expects(self::exactly(2))->method('calculate')->willReturnCallback(
+            static function (Member $candidate) {
+                self::assertFalse($candidate->contributionLiable);
+
+                return new ContributionOutcome(null, 0, null);
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
+
+        self::assertSame(2, $result->updated);
+        self::assertCount(2, $saved);
+        foreach ($saved as $member) {
+            self::assertFalse($member->contributionLiable);
+        }
+    }
+
+    public function testHouseholdWithoutBoardMemberAnymoreIsFullyReactivated(): void
+    {
+        // Ein ehemaliges Vorstandsmitglied ist jetzt einfaches Mitglied, sein Partner ist aber noch
+        // als beitragsfrei gespeichert (Altdaten). Ohne verbleibendes Vorstandsmitglied im Haushalt
+        // muss der Sammel-Lauf auch den Partner reaktivieren, nicht nur den Datensatz, der gerade
+        // bearbeitet wurde.
+        $formerBoard = $this->member('former-board', 'M-0001', MemberFunction::Member, contributionLiable: true);
+        $stillExemptPartner = $this->member('partner', 'M-0001', MemberFunction::Member, contributionLiable: false);
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$formerBoard, $stillExemptPartner]);
+        $saved = [];
+        $members->expects(self::exactly(2))->method('save')->willReturnCallback(
+            static function (Member $member) use (&$saved): Member {
+                $saved[$member->id] = $member;
+
+                return $member;
+            },
+        );
+
+        $calculator = $this->createMock(MemberContributionCalculator::class);
+        $calculator->expects(self::exactly(2))->method('calculate')->willReturnCallback(
+            static function (Member $candidate) {
+                self::assertTrue($candidate->contributionLiable);
+
+                return new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null);
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
+
+        self::assertTrue($saved['partner']->contributionLiable);
+    }
+
+    public function testMemberThatCannotBeReactivatedIsSkippedAndReportedByMemberNumberWithoutAbortingOtherHouseholds(): void
+    {
+        // Ehemaliges Vorstandsmitglied ohne Vorstand mehr im Haushalt, aber als Selbstzahler mit
+        // SEPA-Lastschrift ohne hinterlegte IBAN (z. B. weil nie benötigt, solange beitragsfrei) —
+        // die Reaktivierung scheitert fachlich. Das darf weder den ganzen Lauf abbrechen noch den
+        // anderen, unabhängigen Haushalt verhindern — und der Fehler muss erkennen lassen, wen er
+        // betrifft (Mitgliedsnummer).
+        $cannotReactivate = $this->member('broken', 'M-0001', contributionLiable: false, iban: null);
+        $other = $this->member('other', 'M-0002');
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$cannotReactivate, $other]);
+        $members->expects(self::once())->method('save')->willReturnCallback(
+            static fn (Member $member): Member => $member,
+        );
+
+        $calculator = $this->createStub(MemberContributionCalculator::class);
+        $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
+
+        self::assertSame(1, $result->updated);
+        self::assertCount(1, $result->errors);
+        self::assertSame('M-0001', $result->errors[0]->memberNumber);
+        self::assertStringContainsString('IBAN', $result->errors[0]->message);
+    }
+
+    private function member(
+        string $id,
+        string $memberNumber,
+        MemberFunction $function = MemberFunction::Member,
+        bool $contributionLiable = true,
+        ?string $iban = 'DE89370400440532013000',
+    ): Member {
         return new Member(
             id: $id,
             memberNumber: $memberNumber,
@@ -71,9 +185,9 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
             active: true,
-            function: MemberFunction::Member,
+            function: $function,
             accountHolder: 'Max Muster',
-            iban: 'DE89370400440532013000',
+            iban: $iban,
             bankName: null,
             mandateReference: $memberNumber,
             paymentMethod: PaymentMethod::SepaDirectDebit,
@@ -89,6 +203,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
             remarks: [],
             oneTimeCharges: [],
             version: 1,
+            contributionLiable: $contributionLiable,
         );
     }
 }

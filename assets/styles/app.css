@@ -1570,10 +1570,17 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .sub-tab.active { color: var(--forest-900); border-bottom-color: var(--forest-700); }
 .sub-tab-panel { display: contents; }
 
-.stat-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; width: 100%; max-width: 68rem; margin: 0 auto; }
+.stat-tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; width: 100%; max-width: 68rem; margin: 0 auto; }
 .stat-tile { display: grid; gap: .35rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); box-shadow: var(--shadow); }
 .stat-tile strong { font-size: 2rem; color: var(--forest-900); }
 .stat-tile span { color: var(--muted); }
+
+@media (max-width: 760px) {
+    .stat-tile-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+    .stat-tile-grid { grid-template-columns: 1fr; }
+}
 
 .radio-group { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; padding: 0; border: 0; }
 .radio-group legend { width: 100%; margin-bottom: .35rem; padding: 0; font-weight: 700; }

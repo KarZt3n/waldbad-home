@@ -30,6 +30,8 @@ class AdminMembershipDashboardController extends AbstractController
             'activeMembers' => $response->activeMembers,
             'pendingApplications' => $response->pendingApplications,
             'totalContributionCents' => $response->totalContributionCents,
+            'leavingAtYearEnd' => $response->leavingAtYearEnd,
+            'leftLastYearEnd' => $response->leftLastYearEnd,
         ];
     }
 }
