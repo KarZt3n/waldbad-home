@@ -183,6 +183,32 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
     }
 
     /**
+     * `FakeEmailDeliverabilityChecker` (siehe config/services_test.yaml) behandelt die Domain
+     * "notdeliverable.test" absichtlich als nicht zustellbar — hier wird geprüft, dass
+     * `SubmitMembershipApplicationUseCase` genau das an den Absender zurückmeldet, statt nur ein
+     * ungültiges Format zu erkennen.
+     */
+    public function testApplicationIsRejectedWithAnUndeliverableEmailAddress(): void
+    {
+        $application = $this->validApplication();
+        $application['applicants'] = [[
+            'salutation' => 'ms',
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'birthDate' => '1990-06-15',
+            'street' => 'Kirchanger',
+            'houseNumber' => '14',
+            'postalCode' => '14822',
+            'city' => 'Borkheide',
+            'phone' => '+49 123 456789',
+            'email' => 'erika@notdeliverable.test',
+        ]];
+
+        $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', $application);
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function validApplication(): array

@@ -315,6 +315,139 @@ const confirmAction = (title, description, confirmLabel = 'Entfernen') => new Pr
     cancel.focus();
 });
 
+// Fragt einen PIN ab (siehe Modul „Einstellungen“ → PIN-Schutz). `verify(pin)` führt die
+// eigentliche, serverseitig zu prüfende Aktion aus (z. B. den Verify-Endpunkt oder direkt die zu
+// schützende Aktion selbst, siehe `deleteMemberWithOptionalPin`) — schlägt sie fehl, bleibt der
+// Dialog offen und zeigt die Fehlermeldung, statt (wie bei `confirmAction`) einfach neu geöffnet
+// werden zu müssen. Löst mit `true` auf, sobald `verify` einmal erfolgreich war, oder mit `false`
+// bei „Abbrechen“.
+const promptForPin = (title, description, verify) => new Promise((resolve) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const pinField = field('PIN', 'pin-prompt-input', '', 'password');
+    const pinInput = pinField.querySelector('input');
+    pinInput.inputMode = 'numeric';
+    pinInput.autocomplete = 'off';
+    pinInput.maxLength = 8;
+    const message = formMessage();
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const confirm = element('button', {className: 'button', text: 'Bestätigen', attributes: {type: 'submit'}});
+    let answered = false;
+    const finish = (result) => {
+        answered = true;
+        resolve(result);
+        dialog.close();
+    };
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'PIN erforderlich'}),
+        element('h2', {text: title}),
+        element('p', {text: description}),
+        pinField,
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, confirm]}),
+    ]});
+    cancel.addEventListener('click', () => finish(false));
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        finish(false);
+    });
+    dialog.addEventListener('close', () => {
+        if (!answered) resolve(false);
+        dialog.remove();
+    });
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const pin = pinInput.value.trim();
+        if (!pin) return;
+        confirm.disabled = true;
+        try {
+            await verify(pin);
+            finish(true);
+        } catch (error) {
+            message.textContent = error.message;
+            pinInput.value = '';
+            pinInput.focus();
+        } finally {
+            confirm.disabled = false;
+        }
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    pinInput.focus();
+});
+
+// „Entsperrt“ ein per PIN geschütztes Modul (siehe `ProtectedAction`) für den Rest der
+// Browser-Sitzung, statt bei jedem erneuten Öffnen desselben Bereichs erneut nach dem PIN zu
+// fragen — anders als bei einzelnen, folgenschweren Aktionen (z. B. „Mitglied löschen“, siehe
+// `deleteMemberWithOptionalPin`), wo bewusst jedes Mal neu geprüft wird. sessionStorage-Zugriffe
+// sind bewusst abgesichert: in manchen Browserkontexten (z. B. privates Fenster) kann der Zugriff
+// werfen, das darf die eigentliche Freischaltung nicht verhindern.
+const isPinSessionUnlocked = (actionKey) => {
+    try { return sessionStorage.getItem(`pin-unlocked:${actionKey}`) === 'true'; } catch { return false; }
+};
+const markPinSessionUnlocked = (actionKey) => {
+    try { sessionStorage.setItem(`pin-unlocked:${actionKey}`, 'true'); } catch { /* siehe oben */ }
+};
+// Beim Abmelden aufgerufen: Ein „Entsperrt“-Status darf nicht in eine andere Sitzung im selben
+// Browser-Tab übernommen werden (z. B. wenn sich danach ein anderer Benutzer anmeldet).
+const clearPinSessionUnlocks = () => {
+    try {
+        Object.keys(sessionStorage)
+            .filter((key) => key.startsWith('pin-unlocked:'))
+            .forEach((key) => sessionStorage.removeItem(key));
+    } catch { /* siehe oben */ }
+};
+
+/**
+ * Prüft, ob $actionKey aktuell per PIN geschützt ist, und fragt den PIN bei Bedarf ab. Liefert
+ * `true`, wenn die aufrufende Stelle fortfahren darf (kein Schutz aktiv, bereits in dieser Sitzung
+ * entsperrt, oder gerade erfolgreich per PIN entsperrt) — `false` bei „Abbrechen“.
+ */
+const ensurePinUnlocked = async (actionKey, title) => {
+    if (isPinSessionUnlocked(actionKey)) return true;
+    let settings;
+    try {
+        settings = await request('/api/admin/v1/pin-settings');
+    } catch {
+        // Einstellungen nicht abrufbar (z. B. Netzwerkfehler) — nicht blockieren, die eigentliche
+        // Aktion greift ohnehin nur, wenn die reguläre Berechtigung dafür vorliegt.
+        return true;
+    }
+    if (!settings.protectedActions.includes(actionKey)) return true;
+
+    const unlocked = await promptForPin(title, 'Für diesen Bereich ist zusätzlich ein PIN erforderlich.', (pin) => request(
+        '/api/admin/v1/pin-settings/verify',
+        {method: 'POST', body: JSON.stringify({action: actionKey, pin})},
+    ));
+    if (unlocked) markPinSessionUnlocked(actionKey);
+
+    return unlocked;
+};
+
+/**
+ * Löscht ein Mitglied und berücksichtigt dabei einen möglichen PIN-Schutz für „Mitglied löschen“
+ * (`members.delete`) — anders als bei `ensurePinUnlocked` bewusst ohne vorherigen, gesonderten
+ * Prüf-Aufruf und ohne sitzungsweites Merken: Der erste Versuch läuft ohne PIN; ist die Aktion
+ * gerade geschützt, meldet der Server das über `error.code === 'pinrequiredexception'` und genau
+ * dann wird der PIN abgefragt — jedes Mal neu, da es sich um eine einzelne, endgültige Aktion
+ * handelt. Liefert `true` bei Erfolg (direkt oder nach PIN-Eingabe), `false` bei „Abbrechen“.
+ */
+const deleteMemberWithOptionalPin = async (id) => {
+    try {
+        await request(`/api/admin/v1/members/${id}`, {method: 'DELETE'});
+
+        return true;
+    } catch (error) {
+        if (error.code !== 'pinrequiredexception') throw error;
+    }
+
+    return promptForPin(
+        'Mitglied löschen',
+        'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
+        (pin) => request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify({pin})}),
+    );
+};
+
 const request = async (url, options = {}) => {
     const method = options.method || 'GET';
     const usesFormData = options.body instanceof FormData;
@@ -330,7 +463,13 @@ const request = async (url, options = {}) => {
     });
     const contentType = response.headers.get('content-type') || '';
     const data = response.status === 204 || !contentType.includes('application/json') ? null : await response.json();
-    if (!response.ok) throw new Error(data?.error?.message || data?.detail || data?.message || 'Die Anfrage ist fehlgeschlagen.');
+    if (!response.ok) {
+        const error = new Error(data?.error?.message || data?.detail || data?.message || 'Die Anfrage ist fehlgeschlagen.');
+        // Manche Fehler (z. B. „PIN erforderlich“, siehe pin-settings) müssen von Aufrufern
+        // unterschieden werden können, statt nur als Text im Toast zu landen.
+        error.code = data?.error?.code || null;
+        throw error;
+    }
 
     return data;
 };
@@ -501,7 +640,18 @@ const renderMembershipApplicationForm = (preview = false) => {
     };
     const appendApplicant = () => {
         if (applicants.children.length >= 8) return;
+        const isFirstPerson = applicants.children.length === 0;
         const remove = element('button', {className: 'text-button danger membership-remove-person', text: 'Person entfernen', attributes: {type: 'button'}});
+        const emailField = applicantField('E-Mail-Adresse (optional)', 'email', 'email', false);
+        // Für jede weitere Person ist die E-Mail-Adresse optional (nur Person 1 braucht zwingend
+        // eine, siehe refreshApplicantCards) — als Vorschlag wird die von Person 1 übernommen,
+        // damit nicht jede Familienangehörige einzeln dieselbe Adresse eintragen muss. Bleibt
+        // änderbar, falls jemand eine eigene Adresse hat.
+        if (!isFirstPerson) {
+            const firstEmailInput = applicants.children[0]?.querySelector('[data-applicant-field="email"]');
+            const firstEmail = firstEmailInput?.value.trim();
+            if (firstEmail) emailField.querySelector('input').value = firstEmail;
+        }
         const card = element('fieldset', {className: 'membership-person', children: [
             element('div', {className: 'membership-person-heading', children: [
                 element('legend', {className: 'membership-person-title', text: 'Person'}),
@@ -517,7 +667,7 @@ const renderMembershipApplicationForm = (preview = false) => {
                 applicantField('Hausnummer', 'houseNumber'),
                 applicantField('Postleitzahl', 'postalCode'),
                 applicantField('Wohnort', 'city'),
-                applicantField('E-Mail-Adresse (optional)', 'email', 'email', false),
+                emailField,
             ]}),
         ]});
         remove.addEventListener('click', async () => {
@@ -3533,7 +3683,10 @@ const renderAdmin = async () => {
                 if (!confirmed) return;
                 deleteButton.disabled = true;
                 try {
-                    await request(`/api/admin/v1/members/${member.id}`, {method: 'DELETE'});
+                    if (!(await deleteMemberWithOptionalPin(member.id))) {
+                        deleteButton.disabled = false;
+                        return;
+                    }
                     toast('Das Mitglied wurde gelöscht.');
                     dialog.close();
                     await onSaved();
@@ -3994,10 +4147,13 @@ const renderAdmin = async () => {
             });
             actions.push(recalculateAll);
         }
-        actions.push(actionMenu('Datenbank', [
-            {label: 'Importieren …', run: () => openMemberImportDialog(showMembershipManagement)},
-            {label: 'Exportieren …', run: () => openMemberExportDialog()},
-        ]));
+        if (canEditModule('members')) {
+            actions.push(actionMenu('Datenbank', [
+                {label: 'Importieren …', run: () => openMemberImportDialog(showMembershipManagement)},
+                {label: 'Exportieren …', run: () => openMemberExportDialog()},
+            ]));
+        }
+
 
         const search = searchField('Volltextsuche: Nummer, Name, Straße, PLZ, Ort, E-Mail, Telefon …', memberSearchTerm, async (value) => {
             memberSearchTerm = value;
@@ -4299,13 +4455,408 @@ const renderAdmin = async () => {
         workspace.replaceChildren(tabStrip, panel);
     };
 
+    // Reiter „PIN-Schutzverwaltung“ im Modul „Einstellungen“ (siehe `showSettingsManagement`), nur
+    // für Admin/Super-Admin erreichbar (siehe `isGlobalAdministrator()` dort) — hier lassen sich der
+    // gemeinsame PIN sowie die damit geschützten Module/Funktionen verwalten (`ProtectedAction`,
+    // serverseitig durchgesetzt in `AdminPinSettingsController` bzw. an der jeweils geschützten
+    // Stelle wie `AdminMemberController::delete()`).
+    const showPinProtection = async () => {
+        const data = await request('/api/admin/v1/pin-settings');
+        const message = formMessage();
+
+        const pinField = field(data.globalPinIsSet ? 'Neuer globaler PIN (4–8 Ziffern)' : 'Globaler PIN (4–8 Ziffern)', 'settings-pin', '', 'password');
+        const pinInput = pinField.querySelector('input');
+        pinInput.inputMode = 'numeric';
+        pinInput.autocomplete = 'off';
+        pinInput.maxLength = 8;
+        const setPin = element('button', {className: 'button', text: data.globalPinIsSet ? 'Globalen PIN ändern' : 'Globalen PIN festlegen', attributes: {type: 'button'}});
+        setPin.addEventListener('click', async () => {
+            const pin = pinInput.value.trim();
+            if (!pin) return;
+            setPin.disabled = true;
+            try {
+                await request('/api/admin/v1/pin-settings/pin', {method: 'PUT', body: JSON.stringify({pin})});
+                toast(data.globalPinIsSet ? 'Der globale PIN wurde geändert.' : 'Der globale PIN wurde festgelegt.');
+                await showPinProtection();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                setPin.disabled = false;
+            }
+        });
+
+        // Je Aktion eigener, vom globalen PIN abweichender PIN — optional; ohne eigenen PIN gilt
+        // der globale (siehe `PinSettings::matchesPin()`). Klick öffnet denselben PIN-Dialog wie
+        // die Ausführung geschützter Aktionen, hier aber zum *Festlegen* statt zum Prüfen.
+        const setOwnPin = async (action) => {
+            const unlocked = await promptForPin(
+                action.hasOwnPin ? `Eigenen PIN für „${action.label}“ ändern` : `Eigenen PIN für „${action.label}“ festlegen`,
+                'Gilt danach nur noch für diesen Eintrag, statt des globalen PIN.',
+                (pin) => request(`/api/admin/v1/pin-settings/actions/${action.key}/pin`, {method: 'PUT', body: JSON.stringify({pin})}),
+            );
+            if (unlocked) {
+                toast(`Eigener PIN für „${action.label}“ gespeichert.`);
+                await showPinProtection();
+            }
+        };
+        const clearOwnPin = async (action) => {
+            const confirmed = await confirmAction(
+                'Eigenen PIN entfernen',
+                `„${action.label}“ verwendet danach wieder den globalen PIN.`,
+                'Entfernen',
+            );
+            if (!confirmed) return;
+            try {
+                await request(`/api/admin/v1/pin-settings/actions/${action.key}/pin`, {method: 'DELETE'});
+                toast(`Eigener PIN für „${action.label}“ entfernt.`);
+                await showPinProtection();
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        };
+
+        const entries = data.availableActions.map((action) => {
+            const checkbox = element('input', {attributes: {type: 'checkbox', value: action.key}});
+            checkbox.checked = data.protectedActions.includes(action.key);
+
+            const ownPinButton = element('button', {className: 'secondary-button', text: action.hasOwnPin ? 'Eigenen PIN ändern' : 'Eigenen PIN festlegen', attributes: {type: 'button'}});
+            ownPinButton.addEventListener('click', () => setOwnPin(action));
+            const clearOwnPinButton = action.hasOwnPin
+                ? element('button', {className: 'text-button', text: 'Eigenen PIN entfernen', attributes: {type: 'button'}})
+                : null;
+            if (clearOwnPinButton) clearOwnPinButton.addEventListener('click', () => clearOwnPin(action));
+
+            const row = element('div', {className: 'protected-action-row', children: [
+                element('label', {className: 'check-field', children: [checkbox, element('span', {text: action.label})]}),
+                element('span', {className: 'field-hint', text: action.hasOwnPin ? 'Eigener PIN gesetzt' : 'Nutzt globalen PIN'}),
+                ownPinButton,
+                ...(clearOwnPinButton ? [clearOwnPinButton] : []),
+            ]});
+
+            return {action, row, checkbox};
+        });
+        const byCategory = new Map();
+        entries.forEach((entry) => {
+            if (!byCategory.has(entry.action.category)) byCategory.set(entry.action.category, []);
+            byCategory.get(entry.action.category).push(entry.row);
+        });
+        const groups = [...byCategory.entries()].map(([category, rows]) => element('fieldset', {children: [
+            element('legend', {text: category}),
+            ...rows,
+        ]}));
+        const saveProtectedActions = element('button', {className: 'button', text: 'Auswahl speichern', attributes: {type: 'button'}});
+        saveProtectedActions.addEventListener('click', async () => {
+            const protectedActions = entries.filter((entry) => entry.checkbox.checked).map((entry) => entry.action.key);
+            saveProtectedActions.disabled = true;
+            try {
+                await request('/api/admin/v1/pin-settings/protected-actions', {method: 'PUT', body: JSON.stringify({protectedActions})});
+                toast('Der PIN-Schutz wurde aktualisiert.');
+                await showPinProtection();
+            } catch (error) {
+                toast(error.message, 'error');
+                saveProtectedActions.disabled = false;
+            }
+        });
+
+        workspace.replaceChildren(
+            sectionHeading('PIN-Schutzverwaltung', 'Global oder je Modul/Funktion einen eigenen PIN vergeben'),
+            element('div', {className: 'card-list', children: [
+                element('article', {className: 'management-card', children: [
+                    element('h3', {text: 'Globaler PIN'}),
+                    element('p', {className: 'field-hint', text: data.globalPinIsSet
+                        ? 'Ein globaler PIN ist hinterlegt und gilt als Rückfall für jeden geschützten Eintrag ohne eigenen PIN. Beim Ändern wird der alte PIN sofort ungültig.'
+                        : 'Es ist noch kein globaler PIN hinterlegt. Module/Funktionen ohne eigenen PIN lassen sich erst danach schützen.'}),
+                    pinField, setPin, message,
+                ]}),
+                element('article', {className: 'management-card', children: [
+                    element('h3', {text: 'Geschützte Module & Funktionen'}),
+                    element('p', {className: 'field-hint', text: 'Für ausgewählte Einträge wird der PIN zusätzlich zu den regulären Berechtigungen abgefragt — je Eintrag entweder der globale PIN oder ein eigener, davon abweichender.'}),
+                    ...(groups.length ? groups : [emptyState('Keine schützbaren Module/Funktionen bekannt.')]),
+                    saveProtectedActions,
+                ]}),
+            ]}),
+        );
+    };
+
+    // Reiter „E-Mail-Einstellungen“ innerhalb von „E-Mail-Einstellungen“ (siehe
+    // `showEmailSettingsManagement`) — hier werden die SMTP-Zugangsdaten für den Mailversand sowie,
+    // je `NotificationEvent`, die zu benachrichtigenden Empfänger gepflegt
+    // (`AdminEmailSettingsController`). Erstes Beispiel eines Ereignisses: ein neuer
+    // Mitgliedsantrag (siehe `SubmitMembershipApplicationUseCase`). Die Texte der versendeten
+    // Mails selbst stehen nicht hier, sondern im Nachbar-Reiter „Mailvorlagen“
+    // (`showMailTemplates`).
+    const showEmailConnectionSettings = async () => {
+        const data = await request('/api/admin/v1/email-settings');
+        const message = formMessage();
+
+        const providerSelect = selectField('Anbieter', 'email-provider', [
+            ['', '– Bitte wählen –'],
+            ...data.providerPresets.map((preset) => [preset.key, preset.label]),
+        ], data.provider || '');
+        const providerSelectInput = providerSelect.querySelector('select');
+        const host = field('SMTP-Server', 'email-host', data.host || '');
+        const hostInput = host.querySelector('input');
+        const port = field('Port', 'email-port', data.port ?? '', 'number');
+        const portInput = port.querySelector('input');
+        const username = field('Benutzername', 'email-username', data.username || '');
+        const password = field(data.passwordIsSet ? 'Neues Passwort (leer lassen zum Beibehalten)' : 'Passwort', 'email-password', '', 'password');
+        const passwordInput = password.querySelector('input');
+        passwordInput.autocomplete = 'off';
+        const fromAddress = field('Absender-E-Mail-Adresse', 'email-from-address', data.fromAddress || '', 'email');
+        const fromName = field('Absender-Name (optional)', 'email-from-name', data.fromName || '');
+
+        const providerHint = element('p', {className: 'field-hint'});
+        const applyProviderHint = () => {
+            const preset = data.providerPresets.find((entry) => entry.key === providerSelectInput.value);
+            providerHint.textContent = preset ? preset.hint : '';
+        };
+        providerSelectInput.addEventListener('change', () => {
+            // Bewusst überschreiben (nicht nur bei leerem Feld vorbelegen): Der Sinn der
+            // Preset-Auswahl ist gerade, Host/Port auf die bekannt richtigen Werte für den
+            // gewählten Anbieter umzustellen — auch wenn zuvor schon ein anderer Anbieter
+            // gespeichert war. Zugangsdaten/Absender bleiben davon unberührt.
+            const preset = data.providerPresets.find((entry) => entry.key === providerSelectInput.value);
+            if (preset) {
+                if (preset.defaultHost) hostInput.value = preset.defaultHost;
+                if (preset.defaultPort) portInput.value = String(preset.defaultPort);
+            }
+            applyProviderHint();
+        });
+        applyProviderHint();
+
+        const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
+        save.addEventListener('click', async () => {
+            save.disabled = true;
+            try {
+                await request('/api/admin/v1/email-settings', {method: 'PUT', body: JSON.stringify({
+                    provider: providerSelectInput.value || null,
+                    host: hostInput.value || null,
+                    port: portInput.value ? Number.parseInt(portInput.value, 10) : null,
+                    username: username.querySelector('input').value || null,
+                    password: passwordInput.value || null,
+                    fromAddress: fromAddress.querySelector('input').value || null,
+                    fromName: fromName.querySelector('input').value || null,
+                })});
+                toast('Die E-Mail-Einstellungen wurden gespeichert.');
+                await showEmailConnectionSettings();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+                save.disabled = false;
+            }
+        });
+
+        const testTo = field('Testmail senden an', 'email-test-to', '', 'email');
+        const testButton = element('button', {className: 'secondary-button', text: 'Testmail senden', attributes: {type: 'button'}});
+        testButton.addEventListener('click', async () => {
+            const to = testTo.querySelector('input').value.trim();
+            if (!to) return;
+            testButton.disabled = true;
+            try {
+                await request('/api/admin/v1/email-settings/test', {method: 'POST', body: JSON.stringify({to})});
+                toast('Die Testmail wurde gesendet.');
+            } catch (error) {
+                toast(error.message, 'error');
+            } finally {
+                testButton.disabled = false;
+            }
+        });
+
+        const notificationRows = data.notificationEvents.map((event) => {
+            const currentRecipients = (data.notificationRecipients[event.key] || []).join(', ');
+            const recipientsField = field(event.label, `email-recipients-${event.key}`, currentRecipients);
+            const saveRecipients = element('button', {className: 'secondary-button', text: 'Speichern', attributes: {type: 'button'}});
+            saveRecipients.addEventListener('click', async () => {
+                const recipients = recipientsField.querySelector('input').value.split(',').map((value) => value.trim()).filter(Boolean);
+                saveRecipients.disabled = true;
+                try {
+                    await request(`/api/admin/v1/email-settings/notifications/${event.key}`, {method: 'PUT', body: JSON.stringify({recipients})});
+                    toast('Die Empfänger wurden gespeichert.');
+                } catch (error) {
+                    toast(error.message, 'error');
+                } finally {
+                    saveRecipients.disabled = false;
+                }
+            });
+
+            return element('div', {className: 'protected-action-row', children: [recipientsField, saveRecipients]});
+        });
+
+        workspace.replaceChildren(
+            sectionHeading('E-Mail-Einstellungen', 'Mailversand konfigurieren und Empfänger für automatische Benachrichtigungen festlegen'),
+            element('div', {className: 'card-list', children: [
+                element('article', {className: 'management-card', children: [
+                    element('h3', {text: 'Mailserver'}),
+                    ...(data.configured ? [] : [element('p', {className: 'field-hint', text: 'Noch nicht vollständig konfiguriert — mindestens Server und Absender-E-Mail-Adresse sind erforderlich.'})]),
+                    fieldRow([providerSelect, host]),
+                    fieldRow([port, username]),
+                    password,
+                    fieldRow([fromAddress, fromName]),
+                    providerHint,
+                    save, message,
+                ]}),
+                element('article', {className: 'management-card', children: [
+                    element('h3', {text: 'Testmail'}),
+                    testTo,
+                    testButton,
+                ]}),
+                element('article', {className: 'management-card', children: [
+                    element('h3', {text: 'Benachrichtigungen'}),
+                    element('p', {className: 'field-hint', text: 'Mehrere Adressen mit Komma trennen. Leer lassen, um für dieses Ereignis keine Benachrichtigung zu versenden.'}),
+                    ...notificationRows,
+                ]}),
+            ]}),
+        );
+    };
+
+    // Reiter „Mailvorlagen“ innerhalb von „E-Mail-Einstellungen“ (siehe
+    // `showEmailSettingsManagement`) — die redaktionell pflegbaren Texte hinter jeder automatisch
+    // versendeten E-Mail (`MailTemplateKey`), statt sie im Code zu pflegen. Erstes Beispiel: die
+    // Bestätigungsmail bei einem angenommenen Mitgliedsantrag (`ReleaseMembershipApplicationUseCase`).
+    const showMailTemplates = async () => {
+        const data = await request('/api/admin/v1/mail-templates');
+
+        const cards = data.items.map((template) => {
+            const message = formMessage();
+            const subject = field('Betreff', `mail-template-subject-${template.key}`, template.subject);
+            const body = field('Text', `mail-template-body-${template.key}`, template.body, 'textarea');
+            body.querySelector('textarea').rows = 10;
+
+            const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
+            save.addEventListener('click', async () => {
+                save.disabled = true;
+                try {
+                    await request(`/api/admin/v1/mail-templates/${template.key}`, {method: 'PUT', body: JSON.stringify({
+                        subject: subject.querySelector('input').value,
+                        body: body.querySelector('textarea').value,
+                    })});
+                    toast('Die Mailvorlage wurde gespeichert.');
+                    await showMailTemplates();
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    save.disabled = false;
+                }
+            });
+            const reset = element('button', {className: 'secondary-button', text: 'Auf Standard zurücksetzen', attributes: {type: 'button'}});
+            reset.addEventListener('click', async () => {
+                const confirmed = await confirmAction(
+                    'Auf Standard zurücksetzen',
+                    `„${template.label}“ wird auf den mitgelieferten Standardtext zurückgesetzt. Eigene Anpassungen gehen dabei verloren.`,
+                    'Zurücksetzen',
+                );
+                if (!confirmed) return;
+                try {
+                    await request(`/api/admin/v1/mail-templates/${template.key}/reset`, {method: 'POST'});
+                    toast('Die Mailvorlage wurde zurückgesetzt.');
+                    await showMailTemplates();
+                } catch (error) {
+                    toast(error.message, 'error');
+                }
+            });
+
+            return element('article', {className: 'management-card', children: [
+                element('h3', {text: template.label}),
+                element('p', {className: 'field-hint', text: template.description}),
+                element('p', {className: 'field-hint', text: `Verfügbare Platzhalter: ${template.placeholders.map((name) => `{{${name}}}`).join(', ')}`}),
+                subject,
+                body,
+                element('div', {className: 'confirm-dialog-actions', children: template.isDefault ? [save] : [save, reset]}),
+                message,
+            ]});
+        });
+
+        workspace.replaceChildren(
+            sectionHeading('Mailvorlagen', 'Betreff und Text der automatisch versendeten E-Mails bearbeiten, statt sie im Code zu pflegen'),
+            element('div', {className: 'card-list', children: cards}),
+        );
+    };
+
+    // Modul „E-Mail-Einstellungen“ (Reiter innerhalb von „Einstellungen“, siehe
+    // `showSettingsManagement`): bündelt Mailserver-Zugangsdaten/Benachrichtigungsempfänger
+    // (`showEmailConnectionSettings`) und die Mailvorlagen-Texte (`showMailTemplates`) in eigenen
+    // Unter-Reitern, analog zu `showSettingsManagement` selbst.
+    let activeEmailSettingsTab = null;
+    const showEmailSettingsManagement = async () => {
+        const tabs = [
+            ['connection', 'E-Mail-Einstellungen', showEmailConnectionSettings],
+            ['templates', 'Mailvorlagen', showMailTemplates],
+        ];
+        if (!tabs.some(([key]) => key === activeEmailSettingsTab)) activeEmailSettingsTab = tabs[0][0];
+
+        const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'E-Mail-Einstellungen'}, children: tabs.map(([key, label]) => {
+            const button = element('button', {
+                className: `sub-tab${key === activeEmailSettingsTab ? ' active' : ''}`,
+                text: label,
+                attributes: {type: 'button'},
+            });
+            button.addEventListener('click', async () => {
+                activeEmailSettingsTab = key;
+                await showEmailSettingsManagement();
+            });
+
+            return button;
+        })});
+        const active = tabs.find(([key]) => key === activeEmailSettingsTab);
+        // showEmailConnectionSettings/showMailTemplates schreiben wie jedes andere Modul direkt in
+        // `workspace`. Deren Ergebnis wird danach in ein Tab-Panel umgehängt, damit Tab-Leiste und
+        // Inhalt gemeinsam sichtbar bleiben.
+        await active[2]();
+        const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
+        workspace.replaceChildren(tabStrip, panel);
+    };
+
+    // Modul „Einstellungen“: bündelt Bereiche, die entweder besondere Rechte (Benutzerverwaltung)
+    // oder gleich die Admin-/Super-Admin-Rolle (PIN-Schutzverwaltung, E-Mail-Einstellungen)
+    // voraussetzen — analog zu `showMembershipManagement` mit eigener Reiter-Leiste je nach
+    // freigeschaltetem Zugang.
+    let activeSettingsTab = null;
+    const showSettingsManagement = async () => {
+        const tabs = [
+            ...(hasModule('user_management') ? [['users', 'Benutzerverwaltung', showUsers]] : []),
+            // Bewusst über die Rolle statt über das reguläre Modul-Rechtesystem freigeschaltet:
+            // PIN-Schutz und E-Mail-Einstellungen sind genau dafür da, auch vor Admins/Editoren mit
+            // weitreichenden Modulrechten zusätzlich zu schützen bzw. sensible Zugangsdaten zu
+            // verbergen — sie selbst über eine delegierbare Modulberechtigung zu steuern, würde
+            // das aushebeln.
+            ...(isGlobalAdministrator() ? [['pin', 'PIN-Schutzverwaltung', showPinProtection]] : []),
+            ...(isGlobalAdministrator() ? [['email', 'E-Mail-Einstellungen', showEmailSettingsManagement]] : []),
+        ];
+        if (!tabs.some(([key]) => key === activeSettingsTab)) activeSettingsTab = tabs[0]?.[0] || null;
+
+        const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Einstellungen'}, children: tabs.map(([key, label]) => {
+            const button = element('button', {
+                className: `sub-tab${key === activeSettingsTab ? ' active' : ''}`,
+                text: label,
+                attributes: {type: 'button'},
+            });
+            button.addEventListener('click', async () => {
+                activeSettingsTab = key;
+                await showSettingsManagement();
+            });
+
+            return button;
+        })});
+        const active = tabs.find(([key]) => key === activeSettingsTab);
+        if (!active) {
+            workspace.replaceChildren(tabStrip, emptyState('Für diesen Zugang ist kein Bereich der Einstellungen freigeschaltet.'));
+            return;
+        }
+        // showUsers/showPinProtection/showEmailSettingsManagement schreiben wie jedes andere Modul direkt in `workspace`. Deren
+        // Ergebnis wird danach in ein Tab-Panel umgehängt, damit Tab-Leiste und Inhalt gemeinsam
+        // sichtbar bleiben.
+        await active[2]();
+        const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
+        workspace.replaceChildren(tabStrip, panel);
+    };
+
     const showUsers = async () => {
         const [data, pageOptions] = await Promise.all([
             request('/api/admin/v1/users'),
             request('/api/admin/v1/users/page-options'),
         ]);
         workspace.replaceChildren(
-            sectionHeading('Benutzer', 'Zugänge und Rollen verwalten'),
+            sectionHeading('Benutzerverwaltung', 'Zugänge und Rollen verwalten'),
             ...(canEditModule('user_management') ? [userCreationForm(showUsers, pageOptions.items)] : []),
             element('div', {className: 'card-list', children: data.items.map((user) => userCard(user, showUsers, pageOptions.items))}),
         );
@@ -4939,13 +5490,20 @@ const renderAdmin = async () => {
     }
 
     if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications')) {
-        menuItems.push(addMenu('Mitgliederverwaltung', showMembershipManagement));
+        menuItems.push(addMenu('Mitgliederverwaltung', async () => {
+            if (!(await ensurePinUnlocked('members.module_access', 'Mitgliederverwaltung'))) return;
+            await showMembershipManagement();
+        }));
     }
-
-    if (hasModule('user_management')) menuItems.push(addMenu('Benutzer', showUsers));
 
     if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', showGuestbook));
     if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', showContact));
+
+    // Modul „Einstellungen“ (siehe `showSettingsManagement`): Benutzerverwaltung und
+    // PIN-Schutzverwaltung als eigene Reiter darin, statt getrennter Menüeinträge.
+    if (hasModule('user_management') || isGlobalAdministrator()) {
+        menuItems.push(addMenu('Einstellungen', showSettingsManagement));
+    }
 
     const logout = element('button', {className: 'text-button', text: 'Abmelden', attributes: {type: 'button'}});
     logout.addEventListener('click', async () => {
@@ -4954,6 +5512,7 @@ const renderAdmin = async () => {
         currentRoles = [];
         currentModuleAccess = {};
         currentPageAccess = null;
+        clearPinSessionUnlocks();
         toast('Du wurdest abgemeldet.', 'info');
         renderLogin();
     });

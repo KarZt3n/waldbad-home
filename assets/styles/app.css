@@ -961,6 +961,11 @@ a { color: var(--forest-700); }
 .page-access-row select:disabled { opacity: .55; cursor: not-allowed; }
 .field-hint { display: block; margin-top: .5rem; color: var(--muted); }
 
+.protected-action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .75rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--white); }
+.protected-action-row + .protected-action-row { margin-top: .5rem; }
+.protected-action-row .check-field { margin: 0; min-width: 14rem; }
+.protected-action-row .field-hint { margin: 0; font-size: .88rem; }
+
 @media (max-width: 38rem) {
     .module-access-row, .page-access-row { grid-template-columns: 1fr; }
 }

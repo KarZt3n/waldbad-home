@@ -19,6 +19,7 @@ services:
             $guestbookFormLimiter: '@limiter.guestbook_form'
             $membershipApplicationLimiter: '@limiter.membership_application'
             $eventHelpFormLimiter: '@limiter.event_help_form'
+            $pinVerificationLimiter: '@limiter.pin_verification'
             $mediaUploadDirectory: '%media_upload_directory%'
 
     # makes classes in src/ available to be used as services

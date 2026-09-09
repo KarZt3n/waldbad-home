@@ -15,6 +15,8 @@ use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
+use App\Logic\Settings\Pin\Model\ProtectedAction;
+use App\Logic\Settings\Pin\UseCase\VerifyPinUseCase;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -171,9 +173,14 @@ class AdminMemberController extends AbstractController
     }
 
     #[Route('/{id}', name: 'api_admin_member_delete', methods: ['DELETE'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
-    public function delete(string $id, DeleteMemberUseCase $useCase): Response
+    public function delete(string $id, Request $request, DeleteMemberUseCase $useCase, VerifyPinUseCase $verifyPin): Response
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        // Zusätzlich zur regulären Berechtigung optional per PIN geschützt (siehe Modul
+        // „Einstellungen“ → PIN-Schutz). Ist der Schutz für „Mitglied löschen“ nicht aktiviert, ist
+        // dieser Aufruf ein No-op.
+        $submittedPin = $request->getPayload()->getString('pin', '');
+        $verifyPin->execute(ProtectedAction::MembersDelete, $submittedPin === '' ? null : $submittedPin);
         $useCase->execute($id);
 
         return new Response(null, Response::HTTP_NO_CONTENT);

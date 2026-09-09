@@ -3,3 +3,9 @@ services:
         autowire: true
         autoconfigure: true
         public: true
+
+    # Ersetzt den echten, DNS-abfragenden Checker: Tests laufen ohne verlässige Netzwerkverbindung
+    # und nutzen ohnehin die reservierte Testdomain *.test (siehe FakeEmailDeliverabilityChecker).
+    App\Tests\Support\FakeEmailDeliverabilityChecker:
+        autowire: true
+    App\Logic\Common\EmailDeliverabilityCheckerInterface: '@App\Tests\Support\FakeEmailDeliverabilityChecker'

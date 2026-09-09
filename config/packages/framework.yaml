@@ -23,6 +23,10 @@ framework:
             policy: fixed_window
             limit: 5
             interval: '1 hour'
+        pin_verification:
+            policy: fixed_window
+            limit: 10
+            interval: '15 minutes'
 
     #esi: true
     #fragments: true
@@ -40,6 +44,8 @@ when@test:
             membership_application:
                 policy: no_limit
             event_help_form:
+                policy: no_limit
+            pin_verification:
                 policy: no_limit
 
 when@dev:

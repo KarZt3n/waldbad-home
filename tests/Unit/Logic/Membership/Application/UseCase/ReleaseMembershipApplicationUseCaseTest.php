@@ -10,6 +10,7 @@ use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
+use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\Member\Model\MemberFunction;
@@ -18,8 +19,15 @@ use App\Logic\Membership\Member\Model\PaymentDay;
 use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
+use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
 use App\Logic\Membership\PaymentInterval;
+use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
+use App\Logic\Settings\Email\Model\EmailSettings;
+use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
+use App\Logic\Settings\Email\Service\NotificationMailer;
+use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 final class ReleaseMembershipApplicationUseCaseTest extends TestCase
 {
@@ -48,7 +56,23 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn($now);
 
-        $response = (new ReleaseMembershipApplicationUseCase($applications, $orchestrator, $clock))->execute('application-1');
+        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $memberManager = $this->createStub(MemberManagerInterface::class);
+        $memberManager->method('findByPrimaryMemberNumber')->willReturnCallback(
+            static fn (): array => array_column($createdMembers, 'member'),
+        );
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::never())->method('error');
+
+        $response = (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $this->notConfiguredMailer(),
+            $householdRecalculator,
+            $memberManager,
+            $logger,
+        ))->execute('application-1');
 
         self::assertNotNull($response->releasedAt);
         self::assertIsArray($response->releasedMemberIds);
@@ -88,7 +112,64 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $clock->method('now')->willReturn($now);
 
         $this->expectException(BusinessRuleViolationException::class);
-        (new ReleaseMembershipApplicationUseCase($applications, $orchestrator, $clock))->execute('application-1');
+        (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $this->notConfiguredMailer(),
+            $this->createStub(HouseholdContributionRecalculator::class),
+            $this->createStub(MemberManagerInterface::class),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('application-1');
+    }
+
+    /**
+     * Die Mitglieder wurden zu diesem Zeitpunkt bereits angelegt und der Antrag bereits als
+     * freigegeben gespeichert — ein Fehler danach (hier: beim Neuberechnen des Haushalts für die
+     * Bestätigungsmail) darf die Freigabe nicht als fehlgeschlagen erscheinen lassen.
+     */
+    public function testReleaseSucceedsEvenWhenPreparingTheConfirmationEmailFails(): void
+    {
+        $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
+        $application = $this->familyApplication($now);
+
+        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
+        $applications->method('get')->willReturn($application);
+        $applications->method('save')->willReturnCallback(static fn (MembershipApplication $saved): MembershipApplication => $saved);
+
+        $createdMembers = [];
+        $orchestrator = $this->createStub(MemberOnboardingOrchestrator::class);
+        $orchestrator->method('createFromRequest')->willReturnCallback(
+            function (CreateMemberRequest $request) use (&$createdMembers): Member {
+                $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1));
+                $createdMembers[] = $member;
+
+                return $member;
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn($now);
+
+        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $householdRecalculator->method('recalculate')->willThrowException(new BusinessRuleViolationException('Kein passender Beitragssatz.'));
+
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('error');
+
+        $response = (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $this->notConfiguredMailer(),
+            $householdRecalculator,
+            $this->createStub(MemberManagerInterface::class),
+            $logger,
+        ))->execute('application-1');
+
+        self::assertNotNull($response->releasedAt);
+        self::assertIsArray($response->releasedMemberIds);
+        self::assertCount(3, $response->releasedMemberIds);
     }
 
     private function familyApplication(\DateTimeImmutable $now): MembershipApplication
@@ -150,6 +231,23 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             remarks: [],
             oneTimeCharges: [],
             version: 0,
+        );
+    }
+
+    /**
+     * Kein Mailserver konfiguriert: `NotificationMailer::sendTo()` wird dadurch zum No-op, ohne
+     * dass hier ein echter Transport aufgebaut werden müsste.
+     */
+    private function notConfiguredMailer(): NotificationMailer
+    {
+        $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+
+        return new NotificationMailer(
+            $emailSettingsManager,
+            $this->createStub(ConfiguredMailTransportFactory::class),
+            $this->createStub(MailTemplateRenderer::class),
+            $this->createStub(LoggerInterface::class),
         );
     }
 }
