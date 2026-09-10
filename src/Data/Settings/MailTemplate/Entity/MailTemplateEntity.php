@@ -17,6 +17,8 @@ class MailTemplateEntity
         private string $subject,
         #[ORM\Column(type: Types::TEXT)]
         private string $body,
+        #[ORM\Column(type: Types::STRING, length: 36, nullable: true)]
+        private ?string $signatureId,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
         private ?\DateTimeImmutable $updatedAt,
     ) {
@@ -37,15 +39,21 @@ class MailTemplateEntity
         return $this->body;
     }
 
+    public function getSignatureId(): ?string
+    {
+        return $this->signatureId;
+    }
+
     public function getUpdatedAt(): ?\DateTimeImmutable
     {
         return $this->updatedAt;
     }
 
-    public function update(string $subject, string $body, \DateTimeImmutable $updatedAt): void
+    public function update(string $subject, string $body, ?string $signatureId, \DateTimeImmutable $updatedAt): void
     {
         $this->subject = $subject;
         $this->body = $body;
+        $this->signatureId = $signatureId;
         $this->updatedAt = $updatedAt;
     }
 }

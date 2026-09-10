@@ -20,6 +20,7 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
 use App\Logic\Membership\PaymentInterval;
+use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use Psr\Log\LoggerInterface;
@@ -44,8 +45,6 @@ use Psr\Log\LoggerInterface;
  */
 readonly class ReleaseMembershipApplicationUseCase
 {
-    private const string ASSOCIATION_NAME = 'Naturbad Borkheide e.V.';
-
     public function __construct(
         private MembershipApplicationManagerInterface $applications,
         private MemberOnboardingOrchestrator $orchestrator,
@@ -170,7 +169,7 @@ readonly class ReleaseMembershipApplicationUseCase
                     'beitrittsdatum' => $now->format('d.m.Y'),
                     'personen' => $this->formatMembers($members),
                     'beitraege' => $this->formatContributionsAsText($members),
-                    'vereinsname' => self::ASSOCIATION_NAME,
+                    'vereinsname' => AssociationName::CURRENT,
                 ],
                 ['beitraege' => $this->formatContributionsAsHtml($members)],
             );
@@ -250,7 +249,7 @@ readonly class ReleaseMembershipApplicationUseCase
 
             $subItems = implode('', array_map(
                 fn (array $position): string => sprintf(
-                    '<li>%s: %s pro Jahr</li>',
+                    '<li style="font-weight:bold;">%s: %s pro Jahr</li>',
                     $this->escapeHtml($position['label']),
                     $this->formatEuro($position['amountCents']),
                 ),

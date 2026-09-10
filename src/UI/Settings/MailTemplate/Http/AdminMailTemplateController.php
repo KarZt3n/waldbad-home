@@ -2,12 +2,15 @@
 
 namespace App\UI\Settings\MailTemplate\Http;
 
+use App\Logic\Settings\MailTemplate\Dto\MailTemplatePreview;
 use App\Logic\Settings\MailTemplate\Dto\MailTemplateResponse;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use App\Logic\Settings\MailTemplate\Query\GetMailTemplatesQuery;
+use App\Logic\Settings\MailTemplate\UseCase\PreviewMailTemplateUseCase;
 use App\Logic\Settings\MailTemplate\UseCase\ResetMailTemplateUseCase;
 use App\Logic\Settings\MailTemplate\UseCase\UpdateMailTemplateUseCase;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -35,7 +38,7 @@ class AdminMailTemplateController extends AbstractController
     {
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
         $data = $request->getPayload();
-        $useCase->execute($this->resolveKey($key), $data->getString('subject'), $data->getString('body'));
+        $useCase->execute($this->resolveKey($key), $data->getString('subject'), $data->getString('body'), $this->signatureId($data));
 
         return new JsonResponse(['items' => array_map($this->toArray(...), $query->execute())]);
     }
@@ -49,9 +52,45 @@ class AdminMailTemplateController extends AbstractController
         return new JsonResponse(['items' => array_map($this->toArray(...), $query->execute())]);
     }
 
+    /**
+     * Rendert den (ggf. noch ungespeicherten) Betreff/Text aus dem Editor mit Beispieldaten — für
+     * den „Vorschau“-Button, siehe `PreviewMailTemplateUseCase`.
+     */
+    #[Route('/{key}/preview', name: 'api_admin_mail_templates_preview', methods: ['POST'])]
+    public function preview(string $key, Request $request, PreviewMailTemplateUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted('ROLE_ADMIN');
+        $data = $request->getPayload();
+        $preview = $useCase->execute($this->resolveKey($key), $data->getString('subject'), $data->getString('body'), $this->signatureId($data));
+
+        return new JsonResponse($this->previewToArray($preview));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function previewToArray(MailTemplatePreview $preview): array
+    {
+        return [
+            'subject' => $preview->subject,
+            'text' => $preview->text,
+            'html' => $preview->html,
+        ];
+    }
+
     private function resolveKey(string $value): MailTemplateKey
     {
         return MailTemplateKey::tryFrom($value) ?? throw new BadRequestHttpException('Unbekannte Mailvorlage.');
+    }
+
+    /**
+     * @param InputBag<string|int|float|bool|null> $data
+     */
+    private function signatureId(InputBag $data): ?string
+    {
+        $value = $data->getString('signatureId', '');
+
+        return $value === '' ? null : $value;
     }
 
     /**
@@ -66,6 +105,7 @@ class AdminMailTemplateController extends AbstractController
             'placeholders' => $response->placeholders,
             'subject' => $response->subject,
             'body' => $response->body,
+            'signatureId' => $response->signatureId,
             'isDefault' => $response->isDefault,
         ];
     }

@@ -3,6 +3,7 @@
 namespace App\Logic\Settings\Email\Service;
 
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
+use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
@@ -36,8 +37,6 @@ use Symfony\Component\Mime\Email;
  */
 readonly class NotificationMailer
 {
-    private const string ASSOCIATION_NAME = 'Naturbad Borkheide e.V.';
-
     public function __construct(
         private EmailSettingsManagerInterface $manager,
         private ConfiguredMailTransportFactory $transportFactory,
@@ -86,7 +85,7 @@ readonly class NotificationMailer
     {
         try {
             $rendered = $this->templateRenderer->render($templateKey, $placeholders, $htmlBlocks);
-            $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), self::ASSOCIATION_NAME);
+            $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), AssociationName::CURRENT);
             $transport = $this->transportFactory->create($settings);
             $email = (new Email())
                 ->from(new Address((string) $settings->fromAddress, (string) ($settings->fromName ?? '')))

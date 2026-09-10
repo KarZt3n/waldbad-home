@@ -25,6 +25,7 @@ readonly class GetMailTemplatesQuery
                 placeholders: $template->key->placeholders(),
                 subject: $template->subject,
                 body: $template->body,
+                signatureId: $template->signatureId,
                 isDefault: $template->isDefault(),
             ),
             $this->manager->resolveAll(),

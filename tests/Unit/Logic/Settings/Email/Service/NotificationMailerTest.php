@@ -7,6 +7,7 @@ use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
+use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
 use App\Logic\Settings\MailTemplate\Model\MailTemplate;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
@@ -116,7 +117,10 @@ final class NotificationMailerTest extends TestCase
             static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $body),
         );
 
-        return new MailTemplateRenderer($manager, new MailContentRenderer());
+        $signatures = $this->createStub(MailSignatureManagerInterface::class);
+        $signatures->method('find')->willReturn(null);
+
+        return new MailTemplateRenderer($manager, new MailContentRenderer(), $signatures);
     }
 
     /**

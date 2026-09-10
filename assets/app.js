@@ -4709,18 +4709,89 @@ const renderAdmin = async () => {
         );
     };
 
+    // Zeigt Betreff/HTML/Text einer mit Beispieldaten gerenderten Mailvorlage (siehe
+    // `PreviewMailTemplateUseCase`) in einem eigenen Dialog. Die HTML-Ansicht läuft in einem
+    // sandboxed <iframe> mit eigenem <html>/<head> (siehe `BrandedEmailLayout`) statt im DOM der
+    // Seite selbst, da die Mail ihre eigenen, teils widersprüchlichen Inline-Styles mitbringt.
+    const openMailTemplatePreview = (label, preview) => {
+        const dialog = element('dialog', {className: 'preview-dialog'});
+        const htmlFrame = element('iframe', {
+            className: 'mail-preview-frame',
+            attributes: {title: `Vorschau: ${preview.subject}`, sandbox: '', srcdoc: preview.html},
+        });
+        const textFrame = element('pre', {className: 'mail-preview-text', text: preview.text});
+        textFrame.hidden = true;
+
+        const htmlToggle = element('button', {className: 'editor-tool active', text: 'HTML-Ansicht', attributes: {type: 'button'}});
+        const textToggle = element('button', {className: 'editor-tool', text: 'Text-Ansicht', attributes: {type: 'button'}});
+        const setView = (view) => {
+            htmlFrame.hidden = view !== 'html';
+            textFrame.hidden = view !== 'text';
+            htmlToggle.classList.toggle('active', view === 'html');
+            textToggle.classList.toggle('active', view === 'text');
+        };
+        htmlToggle.addEventListener('click', () => setView('html'));
+        textToggle.addEventListener('click', () => setView('text'));
+
+        const close = element('button', {className: 'secondary-button', text: 'Vorschau schließen', attributes: {type: 'button'}});
+        close.addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => dialog.remove());
+        dialog.append(
+            element('header', {className: 'preview-toolbar', children: [
+                element('strong', {text: `Vorschau: ${label}`}),
+                element('div', {className: 'preview-actions', children: [htmlToggle, textToggle, close]}),
+            ]}),
+            element('div', {className: 'preview-stage', children: [htmlFrame, textFrame]}),
+        );
+        document.body.append(dialog);
+        dialog.showModal();
+    };
+
     // Reiter „Mailvorlagen“ innerhalb von „E-Mail-Einstellungen“ (siehe
     // `showEmailSettingsManagement`) — die redaktionell pflegbaren Texte hinter jeder automatisch
     // versendeten E-Mail (`MailTemplateKey`), statt sie im Code zu pflegen. Erstes Beispiel: die
     // Bestätigungsmail bei einem angenommenen Mitgliedsantrag (`ReleaseMembershipApplicationUseCase`).
     const showMailTemplates = async () => {
-        const data = await request('/api/admin/v1/mail-templates');
+        const [data, signatureData] = await Promise.all([
+            request('/api/admin/v1/mail-templates'),
+            request('/api/admin/v1/mail-signatures'),
+        ]);
+        const signatures = signatureData.items;
 
         const cards = data.items.map((template) => {
             const message = formMessage();
             const subject = field('Betreff', `mail-template-subject-${template.key}`, template.subject);
             const body = field('Text', `mail-template-body-${template.key}`, template.body, 'textarea');
-            body.querySelector('textarea').rows = 10;
+            const bodyInput = body.querySelector('textarea');
+            bodyInput.rows = 10;
+
+            // Die Signatur wird nur referenziert (nicht als Text kopiert, siehe
+            // `MailTemplate::$signatureId`) — eine spätere Änderung der Signatur wirkt sich so
+            // automatisch auf jede Vorlage aus, die sie zugeordnet hat, ohne diese einzeln
+            // anzupassen. Beim Versand/in der Vorschau wird sie an den Text angehängt (siehe
+            // `MailTemplateRenderer`).
+            const signatureSelect = selectField('Signatur', `mail-template-signature-${template.key}`, [
+                ['', 'Keine'],
+                ...signatures.map((signature) => [signature.id, signature.name]),
+            ], template.signatureId || '');
+            const signatureSelectInput = signatureSelect.querySelector('select');
+
+            const preview = element('button', {className: 'secondary-button', text: 'Vorschau', attributes: {type: 'button'}});
+            preview.addEventListener('click', async () => {
+                preview.disabled = true;
+                try {
+                    const result = await request(`/api/admin/v1/mail-templates/${template.key}/preview`, {method: 'POST', body: JSON.stringify({
+                        subject: subject.querySelector('input').value,
+                        body: bodyInput.value,
+                        signatureId: signatureSelectInput.value || null,
+                    })});
+                    openMailTemplatePreview(template.label, result);
+                } catch (error) {
+                    toast(error.message, 'error');
+                } finally {
+                    preview.disabled = false;
+                }
+            });
 
             const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
             save.addEventListener('click', async () => {
@@ -4728,7 +4799,8 @@ const renderAdmin = async () => {
                 try {
                     await request(`/api/admin/v1/mail-templates/${template.key}`, {method: 'PUT', body: JSON.stringify({
                         subject: subject.querySelector('input').value,
-                        body: body.querySelector('textarea').value,
+                        body: bodyInput.value,
+                        signatureId: signatureSelectInput.value || null,
                     })});
                     toast('Die Mailvorlage wurde gespeichert.');
                     await showMailTemplates();
@@ -4742,7 +4814,7 @@ const renderAdmin = async () => {
             reset.addEventListener('click', async () => {
                 const confirmed = await confirmAction(
                     'Auf Standard zurücksetzen',
-                    `„${template.label}“ wird auf den mitgelieferten Standardtext zurückgesetzt. Eigene Anpassungen gehen dabei verloren.`,
+                    `„${template.label}“ wird auf den mitgelieferten Standardtext zurückgesetzt (auch die Signatur-Zuordnung). Eigene Anpassungen gehen dabei verloren.`,
                     'Zurücksetzen',
                 );
                 if (!confirmed) return;
@@ -4761,8 +4833,10 @@ const renderAdmin = async () => {
                 element('p', {className: 'field-hint', text: `Verfügbare Platzhalter: ${template.placeholders.map((name) => `{{${name}}}`).join(', ')}`}),
                 subject,
                 body,
+                signatureSelect,
+                element('p', {className: 'field-hint', text: 'Die Signatur wird beim Versand automatisch an den Text angehängt — eine spätere Änderung an ihr wirkt sich auf jede Vorlage aus, die sie zugeordnet hat, ohne diese einzeln anzupassen. Verwaltung unter „Signaturen“.'}),
                 element('p', {className: 'field-hint', text: 'Die Mail wird zusätzlich als gestaltete HTML-Ansicht im Design des Vereins verschickt — Leerzeilen im Text werden dabei zu Absätzen.'}),
-                element('div', {className: 'confirm-dialog-actions', children: template.isDefault ? [save] : [save, reset]}),
+                element('div', {className: 'confirm-dialog-actions', children: template.isDefault ? [preview, save] : [preview, save, reset]}),
                 message,
             ]});
         });
@@ -4770,6 +4844,80 @@ const renderAdmin = async () => {
         workspace.replaceChildren(
             sectionHeading('Mailvorlagen', 'Betreff und Text der automatisch versendeten E-Mails bearbeiten, statt sie im Code zu pflegen'),
             element('div', {className: 'card-list', children: cards}),
+        );
+    };
+
+    // Reiter „Signaturen“ innerhalb von „E-Mail-Einstellungen“ (siehe `showEmailSettingsManagement`)
+    // — wiederverwendbare Signaturen (z. B. „Freundliche Grüße / Das Waldbad-Team / …“), die einer
+    // Mailvorlage (`showMailTemplates`) zugeordnet statt in deren Text kopiert werden: eine
+    // Änderung hier wirkt sich automatisch auf jede zugeordnete Vorlage aus (siehe
+    // `MailTemplate::$signatureId`, `MailTemplateRenderer`). Kann wie der übrige Vorlagentext
+    // `{{name}}`-Platzhalter enthalten — die werden erst beim Versand der jeweiligen Vorlage ersetzt.
+    const showMailSignatures = async () => {
+        const data = await request('/api/admin/v1/mail-signatures');
+
+        const signatureCard = (signature) => {
+            const message = formMessage();
+            const name = field('Name', `mail-signature-name-${signature?.id || 'new'}`, signature?.name || '');
+            const body = field('Text', `mail-signature-body-${signature?.id || 'new'}`, signature?.body || '', 'textarea');
+            body.querySelector('textarea').rows = 6;
+
+            const save = element('button', {className: 'button', text: signature ? 'Speichern' : 'Anlegen', attributes: {type: 'button'}});
+            save.addEventListener('click', async () => {
+                save.disabled = true;
+                try {
+                    const payload = JSON.stringify({
+                        name: name.querySelector('input').value,
+                        body: body.querySelector('textarea').value,
+                    });
+                    if (signature) {
+                        await request(`/api/admin/v1/mail-signatures/${signature.id}`, {method: 'PUT', body: payload});
+                        toast('Die Signatur wurde gespeichert.');
+                    } else {
+                        await request('/api/admin/v1/mail-signatures', {method: 'POST', body: payload});
+                        toast('Die Signatur wurde angelegt.');
+                    }
+                    await showMailSignatures();
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    save.disabled = false;
+                }
+            });
+
+            const actions = [save];
+            if (signature) {
+                const remove = element('button', {className: 'button danger-button', text: 'Löschen', attributes: {type: 'button'}});
+                remove.addEventListener('click', async () => {
+                    const confirmed = await confirmAction(
+                        'Signatur löschen',
+                        `„${signature.name}“ wird gelöscht. Bereits in Mailvorlagen eingefügte Signaturtexte bleiben davon unberührt.`,
+                    );
+                    if (!confirmed) return;
+                    try {
+                        await request(`/api/admin/v1/mail-signatures/${signature.id}`, {method: 'DELETE'});
+                        toast('Die Signatur wurde gelöscht.');
+                        await showMailSignatures();
+                    } catch (error) {
+                        toast(error.message, 'error');
+                    }
+                });
+                actions.unshift(remove);
+            }
+
+            return element('article', {className: 'management-card', children: [
+                element('h3', {text: signature ? signature.name : 'Neue Signatur'}),
+                name,
+                body,
+                element('div', {className: 'confirm-dialog-actions', children: actions}),
+                message,
+            ]});
+        };
+
+        workspace.replaceChildren(
+            sectionHeading('Signaturen', 'Wiederverwendbare Signaturen, die Mailvorlagen zugeordnet werden können, statt sie in jede Vorlage zu kopieren'),
+            element('p', {className: 'field-hint', text: 'Kann Platzhalter wie {{vereinsname}} enthalten. Welche Mailvorlage welche Signatur verwendet, wird im Reiter „Mailvorlagen“ je Vorlage ausgewählt — eine Änderung hier wirkt sich automatisch auf jede zugeordnete Vorlage aus.'}),
+            element('div', {className: 'card-list', children: [...data.items.map(signatureCard), signatureCard(null)]}),
         );
     };
 
@@ -4782,6 +4930,7 @@ const renderAdmin = async () => {
         const tabs = [
             ['connection', 'E-Mail-Einstellungen', showEmailConnectionSettings],
             ['templates', 'Mailvorlagen', showMailTemplates],
+            ['signatures', 'Signaturen', showMailSignatures],
         ];
         if (!tabs.some(([key]) => key === activeEmailSettingsTab)) activeEmailSettingsTab = tabs[0][0];
 

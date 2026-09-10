@@ -28,6 +28,7 @@ use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
+use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
 use App\Logic\Settings\MailTemplate\Model\MailTemplate;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
@@ -161,10 +162,12 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $templateManager->method('resolve')->willReturnCallback(
             static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
         );
+        $signatures = $this->createStub(MailSignatureManagerInterface::class);
+        $signatures->method('find')->willReturn(null);
         $mailer = new NotificationMailer(
             $emailSettingsManager,
             $transportFactory,
-            new MailTemplateRenderer($templateManager, new MailContentRenderer()),
+            new MailTemplateRenderer($templateManager, new MailContentRenderer(), $signatures),
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),

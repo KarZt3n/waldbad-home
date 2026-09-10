@@ -14,11 +14,12 @@ final class ResetMailTemplateUseCaseTest extends TestCase
     {
         $key = MailTemplateKey::MembershipApplicationApproved;
         $manager = $this->createMock(MailTemplateManagerInterface::class);
-        $manager->method('resolve')->willReturn(new MailTemplate($key, 'angepasster Betreff', 'angepasster Text'));
+        $manager->method('resolve')->willReturn(new MailTemplate($key, 'angepasster Betreff', 'angepasster Text', 'signature-1'));
         $manager->expects(self::once())->method('save')->willReturnCallback(
             static function (MailTemplate $template) use ($key): MailTemplate {
                 self::assertSame($key->defaultSubject(), $template->subject);
                 self::assertSame($key->defaultBody(), $template->body);
+                self::assertNull($template->signatureId);
 
                 return $template;
             },

@@ -14,6 +14,7 @@ readonly class MailTemplateResponse
         public array $placeholders,
         public string $subject,
         public string $body,
+        public ?string $signatureId,
         public bool $isDefault,
     ) {
     }

@@ -14,6 +14,7 @@ readonly class MailTemplateMapper
             key: MailTemplateKey::from($entity->getKey()),
             subject: $entity->getSubject(),
             body: $entity->getBody(),
+            signatureId: $entity->getSignatureId(),
         );
     }
 
@@ -23,12 +24,13 @@ readonly class MailTemplateMapper
             key: $template->key->value,
             subject: $template->subject,
             body: $template->body,
+            signatureId: $template->signatureId,
             updatedAt: $updatedAt,
         );
     }
 
     public function updateEntity(MailTemplate $template, MailTemplateEntity $entity, \DateTimeImmutable $updatedAt): void
     {
-        $entity->update($template->subject, $template->body, $updatedAt);
+        $entity->update($template->subject, $template->body, $template->signatureId, $updatedAt);
     }
 }

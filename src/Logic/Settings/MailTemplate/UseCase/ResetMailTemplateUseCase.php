@@ -13,6 +13,6 @@ readonly class ResetMailTemplateUseCase
 
     public function execute(MailTemplateKey $key): void
     {
-        $this->manager->save($this->manager->resolve($key)->withText($key->defaultSubject(), $key->defaultBody()));
+        $this->manager->save($this->manager->resolve($key)->withText($key->defaultSubject(), $key->defaultBody(), null));
     }
 }
