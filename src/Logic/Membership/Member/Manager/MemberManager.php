@@ -25,6 +25,11 @@ readonly class MemberManager implements MemberManagerInterface
         return $this->provider->findByMemberNumber($memberNumber);
     }
 
+    public function findByEmail(string $email): array
+    {
+        return $this->provider->findByEmail($email);
+    }
+
     public function findByPrimaryMemberNumber(string $primaryMemberNumber): array
     {
         return $this->provider->findByPrimaryMemberNumber($primaryMemberNumber);

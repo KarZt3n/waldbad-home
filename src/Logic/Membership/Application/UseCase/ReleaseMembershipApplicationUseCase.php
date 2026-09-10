@@ -249,7 +249,7 @@ readonly class ReleaseMembershipApplicationUseCase
 
             $subItems = implode('', array_map(
                 fn (array $position): string => sprintf(
-                    '<li style="font-weight:bold;">%s: %s pro Jahr</li>',
+                    '<li>%s: %s pro Jahr</li>',
                     $this->escapeHtml($position['label']),
                     $this->formatEuro($position['amountCents']),
                 ),

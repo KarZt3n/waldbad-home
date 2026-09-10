@@ -33,6 +33,13 @@ final class SettingsPinManagementWorkflowTest extends WebTestCase
         $entityManager->persist(new ContributionRateEntity(
             id: 'rate-individual-senior', category: 'individual_senior', label: 'Einzelperson über 21 Jahre',
             amountCents: 5000, period: 'yearly', personGroup: 'individual', minAge: 21, maxAge: null,
+            pendingLabel: null,
+            pendingAmountCents: null,
+            pendingPeriod: null,
+            pendingPersonGroup: null,
+            pendingMinAge: null,
+            pendingMaxAge: null,
+            pendingValidFrom: null,
         ));
         $entityManager->persist(new MemberNumberSequenceEntity(id: 1, nextValue: 1));
         $entityManager->flush();

@@ -25,6 +25,16 @@ readonly class PublicEventHelpRequestController
         $firstName = trim($data->getString('firstName'));
         $lastName = trim($data->getString('lastName'));
         $message = trim($data->getString('message'));
+        $isMember = $data->getBoolean('isMember');
+        $email = trim($data->getString('email'));
+        $rawBirthDate = trim($data->getString('birthDate'));
+        $birthDate = null;
+        if ($rawBirthDate !== '') {
+            $birthDate = \DateTimeImmutable::createFromFormat('!Y-m-d', $rawBirthDate);
+            if ($birthDate === false) {
+                throw new BadRequestHttpException('Das Geburtsdatum ist ungültig.');
+            }
+        }
         $submittedActivityIds = $data->all('activityIds');
         if (!array_is_list($submittedActivityIds) || count($submittedActivityIds) > 20) {
             throw new BadRequestHttpException('Die ausgewählten Aktivitäten sind ungültig.');
@@ -39,7 +49,8 @@ readonly class PublicEventHelpRequestController
         if ($eventIdentifier === '' || $firstName === '' || $lastName === '' || !$data->getBoolean('privacyAccepted')) {
             throw new BadRequestHttpException('Veranstaltung, Vorname, Nachname und Datenschutzbestätigung sind erforderlich.');
         }
-        if (mb_strlen($eventIdentifier) > 80 || mb_strlen($firstName) > 120 || mb_strlen($lastName) > 120 || mb_strlen($message) > 4000) {
+        if (mb_strlen($eventIdentifier) > 80 || mb_strlen($firstName) > 120 || mb_strlen($lastName) > 120
+            || mb_strlen($message) > 4000 || mb_strlen($email) > 180) {
             throw new BadRequestHttpException('Die Helferanmeldung überschreitet die erlaubte Länge.');
         }
         $limit = $this->eventHelpFormLimiter->create($request->getClientIp() ?? 'unknown')->consume();
@@ -47,7 +58,7 @@ readonly class PublicEventHelpRequestController
             throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warten Sie, bevor Sie eine weitere Helferanmeldung senden.');
         }
 
-        $result = $useCase->execute($eventIdentifier, $firstName, $lastName, $message, $activityIds);
+        $result = $useCase->execute($eventIdentifier, $firstName, $lastName, $message, $activityIds, $isMember, $email === '' ? null : $email, $birthDate);
 
         return new JsonResponse([
             'id' => $result->id,

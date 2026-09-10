@@ -27,6 +27,18 @@ framework:
             policy: fixed_window
             limit: 10
             interval: '15 minutes'
+        member_access_request:
+            policy: fixed_window
+            limit: 5
+            interval: '30 minutes'
+        member_access_session:
+            policy: fixed_window
+            limit: 20
+            interval: '15 minutes'
+        member_message:
+            policy: fixed_window
+            limit: 5
+            interval: '15 minutes'
 
     #esi: true
     #fragments: true
@@ -47,6 +59,12 @@ when@test:
                 policy: no_limit
             pin_verification:
                 policy: no_limit
+            member_access_request:
+                policy: no_limit
+            member_access_session:
+                policy: no_limit
+            member_message:
+                policy: no_limit
 
 when@dev:
     framework:
@@ -54,4 +72,6 @@ when@dev:
             membership_application:
                 policy: no_limit
             event_help_form:
+                policy: no_limit
+            member_access_request:
                 policy: no_limit

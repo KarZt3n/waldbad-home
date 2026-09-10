@@ -5,6 +5,7 @@ namespace App\Logic\Membership\ContributionRate\UseCase;
 use App\Logic\Membership\ContributionRate\Dto\ContributionRateResponse;
 use App\Logic\Membership\ContributionRate\Dto\UpdateContributionRateRequest;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
+use App\Logic\Membership\ContributionRate\Mapping\ContributionRateUpdateFactory;
 
 /**
  * Aktualisiert Bezeichnung, Betrag und Zeitraum eines bestehenden Beitragssatzes. Die Kategorie
@@ -13,20 +14,16 @@ use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterfa
  */
 readonly class UpdateContributionRateUseCase
 {
-    public function __construct(private ContributionRateManagerInterface $manager)
+    public function __construct(
+        private ContributionRateManagerInterface $manager,
+        private ContributionRateUpdateFactory $factory,
+    )
     {
     }
 
     public function execute(UpdateContributionRateRequest $request): ContributionRateResponse
     {
-        $rate = $this->manager->get($request->id)->withUpdatedRate(
-            $request->label,
-            $request->amountCents,
-            $request->period,
-            $request->personGroup,
-            $request->minAge,
-            $request->maxAge,
-        );
+        $rate = $this->factory->fromRequest($this->manager->get($request->id), $request);
 
         return ContributionRateResponse::fromRate($this->manager->save($rate));
     }

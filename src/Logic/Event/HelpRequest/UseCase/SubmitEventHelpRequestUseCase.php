@@ -11,6 +11,8 @@ use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
+use App\Logic\Event\HelpRequest\Service\EventHelpRequestDuplicateMerger;
+use App\Logic\Event\HelpRequest\Service\EventHelpRequestMemberMatcher;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 
 readonly class SubmitEventHelpRequestUseCase
@@ -19,13 +21,24 @@ readonly class SubmitEventHelpRequestUseCase
         private EventHelpRequestManagerInterface $manager,
         private VolunteerEventProviderInterface $eventProvider,
         private EventActivityManagerInterface $activityManager,
+        private EventHelpRequestMemberMatcher $memberMatcher,
+        private EventHelpRequestDuplicateMerger $duplicateMerger,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
     ) {
     }
 
     /** @param list<string> $activityIds */
-    public function execute(string $eventIdentifier, string $firstName, string $lastName, string $message, array $activityIds = []): EventHelpRequestResponse
+    public function execute(
+        string $eventIdentifier,
+        string $firstName,
+        string $lastName,
+        string $message,
+        array $activityIds = [],
+        bool $isMember = false,
+        ?string $email = null,
+        ?\DateTimeImmutable $birthDate = null,
+    ): EventHelpRequestResponse
     {
         $event = $this->eventProvider->findPublished($eventIdentifier)
             ?? throw new BusinessRuleViolationException('Für diese Veranstaltung ist keine Helferanmeldung verfügbar.');
@@ -39,8 +52,9 @@ readonly class SubmitEventHelpRequestUseCase
                 throw new BusinessRuleViolationException('Die ausgewählte Aktivität gehört nicht zu dieser Veranstaltung.');
             }
         }
+        $allExisting = $this->manager->all();
         $registrationCounts = [];
-        foreach ($this->manager->all() as $existingRequest) {
+        foreach ($allExisting as $existingRequest) {
             if ($existingRequest->eventIdentifier !== $eventIdentifier) {
                 continue;
             }
@@ -56,14 +70,20 @@ readonly class SubmitEventHelpRequestUseCase
         }
 
         $now = $this->clock->now();
+        $trimmedFirstName = trim($firstName);
+        $trimmedLastName = trim($lastName);
+        $trimmedEmail = $email !== null && trim($email) !== '' ? trim($email) : null;
+        $member = $isMember
+            ? $this->memberMatcher->match($trimmedFirstName, $trimmedLastName, $trimmedEmail, $birthDate)
+            : null;
         $request = new EventHelpRequest(
             id: $this->identifierGenerator->generate(),
             eventIdentifier: $eventIdentifier,
             eventTitle: $event->title,
             eventDate: $event->date,
             eventTime: $event->time,
-            firstName: trim($firstName),
-            lastName: trim($lastName),
+            firstName: $trimmedFirstName,
+            lastName: $trimmedLastName,
             message: trim($message),
             status: EventHelpRequestStatus::New,
             participationMinutes: null,
@@ -78,7 +98,25 @@ readonly class SubmitEventHelpRequestUseCase
             }, $activityIds),
             submittedAt: $now,
             updatedAt: $now,
+            isMember: $isMember,
+            email: $trimmedEmail,
+            birthDate: $birthDate,
+            memberId: $member?->id,
         );
+
+        if ($member !== null) {
+            $existing = $this->duplicateMerger->findExisting($allExisting, $member->id, $eventIdentifier);
+            if ($existing !== []) {
+                // Für dieses Mitglied besteht zu dieser Veranstaltung bereits eine Anmeldung — statt
+                // eines weiteren Datensatzes werden die hier gewählten Aktivitäten in die jüngste
+                // bestehende Anmeldung übernommen (mehrere bereits bestehende Duplikate werden dabei
+                // gleich mit zusammengeführt); `$request` selbst wird nicht gespeichert.
+                $survivor = count($existing) > 1 ? $this->duplicateMerger->merge($existing, $now) : $existing[0];
+                $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator);
+
+                return EventHelpRequestResponse::fromRequest($this->manager->save($merged));
+            }
+        }
 
         return EventHelpRequestResponse::fromRequest($this->manager->save($request));
     }

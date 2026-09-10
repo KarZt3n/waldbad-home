@@ -12,11 +12,13 @@ namespace App\Logic\Settings\Email\Model;
 enum NotificationEvent: string
 {
     case MembershipApplicationSubmitted = 'membership_application_submitted';
+    case MemberMessageSubmitted = 'member_message_submitted';
 
     public function label(): string
     {
         return match ($this) {
             self::MembershipApplicationSubmitted => 'Neuer Mitgliedsantrag eingegangen',
+            self::MemberMessageSubmitted => 'Nachricht über „Meine Mitgliedschaft" gesendet',
         };
     }
 }

@@ -5,6 +5,7 @@ namespace App\UI\Membership\ContributionRate\Http;
 use App\Logic\Membership\ContributionRate\Dto\CreateContributionRateRequest;
 use App\Logic\Membership\ContributionRate\Dto\UpdateContributionRateRequest;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
+use App\Logic\Membership\ContributionRate\Model\PendingContributionRateChange;
 use App\Logic\Membership\ContributionRate\Model\PersonGroup;
 use App\Logic\Membership\ContributionRate\Query\ListContributionRatesQuery;
 use App\Logic\Membership\ContributionRate\UseCase\CreateContributionRateUseCase;
@@ -48,6 +49,7 @@ class AdminContributionRateController extends AbstractController
             personGroup: $this->personGroup($data),
             minAge: $this->optionalInt($data, 'minAge'),
             maxAge: $this->optionalInt($data, 'maxAge'),
+            pending: $this->pendingChange($data),
         ))), JsonResponse::HTTP_CREATED);
     }
 
@@ -65,6 +67,8 @@ class AdminContributionRateController extends AbstractController
             personGroup: $this->personGroup($data),
             minAge: $this->optionalInt($data, 'minAge'),
             maxAge: $this->optionalInt($data, 'maxAge'),
+            pending: $this->pendingChange($data),
+            validFrom: $this->optionalDate($data, 'validFrom'),
         ))));
     }
 
@@ -165,5 +169,57 @@ class AdminContributionRateController extends AbstractController
         }
 
         return (int) $value;
+    }
+
+    /**
+     * @param InputBag<string|int|float|bool|null> $data
+     */
+    private function optionalDate(InputBag $data, string $key): ?\DateTimeImmutable
+    {
+        $value = trim($data->getString($key));
+        if ($value === '') {
+            return null;
+        }
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('Europe/Berlin'));
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            throw new BadRequestHttpException(sprintf('Das Datum im Feld "%s" ist ungültig.', $key));
+        }
+
+        return $date;
+    }
+
+    /**
+     * Die geplante künftige Version des kompletten Beitragssatzes (siehe
+     * `PendingContributionRateChange`), verschachtelt unter `pending` im Request-Body — leer
+     * (fehlendes `pending` oder ohne `validFrom`) bedeutet „keine geplante Änderung“, was ein zuvor
+     * gesetztes Pending beim Speichern wieder löscht.
+     *
+     * @param InputBag<string|int|float|bool|null> $data
+     */
+    private function pendingChange(InputBag $data): ?PendingContributionRateChange
+    {
+        $rawPending = $data->all('pending');
+        $values = [];
+        foreach ($rawPending as $key => $value) {
+            if (!is_string($key) || (!is_scalar($value) && $value !== null)) {
+                throw new BadRequestHttpException('Die geplante Änderung muss gültige Beitragsfelder enthalten.');
+            }
+            $values[$key] = $value;
+        }
+        $pending = new InputBag($values);
+        $validFrom = $this->optionalDate($pending, 'validFrom');
+        if ($validFrom === null) {
+            return null;
+        }
+
+        return new PendingContributionRateChange(
+            label: $this->label($pending),
+            amountCents: $this->amountCents($pending),
+            period: $this->period($pending),
+            personGroup: $this->personGroup($pending),
+            minAge: $this->optionalInt($pending, 'minAge'),
+            maxAge: $this->optionalInt($pending, 'maxAge'),
+            validFrom: $validFrom,
+        );
     }
 }

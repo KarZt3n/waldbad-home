@@ -63,6 +63,13 @@ final class MembershipManagementWorkflowTest extends WebTestCase
                 personGroup: $personGroup,
                 minAge: $minAge,
                 maxAge: $maxAge,
+                pendingLabel: null,
+                pendingAmountCents: null,
+                pendingPeriod: null,
+                pendingPersonGroup: null,
+                pendingMinAge: null,
+                pendingMaxAge: null,
+                pendingValidFrom: null,
             ));
         }
         $entityManager->flush();

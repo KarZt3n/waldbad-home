@@ -4,6 +4,7 @@ namespace App\Logic\Membership\ContributionRate\Dto;
 
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\ContributionRate\Model\ContributionRate;
+use App\Logic\Membership\ContributionRate\Model\PendingContributionRateChange;
 use App\Logic\Membership\ContributionRate\Model\PersonGroup;
 use App\Logic\Membership\PaymentInterval;
 
@@ -19,6 +20,7 @@ readonly class ContributionRateResponse
         public ?int $minAge,
         public ?int $maxAge,
         public int $annualAmountCents,
+        public ?PendingContributionRateChange $pending,
     ) {
     }
 
@@ -34,6 +36,7 @@ readonly class ContributionRateResponse
             minAge: $rate->minAge,
             maxAge: $rate->maxAge,
             annualAmountCents: $rate->annualAmountCents(),
+            pending: $rate->pending,
         );
     }
 }

@@ -30,6 +30,25 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
         return $entity === null ? null : $this->mapper->toModel($entity);
     }
 
+    public function findByEmail(string $email): array
+    {
+        // Case-insensitiv unabhängig von der DB-Kollation, statt sich darauf zu verlassen.
+        $result = $this->entityManager->getRepository(MemberEntity::class)->createQueryBuilder('m')
+            ->where('LOWER(m.email) = LOWER(:email)')
+            ->setParameter('email', $email)
+            ->getQuery()
+            ->getResult();
+
+        $entities = [];
+        foreach (is_array($result) ? $result : [] as $item) {
+            if ($item instanceof MemberEntity) {
+                $entities[] = $item;
+            }
+        }
+
+        return array_map($this->mapper->toModel(...), $entities);
+    }
+
     public function findByPrimaryMemberNumber(string $primaryMemberNumber): array
     {
         $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy(['primaryMemberNumber' => $primaryMemberNumber]);

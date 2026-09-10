@@ -29,4 +29,6 @@ enum Permission: string
     case ContributionRatesEdit = 'ROLE_MODULE_CONTRIBUTION_RATES_EDITOR';
     case UserManagementView = 'ROLE_MODULE_USER_MANAGEMENT_VIEWER';
     case UserManagementEdit = 'ROLE_MODULE_USER_MANAGEMENT_EDITOR';
+    case MemberMessagesView = 'ROLE_MODULE_MEMBER_MESSAGES_VIEWER';
+    case MemberMessagesEdit = 'ROLE_MODULE_MEMBER_MESSAGES_EDITOR';
 }

@@ -27,11 +27,30 @@ readonly class EventHelpRequestResponse
         public array $selectedActivities,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
+        public bool $isMember,
+        public ?string $email,
+        public ?\DateTimeImmutable $birthDate,
+        public ?string $memberId,
+        /**
+         * Aktuelle Stammdaten des verknüpften Mitglieds (siehe `ListEventHelpRequestsQuery`), nicht
+         * auf der Anmeldung selbst gespeichert — damit sie z. B. nach einer Umnummerierung/Umbenennung
+         * stets aktuell sind. `memberFirstName`/`memberLastName` dienen der Verwaltung als Vorlage,
+         * um einen Tippfehler in `firstName`/`lastName` der Anmeldung zu korrigieren (siehe
+         * „Namen aus Mitglied übernehmen" in `assets/app.js`).
+         */
+        public ?string $memberNumber = null,
+        public ?string $memberFirstName = null,
+        public ?string $memberLastName = null,
     ) {
     }
 
-    public static function fromRequest(EventHelpRequest $request, ?VolunteerEvent $currentEvent = null): self
-    {
+    public static function fromRequest(
+        EventHelpRequest $request,
+        ?VolunteerEvent $currentEvent = null,
+        ?string $memberNumber = null,
+        ?string $memberFirstName = null,
+        ?string $memberLastName = null,
+    ): self {
         return new self(
             id: $request->id,
             eventIdentifier: $request->eventIdentifier,
@@ -47,6 +66,13 @@ readonly class EventHelpRequestResponse
             selectedActivities: $request->selectedActivities,
             submittedAt: $request->submittedAt,
             updatedAt: $request->updatedAt,
+            isMember: $request->isMember,
+            email: $request->email,
+            birthDate: $request->birthDate,
+            memberId: $request->memberId,
+            memberNumber: $memberNumber,
+            memberFirstName: $memberFirstName,
+            memberLastName: $memberLastName,
         );
     }
 }

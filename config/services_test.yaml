@@ -9,3 +9,15 @@ services:
     App\Tests\Support\FakeEmailDeliverabilityChecker:
         autowire: true
     App\Logic\Common\EmailDeliverabilityCheckerInterface: '@App\Tests\Support\FakeEmailDeliverabilityChecker'
+
+    # Ersetzt den echten, zufälligen Token-Generator: Funktionstests können den erzeugten
+    # Zugangs-Token so vorhersagen (siehe FixedSecureTokenGenerator).
+    App\Tests\Support\FixedSecureTokenGenerator:
+        autowire: true
+    App\Logic\Common\SecureTokenGeneratorInterface: '@App\Tests\Support\FixedSecureTokenGenerator'
+
+    # Ersetzt den echten, zufälligen Passwort-Generator (zweiter Faktor neben dem Token, siehe
+    # MemberAccessToken): Funktionstests können das erzeugte Passwort so vorhersagen.
+    App\Tests\Support\FixedAccessPasswordGenerator:
+        autowire: true
+    App\Logic\Common\AccessPasswordGeneratorInterface: '@App\Tests\Support\FixedAccessPasswordGenerator'

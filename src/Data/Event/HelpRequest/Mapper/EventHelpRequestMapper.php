@@ -2,6 +2,7 @@
 
 namespace App\Data\Event\HelpRequest\Mapper;
 
+use App\Data\Event\HelpRequest\Entity\EventHelpRequestActivityEntity;
 use App\Data\Event\HelpRequest\Entity\EventHelpRequestEntity;
 use App\Data\Event\HelpRequest\Entity\EventHelpIntervalEntity;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
@@ -34,13 +35,17 @@ readonly class EventHelpRequestMapper
                 $entity->getParticipationIntervals(),
             ),
             selectedActivities: array_map(
-                static fn (\App\Data\Event\HelpRequest\Entity\EventHelpRequestActivityEntity $activity): SelectedEventActivity => new SelectedEventActivity(
+                static fn (EventHelpRequestActivityEntity $activity): SelectedEventActivity => new SelectedEventActivity(
                     $activity->getId(), $activity->getActivityId(), $activity->getActivityName(),
                 ),
                 $entity->getSelectedActivities(),
             ),
             submittedAt: $entity->getSubmittedAt(),
             updatedAt: $entity->getUpdatedAt(),
+            isMember: $entity->isMember(),
+            email: $entity->getEmail(),
+            birthDate: $entity->getBirthDate(),
+            memberId: $entity->getMemberId(),
         );
     }
 
@@ -61,6 +66,10 @@ readonly class EventHelpRequestMapper
             legacyParticipationToTime: null,
             submittedAt: $request->submittedAt,
             updatedAt: $request->updatedAt,
+            isMember: $request->isMember,
+            email: $request->email,
+            birthDate: $request->birthDate,
+            memberId: $request->memberId,
         );
         $entity->replaceParticipationIntervals($this->intervalEntities($request, $entity));
         $entity->replaceSelectedActivities($this->activityEntities($request, $entity));
@@ -75,16 +84,43 @@ readonly class EventHelpRequestMapper
             $request->participationMinutes,
             $request->updatedAt,
         );
-        $entity->replaceParticipationIntervals($this->intervalEntities($request, $entity));
+        // Unverändert bleibende Hilfezeiträume/Aktivitäten (per ID bzw. activityId erkannt) behalten
+        // dabei bewusst ihre bestehende Entity statt über ein `clear()` samt Neuanlage aller Einträge
+        // zu laufen: Ansonsten sind beim Flush kurzzeitig sowohl die alte (noch nicht gelöschte)
+        // als auch eine neue Zeile mit denselben fachlichen Daten vorhanden — bei Aktivitäten verletzt
+        // das den Unique-Constraint auf (request_id, activity_id), bei Hilfezeiträumen kollidiert die
+        // neue Entity in Doctrines Identity-Map mit der alten (dieselbe wiederverwendete ID). Neue
+        // Zeiträume/Aktivitäten (z. B. gerade erfasste Teilnahme oder aus `EventHelpRequestDuplicateMerger`
+        // zusammengeführte) bekommen ohnehin stets frische IDs (siehe `recordParticipation()`,
+        // `EventHelpRequest::mergedWith()`) und werden hier entsprechend neu angelegt.
+        $entity->replaceParticipationIntervals($this->syncedIntervalEntities($request, $entity));
+        $entity->replaceSelectedActivities($this->syncedActivityEntities($request, $entity));
+        $entity->changeMember($request->memberId, $request->updatedAt);
+        $entity->changeIdentity($request->firstName, $request->lastName, $request->updatedAt);
     }
 
-    /** @return list<\App\Data\Event\HelpRequest\Entity\EventHelpRequestActivityEntity> */
+    /** @return list<EventHelpRequestActivityEntity> */
     private function activityEntities(EventHelpRequest $request, EventHelpRequestEntity $entity): array
     {
         return array_map(
-            static fn (SelectedEventActivity $activity): \App\Data\Event\HelpRequest\Entity\EventHelpRequestActivityEntity => new \App\Data\Event\HelpRequest\Entity\EventHelpRequestActivityEntity(
+            static fn (SelectedEventActivity $activity): EventHelpRequestActivityEntity => new EventHelpRequestActivityEntity(
                 $activity->id, $entity, $activity->activityId, $activity->activityName,
             ),
+            $request->selectedActivities,
+        );
+    }
+
+    /** @return list<EventHelpRequestActivityEntity> */
+    private function syncedActivityEntities(EventHelpRequest $request, EventHelpRequestEntity $entity): array
+    {
+        $existingByActivityId = [];
+        foreach ($entity->getSelectedActivities() as $activityEntity) {
+            $existingByActivityId[$activityEntity->getActivityId()] = $activityEntity;
+        }
+
+        return array_map(
+            static fn (SelectedEventActivity $activity): EventHelpRequestActivityEntity => $existingByActivityId[$activity->activityId]
+                ?? new EventHelpRequestActivityEntity($activity->id, $entity, $activity->activityId, $activity->activityName),
             $request->selectedActivities,
         );
     }
@@ -100,6 +136,27 @@ readonly class EventHelpRequestMapper
                 fromTime: $interval->fromTime,
                 toTime: $interval->toTime,
             ),
+            $request->participationIntervals,
+        );
+    }
+
+    /** @return list<EventHelpIntervalEntity> */
+    private function syncedIntervalEntities(EventHelpRequest $request, EventHelpRequestEntity $entity): array
+    {
+        $existingById = [];
+        foreach ($entity->getParticipationIntervals() as $intervalEntity) {
+            $existingById[$intervalEntity->getId()] = $intervalEntity;
+        }
+
+        return array_map(
+            static fn (ParticipationInterval $interval): EventHelpIntervalEntity => $existingById[$interval->id]
+                ?? new EventHelpIntervalEntity(
+                    id: $interval->id,
+                    request: $entity,
+                    position: $interval->position,
+                    fromTime: $interval->fromTime,
+                    toTime: $interval->toTime,
+                ),
             $request->participationIntervals,
         );
     }

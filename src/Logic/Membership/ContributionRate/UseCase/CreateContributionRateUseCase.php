@@ -27,6 +27,7 @@ readonly class CreateContributionRateUseCase
             personGroup: $request->personGroup,
             minAge: $request->minAge,
             maxAge: $request->maxAge,
+            pending: $request->pending,
         );
 
         return ContributionRateResponse::fromRate($this->manager->save($rate));

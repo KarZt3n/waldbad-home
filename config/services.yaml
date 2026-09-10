@@ -21,6 +21,9 @@ services:
             $membershipApplicationLimiter: '@limiter.membership_application'
             $eventHelpFormLimiter: '@limiter.event_help_form'
             $pinVerificationLimiter: '@limiter.pin_verification'
+            $memberAccessRequestLimiter: '@limiter.member_access_request'
+            $memberAccessSessionLimiter: '@limiter.member_access_session'
+            $memberMessageLimiter: '@limiter.member_message'
             $mediaUploadDirectory: '%media_upload_directory%'
             $logoPath: '%email_logo_path%'
 

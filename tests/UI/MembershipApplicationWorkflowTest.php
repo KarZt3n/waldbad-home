@@ -42,6 +42,13 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
             personGroup: 'individual',
             minAge: 21,
             maxAge: null,
+            pendingLabel: null,
+            pendingAmountCents: null,
+            pendingPeriod: null,
+            pendingPersonGroup: null,
+            pendingMinAge: null,
+            pendingMaxAge: null,
+            pendingValidFrom: null,
         ));
         $entityManager->persist(new MemberNumberSequenceEntity(id: 1, nextValue: 1));
         $entityManager->flush();

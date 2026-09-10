@@ -53,6 +53,13 @@ readonly class EventHelpRequestResponseFactory
             ),
             'submittedAt' => $request->submittedAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $request->updatedAt->format(\DateTimeInterface::ATOM),
+            'isMember' => $request->isMember,
+            'email' => $request->email,
+            'birthDate' => $request->birthDate?->format('Y-m-d'),
+            'memberId' => $request->memberId,
+            'memberNumber' => $request->memberNumber,
+            'memberFirstName' => $request->memberFirstName,
+            'memberLastName' => $request->memberLastName,
         ];
     }
 }

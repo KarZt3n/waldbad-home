@@ -180,6 +180,44 @@ a { color: var(--forest-700); }
 .main-nav-item:focus-within > .submenu,
 .main-nav-item.submenu-open > .submenu { display: grid; gap: .2rem; }
 
+/* „Meine Mitgliedschaft"-Icon ganz rechts in der Kopfzeile (siehe `buildMemberAccessNav`) mit
+   Pulldown, optisch an .submenu angelehnt. */
+.member-access-nav { position: relative; flex: 0 0 auto; }
+.member-access-toggle {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .85rem;
+    border: 1px solid rgb(255 255 255 / 22%);
+    border-radius: 999px;
+    color: var(--white);
+    background: transparent;
+    font-size: .85rem;
+    cursor: pointer;
+}
+.member-access-toggle:hover, .member-access-nav.open .member-access-toggle {
+    color: var(--forest-950);
+    background: var(--lime-400);
+    border-color: var(--lime-400);
+}
+.member-access-icon { display: flex; }
+.member-access-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + .5rem);
+    right: 0;
+    display: none;
+    min-width: 13rem;
+    padding: .45rem;
+    border: 1px solid rgb(255 255 255 / 14%);
+    border-radius: .75rem;
+    background: var(--forest-950);
+    box-shadow: var(--shadow);
+}
+.member-access-menu a { display: block; padding: .55rem .75rem; border-radius: .45rem; color: #e9f3ed; text-decoration: none; font-size: .9rem; white-space: nowrap; }
+.member-access-menu a:hover { color: var(--forest-950); background: var(--lime-400); }
+.member-access-nav.open .member-access-menu { display: grid; }
+
 .page-shell { min-height: calc(100vh - 12rem); }
 
 .page-hero {
@@ -694,6 +732,32 @@ a { color: var(--forest-700); }
 }
 
 .public-form h2 { margin: 0; }
+
+/* „Meine Mitgliedschaft" (siehe `renderMemberSelfServiceData`): reine Lese-Ansicht der eigenen
+   Mitgliedsdaten je Person, gefolgt vom Formular, um eine Nachricht an den Verein zu senden. */
+.member-self-service { display: grid; gap: 1.5rem; }
+.member-self-service-total h3 { margin: 0 0 .3rem; color: var(--forest-900); }
+.member-self-service-card { overflow: hidden; border: 1px solid var(--line); border-radius: .8rem; background: var(--white); }
+.member-self-service-card > summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; cursor: pointer; list-style: none; }
+.member-self-service-card > summary::-webkit-details-marker { display: none; }
+.member-self-service-card > summary:hover { background: var(--forest-100); }
+.member-self-service-card[open] > summary { border-bottom: 1px solid var(--line); background: var(--forest-100); }
+.member-self-service-summary-identity { display: grid; gap: .15rem; min-width: 0; }
+.member-self-service-summary-number { color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .02em; }
+.member-self-service-summary-name { overflow: hidden; color: var(--forest-900); font-size: 1.05rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.member-self-service-summary-total { flex-shrink: 0; color: var(--forest-900); font-weight: 800; white-space: nowrap; }
+.member-self-service-card-body { display: grid; gap: .4rem; padding: 1rem 1.25rem; }
+.member-self-service-card-body h4 { margin: .9rem 0 .1rem; color: var(--forest-700); font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
+.member-self-service-card-body h4:first-child { margin-top: 0; }
+.member-data-row { display: grid; grid-template-columns: 1fr 1fr; align-items: baseline; gap: .3rem 1rem; padding: .4rem 0; border-bottom: 1px solid var(--line); }
+.member-data-row:last-of-type { border-bottom: 0; }
+.member-data-label { color: var(--muted); }
+.member-data-value { font-weight: 600; text-align: left; }
+@media (max-width: 640px) {
+    .member-self-service-summary-name { overflow-wrap: anywhere; white-space: normal; }
+    .member-data-row { grid-template-columns: 1fr; gap: .1rem; }
+}
+.member-access-error { display: grid; justify-items: start; gap: 1rem; }
 .interactive-section, .guestbook-list { display: grid; gap: 1rem; }
 .guestbook-section > h2 { margin: 2rem 0 0; }
 .guestbook-entry { padding: 1.25rem; border-left: .3rem solid var(--water-400); background: #f7faf8; }
@@ -781,6 +845,7 @@ a { color: var(--forest-700); }
 .page-list, .management-list, .admin-menu { display: grid; gap: .45rem; margin-top: 1rem; }
 
 .admin-menu-item {
+    display: block;
     padding: .75rem .85rem;
     border: 0;
     border-radius: .55rem;
@@ -789,6 +854,7 @@ a { color: var(--forest-700); }
     cursor: pointer;
     font-weight: 750;
     text-align: left;
+    text-decoration: none;
 }
 
 .admin-menu-item:hover, .admin-menu-item.active { background: var(--forest-100); }
@@ -1129,6 +1195,15 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-participant-identity { display: grid; min-width: 0; gap: .2rem; }
 .event-helper-participant-identity strong { overflow-wrap: anywhere; font-size: 1.05rem; }
 .event-helper-participant-identity small { color: var(--muted); font-size: .8rem; }
+.event-helper-participant-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.member-link-status { margin: 0; font-size: .9rem; }
+.member-link-status-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: -.5rem; }
+.member-link-results { display: grid; gap: .4rem; max-height: 40vh; overflow-y: auto; }
+.member-link-candidate { flex-direction: column; align-items: flex-start; justify-content: center; gap: .15rem; min-height: auto; padding: .6rem 1rem; text-align: left; }
+.member-link-candidate small { color: var(--muted); font-size: .8rem; font-weight: 600; }
+.member-link-candidate.is-selected { border-color: var(--forest-700); color: var(--white); background: var(--forest-700); }
+.member-link-candidate.is-selected small { color: var(--white); opacity: .8; }
+.button-compact { min-height: auto; padding: .5rem 1rem; font-size: .9rem; font-weight: 700; }
 .event-helper-participant-side { display: flex; align-items: center; justify-content: flex-end; gap: .7rem; }
 .participant-status { display: inline-flex; padding: .3rem .65rem; border-radius: 999px; color: var(--forest-900); background: #fff2ba; font-size: .78rem; font-weight: 800; white-space: nowrap; }
 .participant-status.status-participated { background: #dcefe5; }
@@ -1138,12 +1213,27 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .participant-icon-button:hover { color: var(--white); background: var(--forest-700); }
 .participant-icon-button-absent { border-color: #9ba59f; color: var(--muted); }
 .participant-icon-button-absent:hover { border-color: var(--danger); background: var(--danger); }
+/* Bubble mit Mitgliedsnummer, die zugleich als Verknüpfen-/Bearbeiten-Button dient (siehe
+   `assets/app.js`, „memberBubble"): unverknüpft gelb (Hinweis: fehlt noch) mit Icon+Label,
+   verknüpft grün gefüllt (Erfolg) mit der Mitgliedsnummer. */
+.member-link-badge { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--sun-400); color: var(--forest-950); background: var(--white); font: inherit; font-size: .75rem; }
+button.member-link-badge { cursor: pointer; }
+button.member-link-badge:hover { background: var(--sun-400); }
+.member-link-badge.is-linked { border-color: var(--forest-700); color: var(--white); background: var(--forest-700); }
+button.member-link-badge.is-linked:hover { border-color: var(--forest-800); background: var(--forest-800); }
+.member-link-badge-icon { display: flex; }
 .event-helper-participant-details { display: grid; gap: .75rem; padding-top: .8rem; border-top: 1px solid var(--line); }
 .event-helper-participant-details[hidden] { display: none; }
 .event-helper-participant-message { padding: .65rem .8rem; border-left: .25rem solid var(--water-400); color: #33463b; background: #f3f9f9; font-size: .9rem; }
 .event-helper-participant-meta { display: grid; gap: .55rem; }
 .event-helper-participant-meta strong { color: var(--muted); font-size: .75rem; letter-spacing: .04em; text-transform: uppercase; }
 .participation-times { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+/* Mehrfache Anmeldungen derselben Person zur selben Veranstaltung, zusammengeführt unter einer
+   gemeinsamen Kopfzeile (siehe `assets/app.js`, `renderMergedParticipant`) — jede ursprüngliche
+   Anmeldung bleibt als eigene, eingerückte Zeile mit eigenen Teilnahme-Aktionen erhalten. */
+.event-helper-merged-list { display: grid; gap: .6rem; padding-left: 1rem; border-left: .2rem solid var(--line); }
+.event-helper-merged-row-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.event-helper-merged-row-summary { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .participation-dialog {
     width: min(30rem, calc(100vw - 2rem));
     padding: 0;
@@ -1396,6 +1486,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     .submenu { position: static; width: 100%; margin-left: .75rem; border: 0; box-shadow: none; }
     .submenu .submenu { position: static; margin-left: .75rem; }
     .submenu::before { display: none; }
+    .member-access-label { display: none; }
+    .member-access-toggle { padding: .5rem; }
     .cta-row, .site-footer, .editor-heading { align-items: stretch; flex-direction: column; }
     .admin-layout { grid-template-columns: 1fr; }
     .admin-header { flex-wrap: wrap; }
@@ -1475,6 +1567,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .activity-chip { background: #e1f1e8; border-radius: 999px; padding: .3rem .65rem; font-size: .9rem; }
 .section-heading > .button { margin-top: 1rem; }
 .activity-list { display: grid; width: 100%; max-width: 68rem; margin: 0 auto; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; background: var(--white); box-shadow: 0 .45rem 1.4rem rgb(11 46 32 / 8%); }
+.contribution-rate-settings-card { margin-top: 1.5rem; }
 .activity-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-flow: column; grid-auto-columns: auto; gap: 1rem; align-items: center; width: 100%; padding: 1.1rem 1.25rem; border: 0; border-bottom: 1px solid var(--line); color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
 .activity-list-row:last-child { border-bottom: 0; }
 .activity-list-row:hover { background: #f2f8f4; }
@@ -1577,7 +1670,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 /* Mitgliederverwaltung: Tab-Leiste innerhalb eines Moduls (Dashboard/Mitglieder/Beitragssätze/
    Mitgliedsanträge) — das erste Sub-Navigation-Muster im Redaktionsbereich. */
 .sub-tab-strip { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; max-width: 68rem; margin: 0 auto 1.5rem; border-bottom: 1px solid var(--line); }
-.sub-tab { padding: .75rem 1.1rem; border: 0; border-bottom: .2rem solid transparent; color: var(--muted); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.sub-tab { padding: .75rem 1.1rem; border: 0; border-bottom: .2rem solid transparent; color: var(--muted); background: transparent; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
 .sub-tab:hover { color: var(--forest-900); }
 .sub-tab.active { color: var(--forest-900); border-bottom-color: var(--forest-700); }
 .sub-tab-panel { display: contents; }

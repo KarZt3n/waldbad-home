@@ -34,4 +34,14 @@ readonly class DoctrineEventHelpRequestProcessor implements EventHelpRequestProc
 
         return $this->mapper->toModel($entity);
     }
+
+    public function delete(string $id): void
+    {
+        $entity = $this->entityManager->find(EventHelpRequestEntity::class, $id);
+        if ($entity === null) {
+            throw new EventHelpRequestNotFoundException($id);
+        }
+        $this->entityManager->remove($entity);
+        $this->entityManager->flush();
+    }
 }

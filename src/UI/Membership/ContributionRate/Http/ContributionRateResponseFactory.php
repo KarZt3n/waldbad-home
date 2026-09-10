@@ -3,6 +3,7 @@
 namespace App\UI\Membership\ContributionRate\Http;
 
 use App\Logic\Membership\ContributionRate\Dto\ContributionRateResponse;
+use App\Logic\Membership\ContributionRate\Model\PendingContributionRateChange;
 
 readonly class ContributionRateResponseFactory
 {
@@ -33,6 +34,24 @@ readonly class ContributionRateResponseFactory
             'minAge' => $rate->minAge,
             'maxAge' => $rate->maxAge,
             'annualAmountCents' => $rate->annualAmountCents,
+            'status' => $rate->pending !== null ? 'pending' : 'active',
+            'pending' => $rate->pending !== null ? $this->pending($rate->pending) : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pending(PendingContributionRateChange $pending): array
+    {
+        return [
+            'label' => $pending->label,
+            'amountCents' => $pending->amountCents,
+            'period' => $pending->period->value,
+            'personGroup' => $pending->personGroup?->value,
+            'minAge' => $pending->minAge,
+            'maxAge' => $pending->maxAge,
+            'validFrom' => $pending->validFrom->format('Y-m-d'),
         ];
     }
 }

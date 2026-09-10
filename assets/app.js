@@ -41,6 +41,7 @@ const CMS_MODULES = [
     ['members', 'Mitglieder'],
     ['contribution_rates', 'Beitragssätze'],
     ['user_management', 'Benutzerverwaltung'],
+    ['member_messages', 'Mitgliedernachrichten'],
 ];
 
 const SALUTATION_LABELS = {mr: 'Herr', ms: 'Frau', diverse: 'Divers'};
@@ -779,6 +780,7 @@ const openEventHelpDialog = async (block) => {
     const message = formMessage();
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Helferanmeldung schließen'}});
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
+    const isMember = element('input', {attributes: {name: 'isMember', type: 'checkbox', checked: 'checked'}});
     const activityChoices = (availability.items || []).map((activity) => {
         const isFull = activity.registeredHelpers >= activity.requiredHelpers;
         const input = element('input', {attributes: {
@@ -823,6 +825,11 @@ const openEventHelpDialog = async (block) => {
             element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
         ]}),
         element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
+        element('label', {className: 'check-field', children: [isMember, element('span', {text: 'Ich bin Mitglied'})]}),
+        element('div', {className: 'form-grid', children: [
+            field('E-Mail (optional)', 'email', '', 'email'),
+            field('Geburtsdatum (optional)', 'birthDate', '', 'date'),
+        ]}),
         ...(activityChoices.length ? [element('fieldset', {className: 'event-activity-choices', children: [
             element('legend', {text: 'Wobei möchtest du helfen?'}),
             ...activityChoices,
@@ -847,6 +854,9 @@ const openEventHelpDialog = async (block) => {
                 message: data.get('message'),
                 activityIds: data.getAll('activityIds'),
                 privacyAccepted: data.get('privacyAccepted') === 'on',
+                isMember: data.get('isMember') === 'on',
+                email: data.get('email'),
+                birthDate: data.get('birthDate'),
             })});
             toast(response.message);
             dialog.close();
@@ -1229,117 +1239,184 @@ const updateDocumentMetadata = (page) => {
     description.setAttribute('content', page.seoDescription || 'Natürlich baden ohne Chlor im Waldbad Borkheide.');
 };
 
+// Fester Slug der eigenständigen Route `/meine-mitgliedschaft` (siehe `FrontendController`) — keine
+// CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `renderPublic`,
+// `renderMemberSelfServicePage`).
+const MEMBER_ACCESS_SLUG = 'meine-mitgliedschaft';
+
+/**
+ * Baut die Kopfzeile inkl. Hauptnavigation, verwendet von `renderPublic` sowohl für normale
+ * CMS-Seiten als auch für die eigenständige „Meine Mitgliedschaft"-Ansicht — `extraChildren` hängt
+ * zusätzliche Elemente rechts neben die Navigation (siehe `buildMemberAccessNav`).
+ */
+const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
+    const renderNavigationItem = (item, nested = false) => {
+        const active = treeContainsSlug(item, activeSlug);
+        const link = element('a', {
+            className: item.slug === activeSlug ? 'active' : '',
+            text: item.label,
+            attributes: {
+                href: pageHref(item.slug),
+                ...(item.slug === activeSlug ? {'aria-current': 'page'} : {}),
+            },
+        });
+        if (!item.children.length) return nested ? link : element('div', {className: 'main-nav-item', children: [link]});
+
+        const toggle = element('button', {
+            className: 'submenu-toggle',
+            attributes: {type: 'button', 'aria-label': `Unterseiten von ${item.label} anzeigen`, 'aria-expanded': 'false'},
+        });
+        const container = element('div', {
+            className: `main-nav-item has-children${active ? ' active-branch' : ''}`,
+            children: [
+                link,
+                toggle,
+                element('div', {className: 'submenu', children: item.children.map((child) => renderNavigationItem(child, true))}),
+            ],
+        });
+        toggle.addEventListener('click', () => {
+            const open = container.classList.toggle('submenu-open');
+            toggle.setAttribute('aria-expanded', String(open));
+        });
+
+        return container;
+    };
+    const links = navigationTree.map((item) => renderNavigationItem(item));
+
+    const mainNav = element('nav', {
+        className: 'main-nav',
+        attributes: {id: 'main-nav', 'aria-label': 'Hauptnavigation'},
+        children: links,
+    });
+    const navToggle = element('button', {
+        className: 'nav-toggle',
+        attributes: {type: 'button', 'aria-controls': 'main-nav', 'aria-expanded': 'false', 'aria-label': 'Menü öffnen'},
+        children: [
+            element('span', {className: 'nav-toggle-bar'}),
+            element('span', {className: 'nav-toggle-bar'}),
+            element('span', {className: 'nav-toggle-bar'}),
+        ],
+    });
+    const header = element('header', {
+        className: 'site-header',
+        children: [
+            element('a', {
+                className: 'brand',
+                attributes: {href: '/', 'aria-label': 'Waldbad Borkheide – Startseite'},
+                children: [
+                    element('img', {
+                        className: 'brand-logo',
+                        attributes: {
+                            src: '/downloads/waldbad-borkheide-logo.svg',
+                            alt: '',
+                            width: '96',
+                            height: '72',
+                            fetchpriority: 'high',
+                        },
+                    }),
+                    element('span', {children: [
+                        element('strong', {text: 'Waldbad Borkheide'}),
+                        element('small', {text: '… natürlich baden!'}),
+                    ]}),
+                ],
+            }),
+            navToggle,
+            mainNav,
+            ...extraChildren,
+        ],
+    });
+    const closeNav = () => {
+        header.classList.remove('nav-open');
+        navToggle.setAttribute('aria-expanded', 'false');
+        navToggle.setAttribute('aria-label', 'Menü öffnen');
+    };
+    navToggle.addEventListener('click', () => {
+        const open = header.classList.toggle('nav-open');
+        navToggle.setAttribute('aria-expanded', String(open));
+        navToggle.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
+    });
+    mainNav.addEventListener('click', (event) => {
+        if (event.target.closest('a')) closeNav();
+    });
+    document.addEventListener('click', (event) => {
+        if (header.classList.contains('nav-open') && !header.contains(event.target)) closeNav();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && header.classList.contains('nav-open')) closeNav();
+    });
+
+    return header;
+};
+
+const buildSiteFooter = () => element('footer', {
+    className: 'site-footer',
+    children: [
+        element('p', {text: '© ' + new Date().getFullYear() + ' Naturbad Borkheide e.V.'}),
+        element('nav', {attributes: {'aria-label': 'Servicenavigation'}, children: [
+            element('a', {text: 'Impressum', attributes: {href: '/seite/impressum'}}),
+            element('a', {text: 'Kontakt', attributes: {href: '/seite/kontakt'}}),
+            element('a', {text: 'Gästebuch', attributes: {href: '/seite/gaestebuch'}}),
+            element('a', {text: 'Unterstützer', attributes: {href: '/seite/unterstuetzer'}}),
+            element('a', {text: 'Redaktion', attributes: {href: '/admin'}}),
+        ]}),
+    ],
+});
+
+/**
+ * Icon ganz rechts in der Kopfzeile (siehe `buildSiteHeader`) — bei Klick öffnet sich ein Pulldown
+ * mit dem Link zu „Meine Mitgliedschaft" (`/meine-mitgliedschaft`, siehe `MEMBER_ACCESS_SLUG`,
+ * `renderMemberSelfServicePage`).
+ */
+const buildMemberAccessNav = () => {
+    const icon = element('span', {className: 'member-access-icon', attributes: {'aria-hidden': 'true'}});
+    icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"></path></svg>';
+    const toggle = element('button', {
+        className: 'member-access-toggle',
+        attributes: {type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false'},
+    });
+    toggle.append(icon);
+    const menu = element('div', {className: 'member-access-menu', children: [
+        element('a', {text: 'Meine Mitgliedschaft', attributes: {href: '/' + MEMBER_ACCESS_SLUG}}),
+    ]});
+    const container = element('div', {className: 'member-access-nav', children: [toggle, menu]});
+    const close = () => {
+        container.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+    };
+    toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const open = container.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') close();
+    });
+
+    return container;
+};
+
 const renderPublic = async () => {
     try {
         const slug = app.dataset.pageSlug;
-        const [navigation, page] = await Promise.all([
-            request('/api/public/v1/navigation'),
-            request('/api/public/v1/pages/' + encodePageSlug(slug)),
-        ]);
-        updateDocumentMetadata(page);
-
-        const renderNavigationItem = (item, nested = false) => {
-            const active = treeContainsSlug(item, slug);
-            const link = element('a', {
-                className: item.slug === slug ? 'active' : '',
-                text: item.label,
-                attributes: {
-                    href: pageHref(item.slug),
-                    ...(item.slug === slug ? {'aria-current': 'page'} : {}),
-                },
-            });
-            if (!item.children.length) return nested ? link : element('div', {className: 'main-nav-item', children: [link]});
-
-            const toggle = element('button', {
-                className: 'submenu-toggle',
-                attributes: {type: 'button', 'aria-label': `Unterseiten von ${item.label} anzeigen`, 'aria-expanded': 'false'},
-            });
-            const container = element('div', {
-                className: `main-nav-item has-children${active ? ' active-branch' : ''}`,
-                children: [
-                    link,
-                    toggle,
-                    element('div', {className: 'submenu', children: item.children.map((child) => renderNavigationItem(child, true))}),
-                ],
-            });
-            toggle.addEventListener('click', () => {
-                const open = container.classList.toggle('submenu-open');
-                toggle.setAttribute('aria-expanded', String(open));
-            });
-
-            return container;
-        };
+        const navigation = await request('/api/public/v1/navigation');
         const navigationTree = buildPageTree(navigation.items, false);
-        const links = navigationTree.map((item) => renderNavigationItem(item));
+
+        if (slug === MEMBER_ACCESS_SLUG) {
+            await renderMemberSelfServicePage(navigationTree);
+            return;
+        }
+
+        const page = await request('/api/public/v1/pages/' + encodePageSlug(slug));
+        updateDocumentMetadata(page);
 
         const publicContext = {visited: new Set([page.id]), pagesById: null, showEmbedErrors: false, isPreview: false};
         const article = renderContentCard(page, publicContext);
         if (slug === 'kontakt') article.append(renderContactForm());
         if (slug === 'gaestebuch') article.append(await renderGuestbook());
 
-        const mainNav = element('nav', {
-            className: 'main-nav',
-            attributes: {id: 'main-nav', 'aria-label': 'Hauptnavigation'},
-            children: links,
-        });
-        const navToggle = element('button', {
-            className: 'nav-toggle',
-            attributes: {type: 'button', 'aria-controls': 'main-nav', 'aria-expanded': 'false', 'aria-label': 'Menü öffnen'},
-            children: [
-                element('span', {className: 'nav-toggle-bar'}),
-                element('span', {className: 'nav-toggle-bar'}),
-                element('span', {className: 'nav-toggle-bar'}),
-            ],
-        });
-        const header = element('header', {
-            className: 'site-header',
-            children: [
-                element('a', {
-                    className: 'brand',
-                    attributes: {href: '/', 'aria-label': 'Waldbad Borkheide – Startseite'},
-                    children: [
-                        element('img', {
-                            className: 'brand-logo',
-                            attributes: {
-                                src: '/downloads/waldbad-borkheide-logo.svg',
-                                alt: '',
-                                width: '96',
-                                height: '72',
-                                fetchpriority: 'high',
-                            },
-                        }),
-                        element('span', {children: [
-                            element('strong', {text: 'Waldbad Borkheide'}),
-                            element('small', {text: '… natürlich baden!'}),
-                        ]}),
-                    ],
-                }),
-                navToggle,
-                mainNav,
-            ],
-        });
-        const closeNav = () => {
-            header.classList.remove('nav-open');
-            navToggle.setAttribute('aria-expanded', 'false');
-            navToggle.setAttribute('aria-label', 'Menü öffnen');
-        };
-        navToggle.addEventListener('click', () => {
-            const open = header.classList.toggle('nav-open');
-            navToggle.setAttribute('aria-expanded', String(open));
-            navToggle.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
-        });
-        mainNav.addEventListener('click', (event) => {
-            if (event.target.closest('a')) closeNav();
-        });
-        document.addEventListener('click', (event) => {
-            if (header.classList.contains('nav-open') && !header.contains(event.target)) closeNav();
-        });
-        document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && header.classList.contains('nav-open')) closeNav();
-        });
-
         app.replaceChildren(
-            header,
+            buildSiteHeader(navigationTree, slug, [buildMemberAccessNav()]),
             element('main', {
                 className: 'page-shell',
                 children: [
@@ -1354,21 +1431,261 @@ const renderPublic = async () => {
                     article,
                 ],
             }),
-            element('footer', {
-                className: 'site-footer',
-                children: [
-                    element('p', {text: '© ' + new Date().getFullYear() + ' Naturbad Borkheide e.V.'}),
-                    element('nav', {attributes: {'aria-label': 'Servicenavigation'}, children: [
-                        element('a', {text: 'Impressum', attributes: {href: '/seite/impressum'}}),
-                        element('a', {text: 'Kontakt', attributes: {href: '/seite/kontakt'}}),
-                        element('a', {text: 'Redaktion', attributes: {href: '/admin'}}),
-                    ]}),
-                ],
-            }),
+            buildSiteFooter(),
         );
     } catch (error) {
         renderError(error.message);
     }
+};
+
+const memberDataRow = (label, value) => element('div', {className: 'member-data-row', children: [
+    element('span', {className: 'member-data-label', text: label}),
+    element('span', {className: 'member-data-value', text: value === null || value === undefined || value === '' ? '–' : value}),
+]});
+
+const formatDateDE = (isoDate) => isoDate ? new Date(isoDate + 'T00:00:00').toLocaleDateString('de-DE') : null;
+
+/**
+ * Beitrag + Arbeitseinsatz-Zuschlag eines einzelnen Mitglieds, aus den von der API gelieferten,
+ * bereits in der DB hinterlegten Werten (keine Neuberechnung) — für die Haushaltssumme (siehe
+ * `renderMemberSelfServiceTotal`) und die Kurzanzeige im Akkordeon-Kopf (siehe
+ * `renderMemberSelfServiceData`).
+ */
+const memberTotalCents = (member) => (member.contributionAmountCents || 0) + (member.workAssignmentSurchargeCents || 0);
+
+/**
+ * Summe aus Beitrag + Arbeitseinsatz-Zuschlag über alle beitragspflichtigen Haushaltsmitglieder,
+ * gruppiert nach Zahlungsintervall (i. d. R. nur eines, aber theoretisch könnten Haushaltsmitglieder
+ * unterschiedliche Intervalle haben). `validFrom` (ISO-Datum oder null, siehe
+ * `MemberAccessSessionResponse::$contributionRatesValidFrom`) verweist auf die zugrunde liegende
+ * Beitragsordnung.
+ */
+const renderMemberSelfServiceTotal = (members, validFrom) => {
+    const liableMembers = members.filter((member) => member.contributionLiable);
+    const totalsByInterval = new Map();
+    liableMembers.forEach((member) => {
+        totalsByInterval.set(member.paymentInterval, (totalsByInterval.get(member.paymentInterval) || 0) + memberTotalCents(member));
+    });
+
+    return element('article', {className: 'management-card member-self-service-total', children: [
+        element('h3', {text: 'Gesamtbeitrag'}),
+        liableMembers.length
+            ? [...totalsByInterval].map(([interval, cents]) => element('div', {className: 'member-payer-total', children: [
+                element('span', {text: 'Gesamtbeitrag'}),
+                element('span', {text: `${formatEuro(cents)} (${PAYMENT_INTERVAL_LABELS[interval] || interval})`}),
+            ]}))
+            : element('p', {className: 'empty-copy', text: 'Kein beitragspflichtiges Mitglied in diesem Haushalt.'}),
+        ...(validFrom ? [element('p', {className: 'field-hint', text: `Beitragsordnung / Beitragssätze – gültig ab ${formatDateDE(validFrom)}`})] : []),
+    ].flat()});
+};
+
+/**
+ * Nur lesende Ansicht der eigenen Mitgliedsdaten (Stammdaten/Kontaktdaten/Vereinsdaten/
+ * Beitragsdaten, siehe `MemberSelfServiceResponse`) für jede über den Token erreichbare Person
+ * (i. d. R. der ganze Haushalt, siehe `RequestMemberAccessUseCase`) als aufklappbares Akkordeon
+ * (nur bei genau einer Person direkt geöffnet) — Kopfzeile links Mitgliedsnummer/Name, rechts die
+ * Gesamtkosten dieses Mitglieds —, sowie ein Formular, um dem Verein eine Nachricht zu schicken
+ * (siehe `SendMemberMessageUseCase`).
+ */
+const renderMemberSelfServiceData = (token, password, session) => {
+    const memberCards = session.members.map((member) => {
+        const card = element('details', {className: 'member-self-service-card', children: [
+            element('summary', {children: [
+                element('span', {className: 'member-self-service-summary-identity', children: [
+                    element('span', {className: 'member-self-service-summary-number', text: member.memberNumber}),
+                    element('span', {className: 'member-self-service-summary-name', text: `${member.firstName} ${member.lastName}`}),
+                ]}),
+                element('span', {className: 'member-self-service-summary-total', text: member.contributionLiable
+                    ? `${formatEuro(memberTotalCents(member))} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`
+                    : 'Beitragsfrei'}),
+            ]}),
+            element('div', {className: 'member-self-service-card-body', children: [
+                element('h4', {text: 'Stammdaten'}),
+                memberDataRow('Mitgliedsnummer', member.memberNumber),
+                memberDataRow('Anrede', SALUTATION_LABELS[member.salutation] || member.salutation),
+                memberDataRow('Geburtsdatum', formatDateDE(member.birthDate)),
+                memberDataRow('Rolle in der Familie', FAMILY_ROLE_LABELS[member.familyRole] || member.familyRole),
+                element('h4', {text: 'Kontaktdaten'}),
+                memberDataRow('Adresse', `${member.street}, ${member.postalCode} ${member.city}`),
+                memberDataRow('E-Mail', member.email),
+                memberDataRow('Telefon', member.phone),
+                element('h4', {text: 'Vereinsdaten'}),
+                memberDataRow('Funktion', MEMBER_FUNCTION_LABELS[member.function] || member.function),
+                memberDataRow('Status', member.active ? 'Aktives Mitglied' : 'Nicht mehr aktiv'),
+                memberDataRow('Mitglied seit', formatDateDE(member.joinedAt)),
+                ...(member.leftAt ? [memberDataRow('Austrittsdatum', formatDateDE(member.leftAt))] : []),
+                element('h4', {text: 'Beitragsdaten'}),
+                memberDataRow('Beitragspflichtig', member.contributionLiable ? 'Ja' : 'Nein (z. B. Vorstand)'),
+                ...(member.contributionLiable ? [
+                    ...(member.contributionCategoryLabel ? [memberDataRow('Beitragssatz', member.contributionCategoryLabel)] : []),
+                    memberDataRow('Beitrag', `${formatEuro(member.contributionAmountCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`),
+                    ...(member.workAssignmentSurchargeCents ? [memberDataRow('Arbeitseinsatz-Zuschlag', `${formatEuro(member.workAssignmentSurchargeCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`)] : []),
+                    memberDataRow('Zahlweise', PAYMENT_METHOD_LABELS[member.paymentMethod] || member.paymentMethod),
+                ] : []),
+            ]}),
+        ]});
+        if (session.members.length === 1) card.open = true;
+
+        return card;
+    });
+
+    const memberSelect = element('select', {attributes: {name: 'memberId', id: 'member-message-member'}});
+    session.members.forEach((member) => memberSelect.append(element('option', {
+        text: `${member.firstName} ${member.lastName} (${member.memberNumber})`,
+        attributes: {value: member.id},
+    })));
+    const memberField = session.members.length > 1
+        ? element('label', {className: 'field', children: [element('span', {text: 'Für welche Person?'}), memberSelect]})
+        : element('input', {attributes: {type: 'hidden', name: 'memberId', value: session.members[0].id}});
+
+    const message = formMessage();
+    const messageForm = element('form', {className: 'public-form', children: [
+        element('h2', {text: 'Nachricht senden'}),
+        element('p', {text: 'Hat sich etwas geändert (z. B. Adresse, Telefonnummer) oder stimmt etwas nicht mehr? Schreib uns kurz.'}),
+        memberField,
+        field('Nachricht', 'message', '', 'textarea'),
+        message,
+        element('button', {className: 'button', text: 'Nachricht senden', attributes: {type: 'submit'}}),
+    ]});
+    messageForm.querySelector('[name="message"]').required = true;
+    messageForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(messageForm);
+        const button = messageForm.querySelector('button');
+        button.disabled = true;
+        try {
+            const result = await request('/api/public/v1/member-access/messages', {method: 'POST', body: JSON.stringify({
+                token, password, memberId: data.get('memberId'), message: data.get('message'),
+            })});
+            messageForm.reset();
+            message.textContent = result.message;
+            message.classList.add('success');
+            toast(result.message);
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    return element('div', {className: 'member-self-service', children: [
+        element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
+        renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom),
+        ...memberCards,
+        messageForm,
+    ]});
+};
+
+/**
+ * Fragt vor dem Anzeigen der Mitgliedsdaten das aus der Mail bekannte Passwort ab (zweiter Faktor
+ * neben dem Token aus der URL, siehe `MemberAccessToken`) — es gibt keine serverseitige Sitzung,
+ * daher wird das Passwort clientseitig gehalten und bei der Nachricht (`renderMemberSelfServiceData`)
+ * erneut mitgeschickt statt nur einmalig geprüft. Passt Token oder Passwort nicht (z. B. auch
+ * abgelaufen), erscheint dieselbe Fehlermeldung samt Link, um einen neuen Zugang anzufordern —
+ * ohne erkennbaren Unterschied, welcher der beiden Faktoren nicht gepasst hat.
+ */
+const renderMemberSelfServicePasswordGate = (token) => {
+    const container = element('div');
+    const message = formMessage();
+    const passwordField = field('Passwort', 'password', '', 'password');
+    const form = element('form', {className: 'public-form', children: [
+        element('h2', {text: 'Meine Mitgliedschaft'}),
+        element('p', {text: 'Gib das Passwort aus der E-Mail ein, um deine Daten zu sehen.'}),
+        passwordField,
+        message,
+        element('button', {className: 'button', text: 'Bestätigen', attributes: {type: 'submit'}}),
+        element('a', {className: 'button', text: 'Neuen Zugang anfordern', attributes: {href: '/' + MEMBER_ACCESS_SLUG}}),
+    ]});
+    passwordField.querySelector('input').required = true;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const password = new FormData(form).get('password');
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+            const session = await request('/api/public/v1/member-access/sessions', {method: 'POST', body: JSON.stringify({token, password})});
+            container.replaceChildren(renderMemberSelfServiceData(token, password, session));
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            button.disabled = false;
+        }
+    });
+
+    container.append(form);
+
+    return container;
+};
+
+/**
+ * Formular, um über die eigene E-Mail-Adresse + das eigene Geburtsdatum einen 30 Minuten gültigen
+ * Zugangslink anzufordern (siehe `RequestMemberAccessUseCase`) — bewusst immer dieselbe
+ * Erfolgsmeldung, unabhängig davon, ob die Kombination zu einem Mitglied gehört. Das Geburtsdatum
+ * ist zusätzlich zur E-Mail-Adresse nötig, da diese meist für den ganzen Haushalt gleich ist.
+ */
+const renderMemberAccessRequestForm = () => {
+    const message = formMessage();
+    const emailField = field('E-Mail-Adresse', 'email', '', 'email');
+    const birthDateField = field('Geburtsdatum', 'birthDate', '', 'date');
+    const form = element('form', {className: 'public-form', children: [
+        element('h2', {text: 'Zugang anfordern'}),
+        element('p', {text: 'Gib die E-Mail-Adresse und das Geburtsdatum ein, die bei deiner Mitgliedschaft hinterlegt sind. Du erhältst per Mail einen Link, der 30 Minuten gültig ist.'}),
+        emailField,
+        birthDateField,
+        message,
+        element('button', {className: 'button', text: 'Zugangslink anfordern', attributes: {type: 'submit'}}),
+    ]});
+    emailField.querySelector('input').required = true;
+    birthDateField.querySelector('input').required = true;
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+            const result = await request('/api/public/v1/member-access/tokens', {method: 'POST', body: JSON.stringify({email: data.get('email'), birthDate: data.get('birthDate')})});
+            form.reset();
+            message.textContent = result.message;
+            message.classList.add('success');
+            toast(result.message);
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    return form;
+};
+
+/**
+ * „Meine Mitgliedschaft" (siehe `MEMBER_ACCESS_SLUG`, `buildMemberAccessNav`) — eigenständige
+ * Ansicht außerhalb des CMS-Seitenbaums: ohne `?token=` das Anfrageformular, mit Token die
+ * Passwortabfrage vor den Mitgliedsdaten (siehe `renderMemberSelfServicePasswordGate`).
+ */
+const renderMemberSelfServicePage = async (navigationTree) => {
+    const token = new URLSearchParams(window.location.search).get('token');
+    const content = token ? renderMemberSelfServicePasswordGate(token) : renderMemberAccessRequestForm();
+
+    app.replaceChildren(
+        buildSiteHeader(navigationTree, MEMBER_ACCESS_SLUG, [buildMemberAccessNav()]),
+        element('main', {
+            className: 'page-shell',
+            children: [
+                element('section', {
+                    className: 'page-hero',
+                    children: [
+                        element('p', {className: 'eyebrow', text: 'Naturbad · Borkheide'}),
+                        element('h1', {text: 'Meine Mitgliedschaft'}),
+                    ],
+                }),
+                element('div', {className: 'content-card', children: [content]}),
+            ],
+        }),
+        buildSiteFooter(),
+    );
 };
 
 const field = (label, name, value = '', type = 'text') => {
@@ -2719,6 +3036,39 @@ const renderAdmin = async () => {
     });
     workspace.addEventListener('click', closeAdminNavigation);
 
+    const adminPath = (...segments) => `/admin/${segments.filter(Boolean).map(encodeURIComponent).join('/')}`;
+    const currentAdminSegments = () => window.location.pathname
+        .replace(/^\/admin\/?/, '')
+        .split('/')
+        .filter(Boolean)
+        .map((segment) => decodeURIComponent(segment));
+    const setAdminPath = (segments, replace = false) => {
+        const path = adminPath(...segments);
+        if (window.location.pathname === path) return;
+        window.history[replace ? 'replaceState' : 'pushState']({}, '', path);
+    };
+    const initialAdminSegments = currentAdminSegments();
+    const membershipTabsBySlug = {
+        dashboard: 'dashboard',
+        mitglieder: 'members',
+        beitragssaetze: 'rates',
+        antraege: 'applications',
+        nachrichten: 'messages',
+    };
+    const membershipSlugsByTab = Object.fromEntries(Object.entries(membershipTabsBySlug).map(([slug, tab]) => [tab, slug]));
+    const eventTabsBySlug = {termine: 'events', helfer: 'helpers', aktivitaeten: 'activities'};
+    const eventSlugsByTab = Object.fromEntries(Object.entries(eventTabsBySlug).map(([slug, tab]) => [tab, slug]));
+    const settingsTabsBySlug = {benutzer: 'users', 'pin-schutz': 'pin', 'e-mail': 'email'};
+    const settingsSlugsByTab = Object.fromEntries(Object.entries(settingsTabsBySlug).map(([slug, tab]) => [tab, slug]));
+    const emailTabsBySlug = {verbindung: 'connection', vorlagen: 'templates', signaturen: 'signatures'};
+    const emailSlugsByTab = Object.fromEntries(Object.entries(emailTabsBySlug).map(([slug, tab]) => [tab, slug]));
+    let activeMembershipTab = initialAdminSegments[0] === 'mitglieder' ? membershipTabsBySlug[initialAdminSegments[1]] ?? null : null;
+    let activeEventTab = initialAdminSegments[0] === 'veranstaltungen' ? eventTabsBySlug[initialAdminSegments[1]] ?? null : null;
+    let activeSettingsTab = initialAdminSegments[0] === 'einstellungen' ? settingsTabsBySlug[initialAdminSegments[1]] ?? null : null;
+    let activeEmailSettingsTab = initialAdminSegments[0] === 'einstellungen' && initialAdminSegments[1] === 'e-mail'
+        ? emailTabsBySlug[initialAdminSegments[2]] ?? null
+        : null;
+
     const showPages = async () => {
         const [pages, activityData] = await Promise.all([
             request('/api/admin/v1/pages'),
@@ -3073,6 +3423,13 @@ const renderAdmin = async () => {
         }));
     };
 
+    const showMemberMessages = async () => {
+        const data = await request('/api/admin/v1/member-messages');
+        workspace.replaceChildren(sectionHeading('Mitgliedernachrichten', 'Über „Meine Mitgliedschaft" gesendete Nachrichten bearbeiten und abschließen'), element('div', {
+            className: 'card-list', children: data.items.length ? data.items.map((item) => memberMessageCard(item, showMemberMessages)) : [emptyState('Keine Nachrichten vorhanden.')],
+        }));
+    };
+
     const showEventHelpers = async () => {
         const data = await request('/api/admin/v1/event-help-requests');
         const saveParticipation = async (requestItem, participated, intervals = []) => {
@@ -3173,6 +3530,118 @@ const renderAdmin = async () => {
             document.body.append(dialog);
             dialog.showModal();
         };
+        // Eigener, schlanker Such-Endpunkt statt der vollständigen Mitgliederliste (siehe
+        // `AdminEventHelpRequestController::memberCandidates`) — läuft ohne Mitgliederverwaltung-Recht.
+        // Der Dialog deckt zwei Fälle in einem ab: erstmalig verknüpfen bzw. eine bestehende (ggf.
+        // falsche) Verknüpfung nachträglich ändern/lösen. Vor-/Nachname der Anmeldung werden dabei
+        // automatisch vom ausgewählten Mitglied übernommen (korrigiert so nebenbei einen Tippfehler,
+        // der das automatische Matching verhindert haben könnte) — eigene Namensfelder braucht es
+        // dafür nicht.
+        //
+        // `items` ist eine Liste statt einer einzelnen Anmeldung, weil mehrfache Anmeldungen
+        // derselben Person zur selben Veranstaltung (siehe `buildParticipantEntries`) zu einer
+        // Mitgliedskarte zusammengeführt werden — Verknüpfen/Bearbeiten/Lösen wirkt dann auf alle
+        // zusammengeführten Anmeldungen gleichzeitig, damit sie nicht wieder auseinanderfallen.
+        const openLinkMemberDialog = (items) => {
+            const primary = items[0];
+            const dialog = element('dialog', {className: 'confirm-dialog'});
+            const message = formMessage();
+            let selectedMember = primary.memberId ? {
+                id: primary.memberId, firstName: primary.memberFirstName, lastName: primary.memberLastName,
+                memberNumber: primary.memberNumber,
+            } : null;
+
+            const linkStatus = element('p', {className: 'member-link-status'});
+            const removeLink = element('button', {className: 'text-button danger', text: 'Verknüpfung entfernen', attributes: {type: 'button'}});
+            const updateLinkStatus = () => {
+                linkStatus.textContent = selectedMember
+                    ? `Verknüpft mit ${selectedMember.firstName} ${selectedMember.lastName} (${selectedMember.memberNumber})`
+                    : 'Nicht mit einem Mitglied verknüpft.';
+                removeLink.hidden = !selectedMember;
+            };
+            removeLink.addEventListener('click', () => {
+                selectedMember = null;
+                updateLinkStatus();
+                results.querySelectorAll('.member-link-candidate.is-selected').forEach((button) => button.classList.remove('is-selected'));
+            });
+            updateLinkStatus();
+
+            const results = element('div', {className: 'member-link-results'});
+            const renderResults = (candidates) => {
+                results.replaceChildren(...(candidates.length ? candidates.map((candidate) => {
+                    const pick = element('button', {
+                        className: `secondary-button member-link-candidate${selectedMember && selectedMember.id === candidate.id ? ' is-selected' : ''}`,
+                        attributes: {type: 'button'},
+                        children: [
+                            element('strong', {text: `${candidate.firstName} ${candidate.lastName} (${candidate.memberNumber})`}),
+                            element('small', {text: `${candidate.street} • ${new Date(`${candidate.birthDate}T00:00:00`).toLocaleDateString('de-DE')}`}),
+                        ],
+                    });
+                    pick.addEventListener('click', () => {
+                        selectedMember = candidate;
+                        updateLinkStatus();
+                        results.querySelectorAll('.member-link-candidate').forEach((button) => {
+                            button.classList.toggle('is-selected', button === pick);
+                        });
+                    });
+
+                    return pick;
+                }) : [emptyState('Keine Mitglieder gefunden.')]));
+            };
+            const search = searchField('Name oder Mitgliedsnummer suchen …', '', async (term) => {
+                if (term === '') { results.replaceChildren(); return; }
+                const data = await request(`/api/admin/v1/event-help-requests/member-candidates?search=${encodeURIComponent(term)}`);
+                renderResults(data.items);
+            });
+            // Enter im Suchfeld soll die Suche auslösen (wie ein Bestätigen/Verlassen des Felds),
+            // nicht das ganze Formular abschicken — Speichern (Verknüpfen) erfolgt nur per Klick.
+            const searchInput = search.querySelector('input');
+            searchInput.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                searchInput.dispatchEvent(new Event('change'));
+            });
+
+            const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+            const save = element('button', {className: 'button button-compact', text: 'Verknüpfen', attributes: {type: 'submit'}});
+            cancel.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => dialog.remove());
+            const form = element('form', {className: 'confirm-dialog-content', children: [
+                element('p', {className: 'eyebrow', text: 'Mitglied verknüpfen'}),
+                element('h2', {text: `${primary.firstName} ${primary.lastName}`}),
+                ...(items.length > 1 ? [element('p', {className: 'member-link-status', text: `${items.length} zusammengeführte Anmeldungen zu dieser Veranstaltung — die Verknüpfung gilt für alle.`})] : []),
+                linkStatus,
+                element('div', {className: 'member-link-status-actions', children: [removeLink]}),
+                search,
+                results,
+                message,
+                element('div', {className: 'confirm-dialog-actions', children: [cancel, save]}),
+            ]});
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                save.disabled = true;
+                try {
+                    await Promise.all(items.map((item) => request(`/api/admin/v1/event-help-requests/${item.id}/member`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            memberId: selectedMember ? selectedMember.id : '',
+                            firstName: selectedMember ? selectedMember.firstName : item.firstName,
+                            lastName: selectedMember ? selectedMember.lastName : item.lastName,
+                        }),
+                    })));
+                    toast(selectedMember ? 'Die Helferanmeldung wurde mit dem Mitglied verknüpft.' : 'Die Verknüpfung wurde entfernt.');
+                    dialog.close();
+                    await showEventManagement();
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    save.disabled = false;
+                }
+            });
+            dialog.append(form);
+            document.body.append(dialog);
+            dialog.showModal();
+        };
         const participationStatus = (requestItem) => {
             if (requestItem.status === 'participated') {
                 const hours = new Intl.NumberFormat('de-DE', {maximumFractionDigits: 2}).format(requestItem.participationMinutes / 60);
@@ -3187,6 +3656,192 @@ const renderAdmin = async () => {
             if (!groups.has(item.eventIdentifier)) groups.set(item.eventIdentifier, {event: item, requests: []});
             groups.get(item.eventIdentifier).requests.push(item);
         });
+        // ✓/⊘ zum Erfassen der Teilnahme — je Anmeldung, unabhängig davon, ob sie einzeln oder als
+        // Teil einer zusammengeführten Mitgliedskarte angezeigt wird (siehe `buildParticipantEntries`).
+        const buildParticipationActionButtons = (requestItem) => {
+            const actionButtons = [];
+            if (!canEditModule('event_helpers') || requestItem.status === 'resolved') return actionButtons;
+            const participated = element('button', {
+                className: 'participant-icon-button participant-icon-button-confirm',
+                text: requestItem.status === 'participated' ? '✎' : '✓',
+                attributes: {
+                    type: 'button',
+                    title: requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
+                    'aria-label': requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
+                },
+            });
+            participated.addEventListener('click', () => openParticipationDialog(requestItem));
+            actionButtons.push(participated);
+            if (requestItem.status !== 'not_participated') {
+                const absent = element('button', {
+                    className: 'participant-icon-button participant-icon-button-absent',
+                    text: '⊘',
+                    attributes: {type: 'button', title: 'Als nicht teilgenommen markieren', 'aria-label': 'Als nicht teilgenommen markieren'},
+                });
+                absent.addEventListener('click', async () => {
+                    absent.disabled = true;
+                    try {
+                        await saveParticipation(requestItem, false);
+                    } catch (error) {
+                        toast(error.message, 'error');
+                        absent.disabled = false;
+                    }
+                });
+                actionButtons.push(absent);
+            }
+            return actionButtons;
+        };
+        // Nachricht, gewählte Aktivitäten und Hilfezeiträume je Anmeldung, aufklappbar.
+        const buildParticipantDetails = (requestItem) => {
+            const intervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
+            const selectedActivities = Array.isArray(requestItem.selectedActivities) ? requestItem.selectedActivities : [];
+            const hasMessage = typeof requestItem.message === 'string' && requestItem.message.trim() !== '';
+            const detailsId = `event-helper-details-${requestItem.id}`;
+            const detailsBody = (hasMessage || selectedActivities.length > 0 || intervals.length > 0)
+                ? element('div', {className: 'event-helper-participant-details', attributes: {id: detailsId, hidden: 'hidden'}, children: [
+                    ...(hasMessage ? [element('p', {className: 'event-helper-participant-message', text: requestItem.message})] : []),
+                    ...((selectedActivities.length || intervals.length) ? [element('div', {className: 'event-helper-participant-meta', children: [
+                        ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
+                            element('strong', {text: 'Aktivitäten'}),
+                            ...selectedActivities.map((activity) => element('span', {className: 'activity-chip', text: activity.name})),
+                        ]})] : []),
+                        ...(intervals.length ? [element('div', {className: 'participation-times', children: [
+                            element('strong', {text: 'Zeiten'}),
+                            element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))}),
+                        ]})] : []),
+                    ]})] : []),
+                ]})
+                : null;
+            return {detailsBody, detailsId};
+        };
+        // Macht `toggle` (Name- bzw. Zusammenfassungs-Button) zum Aufklapper für `detailsBody`,
+        // falls vorhanden — sonst bleibt `toggle` ein reines Anzeige-Element ohne Verhalten.
+        const wireDetailsToggle = (toggle, detailsBody, detailsId) => {
+            if (!detailsBody) return toggle;
+            const button = element('button', {
+                className: 'event-helper-participant-toggle',
+                attributes: {type: 'button', 'aria-expanded': 'false', 'aria-controls': detailsId},
+                children: [toggle],
+            });
+            button.addEventListener('click', () => {
+                const expanded = button.getAttribute('aria-expanded') === 'true';
+                button.setAttribute('aria-expanded', String(!expanded));
+                detailsBody.hidden = expanded;
+            });
+            return button;
+        };
+        // Die Bubble übernimmt beides: zeigt die Mitgliedsnummer (falls verknüpft) und dient
+        // zugleich als Verknüpfen-/Bearbeiten-Button — ein eigener zusätzlicher Button daneben
+        // entfällt damit. `items` sind alle Anmeldungen, auf die eine Änderung der Verknüpfung
+        // angewendet werden soll (bei zusammengeführten Mehrfachanmeldungen mehr als eine, siehe
+        // `buildParticipantEntries`). Verknüpfen (bzw. eine bestehende — ggf. falsche — Verknüpfung
+        // nachträglich bearbeiten) muss unabhängig vom Teilnahmestatus möglich sein, da die
+        // Arbeitszeit-Erstattung zum Jahresende die Zuordnung zum Mitglied braucht.
+        const buildMemberBubble = (items) => {
+            const primary = items[0];
+            const isLinked = !!primary.memberNumber;
+            if (!canEditModule('event_helpers')) {
+                // Ohne Bearbeitungsrecht nur eine reine Anzeige, keine leere Bubble ohne Verknüpfung.
+                return isLinked ? element('span', {className: 'status-badge member-link-badge is-linked', text: primary.memberNumber}) : null;
+            }
+            const button = element('button', {
+                className: `status-badge member-link-badge${isLinked ? ' is-linked' : ''}`,
+                attributes: {
+                    type: 'button',
+                    title: isLinked ? 'Mitgliedsverknüpfung bearbeiten' : 'Mitglied verknüpfen',
+                    'aria-label': isLinked ? 'Mitgliedsverknüpfung bearbeiten' : 'Mitglied verknüpfen',
+                },
+            });
+            if (isLinked) {
+                button.textContent = primary.memberNumber;
+            } else {
+                const icon = element('span', {className: 'member-link-badge-icon', attributes: {'aria-hidden': 'true'}});
+                // Schlichtes Kettenglied-Icon statt Emoji — Vorbild: `buildMemberAccessNav`.
+                icon.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>';
+                button.append(icon, element('span', {text: 'Verknüpfen'}));
+            }
+            button.addEventListener('click', () => openLinkMemberDialog(items));
+
+            return button;
+        };
+        const renderSingleParticipant = (requestItem) => {
+            const actionButtons = buildParticipationActionButtons(requestItem);
+            const {detailsBody, detailsId} = buildParticipantDetails(requestItem);
+            const identity = element('div', {className: 'event-helper-participant-identity', children: [
+                element('div', {className: 'event-helper-participant-name-row', children: [
+                    element('strong', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
+                    ...(() => { const bubble = buildMemberBubble([requestItem]); return bubble ? [bubble] : []; })(),
+                ]}),
+                element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
+            ]});
+            return element('article', {className: `event-helper-participant status-${requestItem.status}`, children: [
+                element('header', {className: 'event-helper-participant-header', children: [
+                    wireDetailsToggle(identity, detailsBody, detailsId),
+                    element('div', {className: 'event-helper-participant-side', children: [
+                        element('span', {className: `participant-status status-${requestItem.status}`, text: participationStatus(requestItem)}),
+                        ...(actionButtons.length ? [element('div', {className: 'participant-actions', children: actionButtons})] : []),
+                    ]}),
+                ]}),
+                ...(detailsBody ? [detailsBody] : []),
+            ]});
+        };
+        // Mehrere Anmeldungen derselben Person zur selben Veranstaltung (siehe
+        // `buildParticipantEntries`) — eine gemeinsame Kopfzeile mit Name/Mitgliedsbubble, darunter
+        // jede ursprüngliche Anmeldung als eigene Zeile mit ihren eigenen Teilnahme-Aktionen, damit
+        // dabei nichts von der bisherigen Einzel-Erfassung verloren geht.
+        const renderMergedParticipant = (items) => {
+            const primary = items[0];
+            const name = primary.memberFirstName && primary.memberLastName
+                ? `${primary.memberFirstName} ${primary.memberLastName}`
+                : `${primary.firstName} ${primary.lastName}`;
+            const bubble = buildMemberBubble(items);
+            const identity = element('div', {className: 'event-helper-participant-identity', children: [
+                element('div', {className: 'event-helper-participant-name-row', children: [
+                    element('strong', {text: name}),
+                    ...(bubble ? [bubble] : []),
+                ]}),
+                element('small', {text: `${items.length} Anmeldungen zu dieser Veranstaltung zusammengeführt`}),
+            ]});
+            const rows = items.map((requestItem) => {
+                const actionButtons = buildParticipationActionButtons(requestItem);
+                const {detailsBody, detailsId} = buildParticipantDetails(requestItem);
+                const summary = element('div', {className: 'event-helper-merged-row-summary', children: [
+                    element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
+                    element('span', {className: `participant-status status-${requestItem.status}`, text: participationStatus(requestItem)}),
+                ]});
+                return element('div', {className: `event-helper-merged-row status-${requestItem.status}`, children: [
+                    element('div', {className: 'event-helper-merged-row-header', children: [
+                        wireDetailsToggle(summary, detailsBody, detailsId),
+                        ...(actionButtons.length ? [element('div', {className: 'participant-actions', children: actionButtons})] : []),
+                    ]}),
+                    ...(detailsBody ? [detailsBody] : []),
+                ]});
+            });
+            return element('article', {className: 'event-helper-participant event-helper-participant-merged', children: [
+                element('header', {className: 'event-helper-participant-header', children: [identity]}),
+                element('div', {className: 'event-helper-merged-list', children: rows}),
+            ]});
+        };
+        // Fasst mehrere Anmeldungen derselben Veranstaltung zu einer Karte zusammen, wenn sie mit
+        // demselben Mitglied verknüpft sind (z. B. weil sich jemand aus Versehen zweimal angemeldet
+        // hat) — die ursprüngliche Reihenfolge bleibt dabei anhand des ersten Vorkommens erhalten.
+        const buildParticipantEntries = (requestList) => {
+            const byMemberId = new Map();
+            requestList.forEach((requestItem) => {
+                if (!requestItem.memberId) return;
+                if (!byMemberId.has(requestItem.memberId)) byMemberId.set(requestItem.memberId, []);
+                byMemberId.get(requestItem.memberId).push(requestItem);
+            });
+            const rendered = new Set();
+            const entries = [];
+            requestList.forEach((requestItem) => {
+                if (rendered.has(requestItem.id)) return;
+                const group = requestItem.memberId ? byMemberId.get(requestItem.memberId) : [requestItem];
+                group.forEach((groupItem) => rendered.add(groupItem.id));
+                entries.push(group.length > 1 ? renderMergedParticipant(group) : renderSingleParticipant(requestItem));
+            });
+            return entries;
+        };
         const renderEventHelperGroup = ({event, requests}) => {
             const participatedCount = requests.filter((requestItem) => requestItem.status === 'participated').length;
             return element('section', {className: 'event-helper-group', children: [
@@ -3200,84 +3855,7 @@ const renderAdmin = async () => {
                     element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
                 ]}),
             ]}),
-            element('div', {className: 'event-helper-list', children: requests.map((requestItem) => {
-                const actionButtons = [];
-                if (canEditModule('event_helpers') && requestItem.status !== 'resolved') {
-                    const participated = element('button', {
-                        className: 'participant-icon-button participant-icon-button-confirm',
-                        text: requestItem.status === 'participated' ? '✎' : '✓',
-                        attributes: {
-                            type: 'button',
-                            title: requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
-                            'aria-label': requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
-                        },
-                    });
-                    participated.addEventListener('click', () => openParticipationDialog(requestItem));
-                    actionButtons.push(participated);
-                    if (requestItem.status !== 'not_participated') {
-                        const absent = element('button', {
-                            className: 'participant-icon-button participant-icon-button-absent',
-                            text: '⊘',
-                            attributes: {type: 'button', title: 'Als nicht teilgenommen markieren', 'aria-label': 'Als nicht teilgenommen markieren'},
-                        });
-                        absent.addEventListener('click', async () => {
-                            absent.disabled = true;
-                            try {
-                                await saveParticipation(requestItem, false);
-                            } catch (error) {
-                                toast(error.message, 'error');
-                                absent.disabled = false;
-                            }
-                        });
-                        actionButtons.push(absent);
-                    }
-                }
-                const intervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
-                const selectedActivities = Array.isArray(requestItem.selectedActivities) ? requestItem.selectedActivities : [];
-                const hasMessage = typeof requestItem.message === 'string' && requestItem.message.trim() !== '';
-                const hasDetails = hasMessage || selectedActivities.length > 0 || intervals.length > 0;
-                const detailsId = `event-helper-details-${requestItem.id}`;
-                const identity = element('div', {className: 'event-helper-participant-identity', children: [
-                    element('strong', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
-                    element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
-                ]});
-                const detailsBody = hasDetails ? element('div', {className: 'event-helper-participant-details', attributes: {id: detailsId, hidden: 'hidden'}, children: [
-                    ...(hasMessage ? [element('p', {className: 'event-helper-participant-message', text: requestItem.message})] : []),
-                    ...((selectedActivities.length || intervals.length) ? [element('div', {className: 'event-helper-participant-meta', children: [
-                        ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
-                            element('strong', {text: 'Aktivitäten'}),
-                            ...selectedActivities.map((activity) => element('span', {className: 'activity-chip', text: activity.name})),
-                        ]})] : []),
-                        ...(intervals.length ? [element('div', {className: 'participation-times', children: [
-                            element('strong', {text: 'Zeiten'}),
-                            element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))}),
-                        ]})] : []),
-                    ]})] : []),
-                ]}) : null;
-                let identityControl = identity;
-                if (detailsBody) {
-                    identityControl = element('button', {
-                        className: 'event-helper-participant-toggle',
-                        attributes: {type: 'button', 'aria-expanded': 'false', 'aria-controls': detailsId},
-                        children: [identity],
-                    });
-                    identityControl.addEventListener('click', () => {
-                        const expanded = identityControl.getAttribute('aria-expanded') === 'true';
-                        identityControl.setAttribute('aria-expanded', String(!expanded));
-                        detailsBody.hidden = expanded;
-                    });
-                }
-                return element('article', {className: `event-helper-participant status-${requestItem.status}`, children: [
-                element('header', {className: 'event-helper-participant-header', children: [
-                    identityControl,
-                    element('div', {className: 'event-helper-participant-side', children: [
-                        element('span', {className: `participant-status status-${requestItem.status}`, text: participationStatus(requestItem)}),
-                        ...(actionButtons.length ? [element('div', {className: 'participant-actions', children: actionButtons})] : []),
-                    ]}),
-                ]}),
-                ...(detailsBody ? [detailsBody] : []),
-                ]});
-            })}),
+            element('div', {className: 'event-helper-list', children: buildParticipantEntries(requests)}),
             ]});
         };
         const {
@@ -4280,7 +4858,7 @@ const renderAdmin = async () => {
         );
     };
 
-    const openContributionRateDialog = (rate, existingRates, onSaved) => {
+    const openContributionRateDialog = (rate, existingRates, onSaved, settings) => {
         const suffix = rate?.id || 'new';
         const dialog = element('dialog', {className: 'activity-dialog'});
         const usedCategories = new Set(existingRates.map((item) => item.category).filter(Boolean));
@@ -4305,6 +4883,28 @@ const renderAdmin = async () => {
         const maxAge = field('Altersspanne – bis einschließlich (Jahre, optional)', `rate-max-age-${suffix}`, rate?.maxAge != null ? String(rate.maxAge) : '', 'number');
         minAge.querySelector('input').min = '0';
         maxAge.querySelector('input').min = '0';
+
+        const pending = rate?.pending || null;
+        const validFrom = field('Gültig ab', `rate-valid-from-${suffix}`, settings.validFrom || '', 'date');
+        validFrom.append(element('small', {className: 'field-hint', text: 'Ein zukünftiges Datum speichert alle Änderungen als Pending. Heute oder früher übernimmt sie sofort.'}));
+        if (pending) {
+            const plannedFields = [
+                [label, 'label', pending.label],
+                [amount, 'amountCents', formatEuro(pending.amountCents)],
+                [period, 'period', PAYMENT_INTERVAL_LABELS[pending.period]],
+                [personGroup, 'personGroup', PERSON_GROUP_LABELS[pending.personGroup] || 'Keiner (gilt für alle)'],
+                [minAge, 'minAge', pending.minAge ?? 'Keine Untergrenze'],
+                [maxAge, 'maxAge', pending.maxAge ?? 'Keine Obergrenze'],
+                [validFrom, 'validFrom', formatDateDE(pending.validFrom)],
+            ];
+            plannedFields.forEach(([control, key, value]) => {
+                if (key !== 'validFrom' && pending[key] === rate[key]) return;
+                const hint = element('small', {className: 'field-hint', text: `wird geändert zu: ${value} ab ${formatDateDE(pending.validFrom)}`});
+                hint.id = `${control.querySelector('input, select').id}-pending`;
+                control.querySelector('input, select').setAttribute('aria-describedby', hint.id);
+                control.append(hint);
+            });
+        }
         const message = formMessage();
         const submit = element('button', {className: 'button', text: rate ? 'Änderungen speichern' : 'Beitragssatz anlegen', attributes: {type: 'submit'}});
         const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -4339,6 +4939,7 @@ const renderAdmin = async () => {
             ]}),
             ...(category ? [category] : []),
             label, amount, period, personGroup, minAge, maxAge,
+            validFrom,
             message,
             element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), cancel, submit]}),
         ]});
@@ -4358,7 +4959,15 @@ const renderAdmin = async () => {
                 personGroup: personGroup.querySelector('select').value || null,
                 minAge: minAgeValue === '' ? null : Number.parseInt(minAgeValue, 10),
                 maxAge: maxAgeValue === '' ? null : Number.parseInt(maxAgeValue, 10),
+
             };
+            const effectiveDate = validFrom.querySelector('input').value;
+            const unchanged = rate && ['label', 'amountCents', 'period', 'personGroup', 'minAge', 'maxAge'].every((key) => payload[key] === rate[key]);
+            if (rate && effectiveDate && !(unchanged && effectiveDate === (settings.validFrom || ''))) {
+                payload.validFrom = effectiveDate;
+            } else if (pending) {
+                payload.pending = pending;
+            }
             try {
                 await request(rate ? `/api/admin/v1/contribution-rates/${rate.id}` : '/api/admin/v1/contribution-rates', {
                     method: rate ? 'PUT' : 'POST',
@@ -4379,12 +4988,55 @@ const renderAdmin = async () => {
         dialog.showModal();
     };
 
+    /**
+     * Das gemeinsame „gültig ab" für alle Beitragssätze (siehe `ContributionRateSettings`) — anders
+     * als eine geplante Betragsänderung je Beitragssatz gilt dies für alle gemeinsam. Rückt
+     * außerdem automatisch vor, sobald eine geplante Änderung greift (dann nur lesend sichtbar,
+     * hier aber weiterhin von Hand überschreibbar).
+     */
+    const renderContributionRateSettingsCard = (settings, onSaved) => {
+        const message = formMessage();
+        const validFrom = field('Gültig ab (für alle Beitragssätze)', 'contribution-rate-settings-valid-from', settings.validFrom || '', 'date');
+        const form = element('form', {className: 'compact-form contribution-rate-settings-card', children: [
+            element('h3', {text: 'Beitragsordnung'}),
+            element('p', {className: 'field-hint', text: 'Gilt für alle Beitragssätze gemeinsam — wird in „Meine Mitgliedschaft" bei der Gesamtberechnung angezeigt. Rückt automatisch vor, sobald eine geplante Betragsänderung (siehe einzelne Beitragssätze unten) greift.'}),
+            validFrom,
+            message,
+            element('button', {className: 'button', text: 'Speichern', attributes: {type: 'submit'}}),
+        ]});
+        if (!canEditModule('contribution_rates')) {
+            validFrom.querySelector('input').disabled = true;
+            form.querySelector('button').hidden = true;
+        }
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const button = form.querySelector('button');
+            button.disabled = true;
+            try {
+                await request('/api/admin/v1/contribution-rate-settings', {
+                    method: 'PUT',
+                    body: JSON.stringify({validFrom: validFrom.querySelector('input').value || null}),
+                });
+                toast('Gespeichert.');
+                await onSaved();
+            } catch (error) {
+                message.textContent = error.message;
+                toast(error.message, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        return form;
+    };
+
     const showContributionRates = async () => {
         const data = await request('/api/admin/v1/contribution-rates');
+        const settings = await request('/api/admin/v1/contribution-rate-settings');
         const heading = sectionHeading('Beitragssätze', 'Bezeichnung, Betrag, Zeitraum und Altersspanne je Beitragssatz pflegen');
         if (canEditModule('contribution_rates')) {
             const create = element('button', {className: 'button', text: '＋ Neuer Beitragssatz', attributes: {type: 'button'}});
-            create.addEventListener('click', () => openContributionRateDialog(null, data.items, showMembershipManagement));
+            create.addEventListener('click', () => openContributionRateDialog(null, data.items, showMembershipManagement, settings));
             heading.append(create);
         }
         const rows = data.items.map((rate) => {
@@ -4402,41 +5054,49 @@ const renderAdmin = async () => {
                             rate.category ? rate.label : 'Benutzerdefiniert',
                             rate.personGroup ? PERSON_GROUP_LABELS[rate.personGroup] : null,
                             ageRange,
+                            rate.pending ? `Änderung ab ${formatDateDE(rate.pending.validFrom)}` : null,
                         ].filter(Boolean).join(' · ')}),
                     ]}),
                     element('span', {className: 'status-badge', text: `${formatEuro(rate.amountCents)} · ${PAYMENT_INTERVAL_LABELS[rate.period] || rate.period}`}),
+                    ...(rate.status === 'pending' ? [element('span', {className: 'status-badge status-pending', text: 'Pending'})] : []),
                     ...(isOnce ? [] : [element('span', {className: 'status-badge', text: `${formatEuro(rate.annualAmountCents)} / Jahr`})]),
                     ...(canEditModule('contribution_rates') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
                 ],
             });
-            if (canEditModule('contribution_rates')) row.addEventListener('click', () => openContributionRateDialog(rate, data.items, showMembershipManagement));
+            if (canEditModule('contribution_rates')) row.addEventListener('click', () => openContributionRateDialog(rate, data.items, showMembershipManagement, settings));
 
             return row;
         });
         workspace.replaceChildren(
             heading,
             element('div', {className: 'activity-list', children: rows.length ? rows : [emptyState('Keine Beitragssätze vorhanden.')]}),
+            renderContributionRateSettingsCard(settings, showContributionRates),
         );
     };
 
-    let activeMembershipTab = null;
     const showMembershipManagement = async () => {
         const tabs = [
             ...(hasModule('members') ? [['dashboard', 'Dashboard', showMembershipDashboard]] : []),
             ...(hasModule('members') ? [['members', 'Mitglieder', showMembers]] : []),
             ...(hasModule('contribution_rates') ? [['rates', 'Beitragssätze', showContributionRates]] : []),
             ...(hasModule('membership_applications') ? [['applications', 'Mitgliedsanträge', showMembership]] : []),
+            ...(hasModule('member_messages') ? [['messages', 'Mitgliedernachrichten', showMemberMessages]] : []),
         ];
         if (!tabs.some(([key]) => key === activeMembershipTab)) activeMembershipTab = tabs[0]?.[0] || null;
+        if (activeMembershipTab) {
+            setAdminPath(['mitglieder', membershipSlugsByTab[activeMembershipTab]], true);
+        }
 
         const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Mitgliederverwaltung'}, children: tabs.map(([key, label]) => {
-            const button = element('button', {
+            const button = element('a', {
                 className: `sub-tab${key === activeMembershipTab ? ' active' : ''}`,
                 text: label,
-                attributes: {type: 'button'},
+                attributes: {href: adminPath('mitglieder', membershipSlugsByTab[key])},
             });
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
                 activeMembershipTab = key;
+                setAdminPath(['mitglieder', membershipSlugsByTab[key]]);
                 await showMembershipManagement();
             });
 
@@ -4638,7 +5298,7 @@ const renderAdmin = async () => {
                     fromName: fromName.querySelector('input').value || null,
                 })});
                 toast('Die E-Mail-Einstellungen wurden gespeichert.');
-                await showEmailConnectionSettings();
+                await showSettingsManagement();
             } catch (error) {
                 message.textContent = error.message;
                 toast(error.message, 'error');
@@ -4803,7 +5463,7 @@ const renderAdmin = async () => {
                         signatureId: signatureSelectInput.value || null,
                     })});
                     toast('Die Mailvorlage wurde gespeichert.');
-                    await showMailTemplates();
+                    await showSettingsManagement();
                 } catch (error) {
                     message.textContent = error.message;
                     toast(error.message, 'error');
@@ -4821,7 +5481,7 @@ const renderAdmin = async () => {
                 try {
                     await request(`/api/admin/v1/mail-templates/${template.key}/reset`, {method: 'POST'});
                     toast('Die Mailvorlage wurde zurückgesetzt.');
-                    await showMailTemplates();
+                    await showSettingsManagement();
                 } catch (error) {
                     toast(error.message, 'error');
                 }
@@ -4877,7 +5537,7 @@ const renderAdmin = async () => {
                         await request('/api/admin/v1/mail-signatures', {method: 'POST', body: payload});
                         toast('Die Signatur wurde angelegt.');
                     }
-                    await showMailSignatures();
+                    await showSettingsManagement();
                 } catch (error) {
                     message.textContent = error.message;
                     toast(error.message, 'error');
@@ -4897,7 +5557,7 @@ const renderAdmin = async () => {
                     try {
                         await request(`/api/admin/v1/mail-signatures/${signature.id}`, {method: 'DELETE'});
                         toast('Die Signatur wurde gelöscht.');
-                        await showMailSignatures();
+                        await showSettingsManagement();
                     } catch (error) {
                         toast(error.message, 'error');
                     }
@@ -4925,7 +5585,6 @@ const renderAdmin = async () => {
     // `showSettingsManagement`): bündelt Mailserver-Zugangsdaten/Benachrichtigungsempfänger
     // (`showEmailConnectionSettings`) und die Mailvorlagen-Texte (`showMailTemplates`) in eigenen
     // Unter-Reitern, analog zu `showSettingsManagement` selbst.
-    let activeEmailSettingsTab = null;
     const showEmailSettingsManagement = async () => {
         const tabs = [
             ['connection', 'E-Mail-Einstellungen', showEmailConnectionSettings],
@@ -4933,16 +5592,19 @@ const renderAdmin = async () => {
             ['signatures', 'Signaturen', showMailSignatures],
         ];
         if (!tabs.some(([key]) => key === activeEmailSettingsTab)) activeEmailSettingsTab = tabs[0][0];
+        setAdminPath(['einstellungen', 'e-mail', emailSlugsByTab[activeEmailSettingsTab]], true);
 
         const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'E-Mail-Einstellungen'}, children: tabs.map(([key, label]) => {
-            const button = element('button', {
+            const button = element('a', {
                 className: `sub-tab${key === activeEmailSettingsTab ? ' active' : ''}`,
                 text: label,
-                attributes: {type: 'button'},
+                attributes: {href: adminPath('einstellungen', 'e-mail', emailSlugsByTab[key])},
             });
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
                 activeEmailSettingsTab = key;
-                await showEmailSettingsManagement();
+                setAdminPath(['einstellungen', 'e-mail', emailSlugsByTab[key]]);
+                await showSettingsManagement();
             });
 
             return button;
@@ -4960,7 +5622,6 @@ const renderAdmin = async () => {
     // oder gleich die Admin-/Super-Admin-Rolle (PIN-Schutzverwaltung, E-Mail-Einstellungen)
     // voraussetzen — analog zu `showMembershipManagement` mit eigener Reiter-Leiste je nach
     // freigeschaltetem Zugang.
-    let activeSettingsTab = null;
     const showSettingsManagement = async () => {
         const tabs = [
             ...(hasModule('user_management') ? [['users', 'Benutzerverwaltung', showUsers]] : []),
@@ -4973,15 +5634,28 @@ const renderAdmin = async () => {
             ...(isGlobalAdministrator() ? [['email', 'E-Mail-Einstellungen', showEmailSettingsManagement]] : []),
         ];
         if (!tabs.some(([key]) => key === activeSettingsTab)) activeSettingsTab = tabs[0]?.[0] || null;
+        if (activeSettingsTab && activeSettingsTab !== 'email') {
+            setAdminPath(['einstellungen', settingsSlugsByTab[activeSettingsTab]], true);
+        }
 
         const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Einstellungen'}, children: tabs.map(([key, label]) => {
-            const button = element('button', {
+            const settingsPath = key === 'email'
+                ? adminPath('einstellungen', 'e-mail', emailSlugsByTab[activeEmailSettingsTab || 'connection'])
+                : adminPath('einstellungen', settingsSlugsByTab[key]);
+            const button = element('a', {
                 className: `sub-tab${key === activeSettingsTab ? ' active' : ''}`,
                 text: label,
-                attributes: {type: 'button'},
+                attributes: {href: settingsPath},
             });
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
                 activeSettingsTab = key;
+                if (key === 'email') {
+                    activeEmailSettingsTab = activeEmailSettingsTab || 'connection';
+                    setAdminPath(['einstellungen', 'e-mail', emailSlugsByTab[activeEmailSettingsTab]]);
+                } else {
+                    setAdminPath(['einstellungen', settingsSlugsByTab[key]]);
+                }
                 await showSettingsManagement();
             });
 
@@ -5583,7 +6257,6 @@ const renderAdmin = async () => {
         );
     };
 
-    let activeEventTab = null;
     const showEventManagement = async () => {
         const tabs = [
             ...(hasModule('events') ? [['events', 'Veranstaltungen', showEvents]] : []),
@@ -5591,15 +6264,20 @@ const renderAdmin = async () => {
             ...(hasModule('activities') ? [['activities', 'Aktivitäten', showActivities]] : []),
         ];
         if (!tabs.some(([key]) => key === activeEventTab)) activeEventTab = tabs[0]?.[0] || null;
+        if (activeEventTab) {
+            setAdminPath(['veranstaltungen', eventSlugsByTab[activeEventTab]], true);
+        }
 
         const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Veranstaltung'}, children: tabs.map(([key, label]) => {
-            const button = element('button', {
+            const button = element('a', {
                 className: `sub-tab${key === activeEventTab ? ' active' : ''}`,
                 text: label,
-                attributes: {type: 'button'},
+                attributes: {href: adminPath('veranstaltungen', eventSlugsByTab[key])},
             });
-            button.addEventListener('click', async () => {
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
                 activeEventTab = key;
+                setAdminPath(['veranstaltungen', eventSlugsByTab[key]]);
                 await showEventManagement();
             });
 
@@ -5618,42 +6296,91 @@ const renderAdmin = async () => {
         workspace.replaceChildren(tabStrip, panel);
     };
 
-    const addMenu = (label, action) => {
-        const button = element('button', {className: 'admin-menu-item', text: label, attributes: {type: 'button'}});
-        button.addEventListener('click', async () => {
-            menu.querySelectorAll('button').forEach((item) => item.classList.remove('active'));
-            button.classList.add('active');
-            closeAdminNavigation();
-            try { await action(); } catch (error) {
-                toast(error.message, 'error');
-                workspace.replaceChildren(emptyState(error.message));
-            }
-        });
-        menu.append(button);
-        return button;
+    const applyAdminSegments = (segments) => {
+        activeMembershipTab = segments[0] === 'mitglieder' ? membershipTabsBySlug[segments[1]] ?? null : activeMembershipTab;
+        activeEventTab = segments[0] === 'veranstaltungen' ? eventTabsBySlug[segments[1]] ?? null : activeEventTab;
+        activeSettingsTab = segments[0] === 'einstellungen' ? settingsTabsBySlug[segments[1]] ?? null : activeSettingsTab;
+        if (segments[0] === 'einstellungen' && segments[1] === 'e-mail') {
+            activeEmailSettingsTab = emailTabsBySlug[segments[2]] ?? null;
+        }
     };
-    const menuItems = [];
-    if (hasModule('pages')) menuItems.push(addMenu('Seiten', showPages));
+    let menuItems = [];
+    const activateMenu = async (item, segments, updateHistory = false) => {
+        applyAdminSegments(segments);
+        if (updateHistory) setAdminPath(segments);
+        menu.querySelectorAll('.admin-menu-item').forEach((menuItem) => menuItem.classList.remove('active'));
+        item.link.classList.add('active');
+        item.link.setAttribute('aria-current', 'page');
+        menu.querySelectorAll('.admin-menu-item:not(.active)').forEach((menuItem) => menuItem.removeAttribute('aria-current'));
+        closeAdminNavigation();
+        try {
+            await item.action();
+        } catch (error) {
+            toast(error.message, 'error');
+            workspace.replaceChildren(emptyState(error.message));
+        }
+    };
+    const addMenu = (label, slug, defaultSegments, action) => {
+        const link = element('a', {
+            className: 'admin-menu-item',
+            text: label,
+            attributes: {href: adminPath(...defaultSegments)},
+        });
+        const item = {slug, defaultSegments, action, link};
+        link.addEventListener('click', async (event) => {
+            event.preventDefault();
+            await activateMenu(item, defaultSegments, true);
+        });
+        menu.append(link);
+
+        return item;
+    };
+    menuItems = [];
+    if (hasModule('pages')) menuItems.push(addMenu('Seiten', 'seiten', ['seiten'], showPages));
 
     if (hasModule('events') || hasModule('event_helpers') || hasModule('activities')) {
-        menuItems.push(addMenu('Veranstaltung', showEventManagement));
+        const defaultEventSlug = hasModule('events') ? 'termine' : hasModule('event_helpers') ? 'helfer' : 'aktivitaeten';
+        menuItems.push(addMenu('Veranstaltung', 'veranstaltungen', ['veranstaltungen', defaultEventSlug], showEventManagement));
     }
 
-    if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications')) {
-        menuItems.push(addMenu('Mitgliederverwaltung', async () => {
+    if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications') || hasModule('member_messages')) {
+        const defaultMembershipSlug = hasModule('members')
+            ? 'dashboard'
+            : hasModule('contribution_rates')
+                ? 'beitragssaetze'
+                : hasModule('membership_applications') ? 'antraege' : 'nachrichten';
+        menuItems.push(addMenu('Mitgliederverwaltung', 'mitglieder', ['mitglieder', defaultMembershipSlug], async () => {
             if (!(await ensurePinUnlocked('members.module_access', 'Mitgliederverwaltung'))) return;
             await showMembershipManagement();
         }));
     }
 
-    if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', showGuestbook));
-    if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', showContact));
+    if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', 'gaestebuch', ['gaestebuch'], showGuestbook));
+    if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', 'kontaktanfragen', ['kontaktanfragen'], showContact));
 
-    // Modul „Einstellungen“ (siehe `showSettingsManagement`): Benutzerverwaltung und
-    // PIN-Schutzverwaltung als eigene Reiter darin, statt getrennter Menüeinträge.
     if (hasModule('user_management') || isGlobalAdministrator()) {
-        menuItems.push(addMenu('Einstellungen', showSettingsManagement));
+        const defaultSettingsSlug = hasModule('user_management') ? 'benutzer' : 'pin-schutz';
+        menuItems.push(addMenu('Einstellungen', 'einstellungen', ['einstellungen', defaultSettingsSlug], showSettingsManagement));
     }
+
+    const openAdminRoute = async (segments, replaceInvalid = false) => {
+        const item = menuItems.find((menuItem) => menuItem.slug === segments[0]) || menuItems[0];
+        if (!item) {
+            workspace.replaceChildren(emptyState('Für diesen Zugang ist kein Redaktionsmodul freigeschaltet.'));
+            return;
+        }
+        const validNestedRoute = item.slug === 'mitglieder'
+            ? segments.length === 2 && membershipTabsBySlug[segments[1]]
+            : item.slug === 'veranstaltungen'
+                ? segments.length === 2 && eventTabsBySlug[segments[1]]
+                : item.slug === 'einstellungen'
+                    ? (segments.length === 2 && ['benutzer', 'pin-schutz'].includes(segments[1]))
+                        || (segments.length === 3 && segments[1] === 'e-mail' && emailTabsBySlug[segments[2]])
+                    : segments.length === 1;
+        const requestedSegments = item.slug === segments[0] && validNestedRoute ? segments : item.defaultSegments;
+        if (replaceInvalid || requestedSegments !== segments) setAdminPath(requestedSegments, true);
+        await activateMenu(item, requestedSegments);
+    };
 
     const logout = element('button', {className: 'text-button', text: 'Abmelden', attributes: {type: 'button'}});
     logout.addEventListener('click', async () => {
@@ -5663,6 +6390,7 @@ const renderAdmin = async () => {
         currentModuleAccess = {};
         currentPageAccess = null;
         clearPinSessionUnlocks();
+        window.onpopstate = null;
         toast('Du wurdest abgemeldet.', 'info');
         renderLogin();
     });
@@ -5684,11 +6412,8 @@ const renderAdmin = async () => {
             navigationToggle.focus();
         }
     };
-    if (menuItems.length) {
-        menuItems[0].click();
-    } else {
-        workspace.replaceChildren(emptyState('Für diesen Zugang ist kein Redaktionsmodul freigeschaltet.'));
-    }
+    window.onpopstate = () => openAdminRoute(currentAdminSegments());
+    await openAdminRoute(initialAdminSegments, initialAdminSegments.length === 0);
 };
 
 const sectionHeading = (title, description) => element('header', {className: 'section-heading', children: [
@@ -5808,6 +6533,21 @@ const contactCard = (item, refresh) => element('article', {className: 'managemen
     ...(canEditModule('contact_requests') ? [element('div', {className: 'card-actions', children: [
         actionButton('In Bearbeitung', `/api/admin/v1/contact-requests/${item.id}/status/in_progress`, refresh, 'secondary-button', {success: 'Kontaktanfrage ist jetzt in Bearbeitung.'}),
         actionButton('Erledigt', `/api/admin/v1/contact-requests/${item.id}/status/resolved`, refresh, 'button', {success: 'Kontaktanfrage wurde als erledigt markiert.'}),
+    ]})] : []),
+]});
+
+// Nachrichten, die Mitglieder über „Meine Mitgliedschaft" gesendet haben (siehe
+// `SendMemberMessageUseCase`) — an einen konkreten Mitgliedsdatensatz gebunden, daher der direkte
+// Link ins Mitgliederverwaltung-Modul statt einer mailto-Adresse wie bei Kontaktanfragen.
+const memberMessageCard = (item, refresh) => element('article', {className: 'management-card', children: [
+    element('header', {children: [
+        element('strong', {text: `${item.memberName} (${item.memberNumber})`}),
+        element('small', {text: item.status + ' · ' + new Date(item.submittedAt).toLocaleString('de-DE')}),
+    ]}),
+    element('p', {text: item.message}),
+    ...(canEditModule('member_messages') ? [element('div', {className: 'card-actions', children: [
+        actionButton('In Bearbeitung', `/api/admin/v1/member-messages/${item.id}/status/in_progress`, refresh, 'secondary-button', {success: 'Nachricht ist jetzt in Bearbeitung.'}),
+        actionButton('Erledigt', `/api/admin/v1/member-messages/${item.id}/status/resolved`, refresh, 'button', {success: 'Nachricht wurde als erledigt markiert.'}),
     ]})] : []),
 ]});
 

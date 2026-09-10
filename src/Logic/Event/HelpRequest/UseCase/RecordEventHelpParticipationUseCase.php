@@ -8,11 +8,13 @@ use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
 use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Model\ParticipationInterval;
 use App\Logic\Common\IdentifierGeneratorInterface;
+use App\Logic\Membership\Member\MemberProviderInterface;
 
 readonly class RecordEventHelpParticipationUseCase
 {
     public function __construct(
         private EventHelpRequestManagerInterface $manager,
+        private MemberProviderInterface $memberProvider,
         private ClockInterface $clock,
         private IdentifierGeneratorInterface $identifierGenerator,
     ) {
@@ -42,7 +44,14 @@ readonly class RecordEventHelpParticipationUseCase
             $participationIntervals,
             $this->clock->now(),
         );
+        $saved = $this->manager->save($request);
+        $member = $saved->memberId === null ? null : $this->memberProvider->find($saved->memberId);
 
-        return EventHelpRequestResponse::fromRequest($this->manager->save($request));
+        return EventHelpRequestResponse::fromRequest(
+            $saved,
+            memberNumber: $member?->memberNumber,
+            memberFirstName: $member?->firstName,
+            memberLastName: $member?->lastName,
+        );
     }
 }

@@ -13,6 +13,11 @@ interface MemberManagerInterface
     /**
      * @return list<Member>
      */
+    public function findByEmail(string $email): array;
+
+    /**
+     * @return list<Member>
+     */
     public function findByPrimaryMemberNumber(string $primaryMemberNumber): array;
 
     /**

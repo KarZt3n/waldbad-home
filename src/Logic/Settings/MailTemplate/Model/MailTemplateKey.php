@@ -19,12 +19,16 @@ enum MailTemplateKey: string
 {
     case MembershipApplicationSubmittedNotification = 'membership_application_submitted_notification';
     case MembershipApplicationApproved = 'membership_application_approved';
+    case MemberAccessMagicLink = 'member_access_magic_link';
+    case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
 
     public function label(): string
     {
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Benachrichtigung: neuer Mitgliedsantrag',
             self::MembershipApplicationApproved => 'Bestätigung: Mitgliedsantrag angenommen',
+            self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
+            self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
         };
     }
 
@@ -33,6 +37,8 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald jemand einen Mitgliedsantrag stellt.',
             self::MembershipApplicationApproved => 'Geht an die E-Mail-Adresse der ersten antragstellenden Person, sobald ihr Mitgliedsantrag als Mitglied angelegt (freigegeben) wird.',
+            self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
+            self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
         };
     }
 
@@ -44,6 +50,8 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart'],
             self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'beitraege', 'vereinsname'],
+            self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
+            self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
         };
     }
 
@@ -52,6 +60,8 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Neuer Mitgliedsantrag eingegangen',
             self::MembershipApplicationApproved => 'Willkommen im {{vereinsname}} – deine Mitgliedschaft ist bestätigt',
+            self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
+            self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
         };
     }
 
@@ -81,6 +91,29 @@ enum MailTemplateKey: string
 
                 Viele Grüße
                 Dein {{vereinsname}}
+                TEXT,
+            self::MemberAccessMagicLink => <<<'TEXT'
+                Hallo,
+
+                hier ist dein Zugang zu „Meine Mitgliedschaft" im {{vereinsname}}:
+
+                {{link}}
+
+                Dein Passwort dazu: {{passwort}}
+
+                Der Link ist {{gueltig_minuten}} Minuten gültig. Danach kannst du auf der Seite „Meine Mitgliedschaft" einfach einen neuen Zugang anfordern.
+
+                Hast du diese E-Mail nicht angefordert, kannst du sie einfach ignorieren.
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
+            self::MemberMessageSubmittedNotification => <<<'TEXT'
+                {{vorname}} {{nachname}} (Mitgliedsnummer {{mitgliedsnummer}}) hat über „Meine Mitgliedschaft" eine Nachricht gesendet:
+
+                {{nachricht}}
+
+                Bitte im Admin-Bereich unter „Mitgliederverwaltung“ → „Mitgliedernachrichten“ prüfen.
                 TEXT,
         };
     }
@@ -119,6 +152,18 @@ enum MailTemplateKey: string
                     TEXT,
                 'vereinsname' => AssociationName::CURRENT,
             ],
+            self::MemberAccessMagicLink => [
+                'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft?token=beispiel-token',
+                'passwort' => 'aB3!xy9?',
+                'gueltig_minuten' => '30',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
+            self::MemberMessageSubmittedNotification => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'mitgliedsnummer' => 'Bad-01234',
+                'nachricht' => 'Meine neue Telefonnummer lautet 01234 567890.',
+            ],
         };
     }
 
@@ -133,7 +178,9 @@ enum MailTemplateKey: string
     public function sampleHtmlBlocks(): array
     {
         return match ($this) {
-            self::MembershipApplicationSubmittedNotification => [],
+            self::MembershipApplicationSubmittedNotification,
+            self::MemberAccessMagicLink,
+            self::MemberMessageSubmittedNotification => [],
             self::MembershipApplicationApproved => [
                 'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
                     .'<li style="margin-bottom:8px;">Erika Musterfrau: 50,00 € pro Jahr'

@@ -11,6 +11,16 @@ interface MemberProviderInterface
     public function findByMemberNumber(string $memberNumber): ?Member;
 
     /**
+     * Case-insensitiv (per Datenbank-Kollation, siehe `DoctrineMemberProvider`) — für „Meine
+     * Mitgliedschaft“ (siehe `RequestMemberAccessUseCase`). E-Mail-Adressen sind nicht eindeutig:
+     * eine Familie teilt sich in der Regel dieselbe Adresse (siehe
+     * `ReleaseMembershipApplicationUseCase`), daher eine Liste statt eines einzelnen Treffers.
+     *
+     * @return list<Member>
+     */
+    public function findByEmail(string $email): array;
+
+    /**
      * @return list<Member>
      */
     public function findByPrimaryMemberNumber(string $primaryMemberNumber): array;

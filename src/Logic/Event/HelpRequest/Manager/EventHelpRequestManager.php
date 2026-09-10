@@ -29,4 +29,9 @@ readonly class EventHelpRequestManager implements EventHelpRequestManagerInterfa
     {
         return $this->processor->save($request);
     }
+
+    public function delete(string $id): void
+    {
+        $this->processor->delete($id);
+    }
 }

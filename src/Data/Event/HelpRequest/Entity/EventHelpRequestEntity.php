@@ -52,6 +52,15 @@ class EventHelpRequestEntity
         private \DateTimeImmutable $submittedAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $updatedAt,
+        #[ORM\Column(name: 'is_member', type: Types::BOOLEAN)]
+        private bool $isMember = false,
+        #[ORM\Column(type: Types::STRING, length: 180, nullable: true)]
+        private ?string $email = null,
+        #[ORM\Column(name: 'birth_date', type: Types::DATE_IMMUTABLE, nullable: true)]
+        private ?\DateTimeImmutable $birthDate = null,
+        /** Verweis auf `MemberEntity::$id`, ohne DB-Fremdschlüssel (siehe `Member::$payerMemberId`). */
+        #[ORM\Column(name: 'member_id', type: Types::STRING, length: 36, nullable: true)]
+        private ?string $memberId = null,
     ) {
         $this->participationIntervals = new ArrayCollection();
         $this->selectedActivities = new ArrayCollection();
@@ -91,6 +100,10 @@ class EventHelpRequestEntity
     }
     public function getSubmittedAt(): \DateTimeImmutable { return $this->submittedAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
+    public function isMember(): bool { return $this->isMember; }
+    public function getEmail(): ?string { return $this->email; }
+    public function getBirthDate(): ?\DateTimeImmutable { return $this->birthDate; }
+    public function getMemberId(): ?string { return $this->memberId; }
 
     public function changeParticipation(
         string $status,
@@ -100,6 +113,19 @@ class EventHelpRequestEntity
     {
         $this->status = $status;
         $this->participationMinutes = $participationMinutes;
+        $this->updatedAt = $updatedAt;
+    }
+
+    public function changeMember(?string $memberId, \DateTimeImmutable $updatedAt): void
+    {
+        $this->memberId = $memberId;
+        $this->updatedAt = $updatedAt;
+    }
+
+    public function changeIdentity(string $firstName, string $lastName, \DateTimeImmutable $updatedAt): void
+    {
+        $this->firstName = $firstName;
+        $this->lastName = $lastName;
         $this->updatedAt = $updatedAt;
     }
 }

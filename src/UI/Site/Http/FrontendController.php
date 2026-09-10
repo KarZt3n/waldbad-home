@@ -20,6 +20,19 @@ class FrontendController extends AbstractController
         return $this->render('site/public.html.twig', ['slug' => $slug]);
     }
 
+    /**
+     * „Meine Mitgliedschaft“ (siehe `PublicMemberAccessController`, `RoutingMemberAccessLinkBuilder`)
+     * — bewusst eine eigene, feste Route statt einer CMS-Seite (`/seite/{slug}`): die Ansicht hängt
+     * nicht von redaktionell gepflegtem Inhalt ab und soll unter einer stabilen, per Mail
+     * verschickbaren URL erreichbar sein, ohne dass dafür erst eine Seite mit passendem Slug
+     * angelegt werden muss.
+     */
+    #[Route('/meine-mitgliedschaft', name: 'public_member_access', methods: ['GET'])]
+    public function memberAccess(): Response
+    {
+        return $this->render('site/public.html.twig', ['slug' => 'meine-mitgliedschaft']);
+    }
+
     #[Route('/admin/{path}', name: 'admin_app', requirements: ['path' => '.*'], defaults: ['path' => ''], methods: ['GET'])]
     public function admin(): Response
     {
