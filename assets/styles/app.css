@@ -1218,9 +1218,18 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 /* Bubble mit Mitgliedsnummer, die zugleich als Verknüpfen-/Bearbeiten-Button dient (siehe
    `assets/app.js`, „memberBubble"): unverknüpft gelb (Hinweis: fehlt noch) mit Icon+Label,
    verknüpft grün gefüllt (Erfolg) mit der Mitgliedsnummer. */
-.member-link-badge { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--sun-400); color: var(--forest-950); background: var(--white); font: inherit; font-size: .75rem; }
+.member-link-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    border: 1px solid var(--sun-400);
+    color: var(--forest-950);
+    background: var(--sun-400);
+    font: inherit;
+    font-size: .75rem;
+}
 button.member-link-badge { cursor: pointer; }
-button.member-link-badge:hover { background: var(--sun-400); }
+button.member-link-badge:hover { background: var(--white); }
 .member-link-badge.is-linked { border-color: var(--forest-700); color: var(--white); background: var(--forest-700); }
 button.member-link-badge.is-linked:hover { border-color: var(--forest-800); background: var(--forest-800); }
 .member-link-badge-icon { display: flex; }
