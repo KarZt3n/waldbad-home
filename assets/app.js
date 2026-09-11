@@ -3117,12 +3117,15 @@ const renderAdmin = async () => {
     const membershipSlugsByTab = Object.fromEntries(Object.entries(membershipTabsBySlug).map(([slug, tab]) => [tab, slug]));
     const eventTabsBySlug = {termine: 'events', helfer: 'helpers', aktivitaeten: 'activities'};
     const eventSlugsByTab = Object.fromEntries(Object.entries(eventTabsBySlug).map(([slug, tab]) => [tab, slug]));
+    const contactTabsBySlug = {kontaktanfragen: 'contact', gaestebuch: 'guestbook'};
+    const contactSlugsByTab = Object.fromEntries(Object.entries(contactTabsBySlug).map(([slug, tab]) => [tab, slug]));
     const settingsTabsBySlug = {benutzer: 'users', 'pin-schutz': 'pin', 'e-mail': 'email'};
     const settingsSlugsByTab = Object.fromEntries(Object.entries(settingsTabsBySlug).map(([slug, tab]) => [tab, slug]));
     const emailTabsBySlug = {verbindung: 'connection', vorlagen: 'templates', signaturen: 'signatures'};
     const emailSlugsByTab = Object.fromEntries(Object.entries(emailTabsBySlug).map(([slug, tab]) => [tab, slug]));
     let activeMembershipTab = initialAdminSegments[0] === 'mitglieder' ? membershipTabsBySlug[initialAdminSegments[1]] ?? null : null;
     let activeEventTab = initialAdminSegments[0] === 'veranstaltungen' ? eventTabsBySlug[initialAdminSegments[1]] ?? null : null;
+    let activeContactTab = initialAdminSegments[0] === 'kontakt-feedback' ? contactTabsBySlug[initialAdminSegments[1]] ?? null : null;
     let activeSettingsTab = initialAdminSegments[0] === 'einstellungen' ? settingsTabsBySlug[initialAdminSegments[1]] ?? null : null;
     let activeEmailSettingsTab = initialAdminSegments[0] === 'einstellungen' && initialAdminSegments[1] === 'e-mail'
         ? emailTabsBySlug[initialAdminSegments[2]] ?? null
@@ -6355,9 +6358,45 @@ const renderAdmin = async () => {
         workspace.replaceChildren(tabStrip, panel);
     };
 
+    const showContactFeedbackManagement = async () => {
+        const tabs = [
+            ...(hasModule('contact_requests') ? [['contact', 'Kontaktanfrage', showContact]] : []),
+            ...(hasModule('guestbook') ? [['guestbook', 'Gästebuch', showGuestbook]] : []),
+        ];
+        if (!tabs.some(([key]) => key === activeContactTab)) activeContactTab = tabs[0]?.[0] || null;
+        if (activeContactTab) {
+            setAdminPath(['kontakt-feedback', contactSlugsByTab[activeContactTab]], true);
+        }
+
+        const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Kontakt und Feedback'}, children: tabs.map(([key, label]) => {
+            const button = element('a', {
+                className: `sub-tab${key === activeContactTab ? ' active' : ''}`,
+                text: label,
+                attributes: {href: adminPath('kontakt-feedback', contactSlugsByTab[key])},
+            });
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
+                activeContactTab = key;
+                setAdminPath(['kontakt-feedback', contactSlugsByTab[key]]);
+                await showContactFeedbackManagement();
+            });
+
+            return button;
+        })});
+        const active = tabs.find(([key]) => key === activeContactTab);
+        if (!active) {
+            workspace.replaceChildren(tabStrip, emptyState('Für diesen Zugang ist kein Bereich von Kontakt und Feedback freigeschaltet.'));
+            return;
+        }
+        await active[2]();
+        const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
+        workspace.replaceChildren(tabStrip, panel);
+    };
+
     const applyAdminSegments = (segments) => {
         activeMembershipTab = segments[0] === 'mitglieder' ? membershipTabsBySlug[segments[1]] ?? null : activeMembershipTab;
         activeEventTab = segments[0] === 'veranstaltungen' ? eventTabsBySlug[segments[1]] ?? null : activeEventTab;
+        activeContactTab = segments[0] === 'kontakt-feedback' ? contactTabsBySlug[segments[1]] ?? null : activeContactTab;
         activeSettingsTab = segments[0] === 'einstellungen' ? settingsTabsBySlug[segments[1]] ?? null : activeSettingsTab;
         if (segments[0] === 'einstellungen' && segments[1] === 'e-mail') {
             activeEmailSettingsTab = emailTabsBySlug[segments[2]] ?? null;
@@ -6414,8 +6453,10 @@ const renderAdmin = async () => {
         }));
     }
 
-    if (hasModule('guestbook')) menuItems.push(addMenu('Gästebuch', 'gaestebuch', ['gaestebuch'], showGuestbook));
-    if (hasModule('contact_requests')) menuItems.push(addMenu('Kontaktanfragen', 'kontaktanfragen', ['kontaktanfragen'], showContact));
+    if (hasModule('contact_requests') || hasModule('guestbook')) {
+        const defaultContactSlug = hasModule('contact_requests') ? 'kontaktanfragen' : 'gaestebuch';
+        menuItems.push(addMenu('Kontakt und Feedback', 'kontakt-feedback', ['kontakt-feedback', defaultContactSlug], showContactFeedbackManagement));
+    }
 
     if (hasModule('user_management') || isGlobalAdministrator()) {
         const defaultSettingsSlug = hasModule('user_management') ? 'benutzer' : 'pin-schutz';
@@ -6432,10 +6473,12 @@ const renderAdmin = async () => {
             ? segments.length === 2 && membershipTabsBySlug[segments[1]]
             : item.slug === 'veranstaltungen'
                 ? segments.length === 2 && eventTabsBySlug[segments[1]]
-                : item.slug === 'einstellungen'
-                    ? (segments.length === 2 && ['benutzer', 'pin-schutz'].includes(segments[1]))
-                        || (segments.length === 3 && segments[1] === 'e-mail' && emailTabsBySlug[segments[2]])
-                    : segments.length === 1;
+                : item.slug === 'kontakt-feedback'
+                    ? segments.length === 2 && contactTabsBySlug[segments[1]]
+                    : item.slug === 'einstellungen'
+                        ? (segments.length === 2 && ['benutzer', 'pin-schutz'].includes(segments[1]))
+                            || (segments.length === 3 && segments[1] === 'e-mail' && emailTabsBySlug[segments[2]])
+                        : segments.length === 1;
         const requestedSegments = item.slug === segments[0] && validNestedRoute ? segments : item.defaultSegments;
         if (replaceInvalid || requestedSegments !== segments) setAdminPath(requestedSegments, true);
         await activateMenu(item, requestedSegments);
