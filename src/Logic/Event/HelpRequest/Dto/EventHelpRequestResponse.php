@@ -33,23 +33,44 @@ readonly class EventHelpRequestResponse
         public ?string $memberId,
         /**
          * Aktuelle Stammdaten des verknüpften Mitglieds (siehe `ListEventHelpRequestsQuery`), nicht
-         * auf der Anmeldung selbst gespeichert — damit sie z. B. nach einer Umnummerierung/Umbenennung
-         * stets aktuell sind. `memberFirstName`/`memberLastName` dienen der Verwaltung als Vorlage,
-         * um einen Tippfehler in `firstName`/`lastName` der Anmeldung zu korrigieren (siehe
-         * „Namen aus Mitglied übernehmen" in `assets/app.js`).
+         * auf der Anmeldung selbst gespeichert — damit sie z. B. nach einer Umnummerierung/Umbenennung/
+         * einem Umzug stets aktuell sind. `memberFirstName`/`memberLastName` dienen der Verwaltung als
+         * Vorlage, um einen Tippfehler in `firstName`/`lastName` der Anmeldung zu korrigieren (siehe
+         * „Namen aus Mitglied übernehmen" in `assets/app.js`). `memberStreet`/`memberBirthDate` werden
+         * in der Helferauflistung unter dem Namen angezeigt, analog zur Kandidatenanzeige beim
+         * manuellen Verknüpfen (siehe `memberCandidates` in `AdminEventHelpRequestController`).
          */
         public ?string $memberNumber = null,
         public ?string $memberFirstName = null,
         public ?string $memberLastName = null,
+        public ?string $memberStreet = null,
+        public ?\DateTimeImmutable $memberBirthDate = null,
+        /**
+         * Dieselben E-Mail-Adresse(n), die auch tatsächlich für den Mailversand verwendet würden
+         * (siehe `EventHelpRequestRecipientResolver`, aufgerufen aus `ListEventHelpRequestsQuery`
+         * bzw. `LinkEventHelpRequestMemberUseCase`) — eigene Adresse des Mitglieds, sonst der ganze
+         * Haushalt, plus eine ggf. abweichende, im Formular angegebene Adresse. In der
+         * Helferauflistung unter dem Namen angezeigt, damit dort zu sehen ist, wen „Mail an alle
+         * Helfer"/„Mail an diesen Helfer" tatsächlich erreicht.
+         *
+         * @var list<string>
+         */
+        public array $recipientEmails = [],
     ) {
     }
 
+    /**
+     * @param list<string> $recipientEmails
+     */
     public static function fromRequest(
         EventHelpRequest $request,
         ?VolunteerEvent $currentEvent = null,
         ?string $memberNumber = null,
         ?string $memberFirstName = null,
         ?string $memberLastName = null,
+        ?string $memberStreet = null,
+        ?\DateTimeImmutable $memberBirthDate = null,
+        array $recipientEmails = [],
     ): self {
         return new self(
             id: $request->id,
@@ -73,6 +94,9 @@ readonly class EventHelpRequestResponse
             memberNumber: $memberNumber,
             memberFirstName: $memberFirstName,
             memberLastName: $memberLastName,
+            memberStreet: $memberStreet,
+            memberBirthDate: $memberBirthDate,
+            recipientEmails: $recipientEmails,
         );
     }
 }

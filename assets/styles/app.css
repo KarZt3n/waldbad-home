@@ -1078,6 +1078,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     gap: 1rem;
 }
 
+/* Vorname/Nachname/Geburtsdatum der Helferanmeldung in einer Zeile (siehe `openEventHelpDialog`). */
+.event-help-form .form-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
 .management-toolbar { display: flex; width: 100%; max-width: 68rem; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem auto; }
 .management-toolbar select { width: min(20rem, 100%); }
 
@@ -1183,7 +1186,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
 .event-helper-group header p { margin-top: .25rem; color: var(--muted); }
-.event-helper-counts { display: grid; justify-items: end; gap: .35rem; }
+.event-helper-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; }
+.event-helper-counts { display: flex; align-items: center; gap: .6rem; }
 .event-helper-counts small { color: var(--muted); font-weight: 650; }
 .event-helper-list { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: .85rem; background: var(--white); }
 .event-helper-participant { display: grid; gap: .75rem; padding: 1rem 1.1rem; background: var(--white); }
@@ -1215,6 +1219,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .participant-icon-button:hover { color: var(--white); background: var(--forest-700); }
 .participant-icon-button-absent { border-color: #9ba59f; color: var(--muted); }
 .participant-icon-button-absent:hover { border-color: var(--danger); background: var(--danger); }
+.participant-icon-button-mail { font-size: 1.45rem; }
 /* Bubble mit Mitgliedsnummer, die zugleich als Verknüpfen-/Bearbeiten-Button dient (siehe
    `assets/app.js`, „memberBubble"): unverknüpft gelb (Hinweis: fehlt noch) mit Icon+Label,
    verknüpft grün gefüllt (Erfolg) mit der Mitgliedsnummer. */
@@ -1507,11 +1512,12 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .admin-sidebar { display: none; border-right: 0; border-bottom: 1px solid var(--line); }
     .admin-layout.admin-nav-open .admin-sidebar { display: block; }
     .form-grid { grid-template-columns: 1fr; }
+    .event-help-form .form-grid-3 { grid-template-columns: 1fr; }
     .membership-person .form-grid, .membership-meta { grid-template-columns: 1fr; }
     .membership-person .field:last-child { grid-column: auto; }
     .membership-person-heading, .management-toolbar, .membership-admin-card > header { align-items: stretch; flex-direction: column; }
     .event-helper-group > header { align-items: stretch; flex-direction: column; }
-    .event-helper-counts { justify-items: start; }
+    .event-helper-header-actions { align-items: flex-start; }
     .event-helper-participant-header { grid-template-columns: 1fr; }
     .event-helper-participant-side { justify-content: space-between; }
     .image-text { flex-direction: column; align-items: stretch; }
@@ -1535,6 +1541,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     border: 1px solid var(--line, #cfddd6);
     border-radius: 1rem;
     padding: 1rem;
+    margin: 1rem 0;
 }
 
 .event-activity-choices legend,
@@ -1576,6 +1583,16 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .event-action-row .button { margin-top: 0; }
 .selected-activity-list { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 .activity-chip { background: #e1f1e8; border-radius: 999px; padding: .3rem .65rem; font-size: .9rem; }
+
+/* „An:"-Feld im Rundmail-Dialog (siehe `openEventHelpBroadcastDialog`): entfernbare Empfänger-Chips
+   plus Eingabezeile zum händischen Nachtragen (mit Pulldown-Vorschlägen über ein `<datalist>`). */
+.recipient-chip-list { display: flex; flex-wrap: wrap; gap: .45rem; }
+.recipient-chip { display: inline-flex; align-items: center; gap: .4rem; border-radius: 999px; padding: .3rem .3rem .3rem .75rem; color: var(--forest-900); background: var(--forest-100); font-size: .9rem; font-weight: 600; }
+.recipient-chip-remove { display: grid; width: 1.3rem; height: 1.3rem; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--forest-800); background: rgb(255 255 255 / 70%); cursor: pointer; font-size: 1rem; line-height: 1; }
+.recipient-chip-remove:hover { color: var(--white); background: var(--danger); }
+.recipient-chip-empty { color: var(--muted); font-size: .85rem; font-weight: 400; }
+.recipient-add-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .5rem; }
+.recipient-add-row input { flex: 1 1 14rem; width: auto; }
 .section-heading > .button { margin-top: 1rem; }
 .activity-list { display: grid; width: 100%; max-width: 68rem; margin: 0 auto; border: 1px solid var(--line); border-radius: 1rem; overflow: hidden; background: var(--white); box-shadow: 0 .45rem 1.4rem rgb(11 46 32 / 8%); }
 .contribution-rate-settings-card { margin-top: 1.5rem; }

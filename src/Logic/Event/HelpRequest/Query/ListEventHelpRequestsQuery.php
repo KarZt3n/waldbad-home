@@ -4,6 +4,7 @@ namespace App\Logic\Event\HelpRequest\Query;
 
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestResponse;
 use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
+use App\Logic\Event\HelpRequest\Service\EventHelpRequestRecipientResolver;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\Member\MemberProviderInterface;
@@ -14,6 +15,7 @@ readonly class ListEventHelpRequestsQuery
         private EventHelpRequestManagerInterface $manager,
         private VolunteerEventProviderInterface $eventProvider,
         private MemberProviderInterface $memberProvider,
+        private EventHelpRequestRecipientResolver $recipientResolver,
     ) {
     }
 
@@ -40,6 +42,9 @@ readonly class ListEventHelpRequestsQuery
                 $member?->memberNumber,
                 $member?->firstName,
                 $member?->lastName,
+                $member?->street,
+                $member?->birthDate,
+                $this->recipientResolver->resolve($member, $request->email),
             );
         }
 

@@ -4,8 +4,10 @@ namespace App\UI\Event\HelpRequest\Http;
 
 use App\Logic\Event\HelpRequest\Query\ListEventHelpRequestsQuery;
 use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
+use App\Logic\Event\HelpRequest\UseCase\GetEventHelpRequestBroadcastRecipientsUseCase;
 use App\Logic\Event\HelpRequest\UseCase\LinkEventHelpRequestMemberUseCase;
 use App\Logic\Event\HelpRequest\UseCase\RecordEventHelpParticipationUseCase;
+use App\Logic\Event\HelpRequest\UseCase\SendEventHelpRequestBroadcastUseCase;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\Member;
 use App\UI\IdentityAccess\Security\Permission;
@@ -58,6 +60,83 @@ class AdminEventHelpRequestController extends AbstractController
             'street' => $member->street,
             'birthDate' => $member->birthDate->format('Y-m-d'),
         ], $candidates)]);
+    }
+
+    /**
+     * Vorbelegung für das „An:"-Feld im Rundmail-Dialog, bevor tatsächlich etwas verschickt wird
+     * (siehe `GetEventHelpRequestBroadcastRecipientsUseCase`) — die Verwaltung kann die gelieferte
+     * Liste dort noch anpassen, bevor sie mit `broadcast()` unten tatsächlich verschickt wird.
+     */
+    #[Route('/broadcast-recipients', name: 'api_admin_event_help_broadcast_recipients', methods: ['GET'])]
+    public function broadcastRecipients(Request $request, GetEventHelpRequestBroadcastRecipientsUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+        $eventIdentifier = trim((string) $request->query->get('eventIdentifier', ''));
+        if ($eventIdentifier === '') {
+            throw new BadRequestHttpException('Veranstaltung ist erforderlich.');
+        }
+
+        $result = $useCase->execute($eventIdentifier, $this->parseRequestIds($request->query->all('requestIds')));
+
+        return new JsonResponse([
+            'defaultEmails' => $result->defaultEmails,
+            'suggestedEmails' => $result->suggestedEmails,
+        ]);
+    }
+
+    /**
+     * Freie Rundmail (Betreff/Text von der Verwaltung selbst getippt) an die im Dialog „An:"
+     * stehenden Adressen — siehe `SendEventHelpRequestBroadcastUseCase`. Ausgelöst entweder über den
+     * Button „Mail an alle Helfer" je Veranstaltung oder über das ✉-Icon neben einer einzelnen
+     * Person, beides in `assets/app.js` (`openEventHelpBroadcastDialog`, `buildMailButton`) — beide
+     * holen die Vorbelegung zuvor über `broadcastRecipients()` und schicken hier bereits die
+     * (ggf. angepasste) endgültige Liste mit.
+     */
+    #[Route('/broadcast', name: 'api_admin_event_help_broadcast', methods: ['POST'])]
+    public function broadcast(Request $request, SendEventHelpRequestBroadcastUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+        $data = $request->getPayload();
+        $subject = trim($data->getString('subject'));
+        $body = trim($data->getString('body'));
+        if ($subject === '' || $body === '') {
+            throw new BadRequestHttpException('Betreff und Text sind erforderlich.');
+        }
+        $recipients = $this->parseRequestIds($data->all('recipients'), 'Die Empfänger-E-Mail-Adressen sind ungültig.');
+        if ($recipients === null || $recipients === []) {
+            throw new BadRequestHttpException('Mindestens eine Empfänger-E-Mail-Adresse ist erforderlich.');
+        }
+
+        $result = $useCase->execute($subject, $body, $recipients);
+
+        return new JsonResponse([
+            'recipientCount' => $result->recipientCount,
+            'sentCount' => $result->sentCount,
+            'failedCount' => $result->failedCount,
+        ]);
+    }
+
+    /**
+     * @return ?list<string> `null`, wenn `$rawValues` leer ist (kein Filter/keine Angabe) — sonst
+     *                        die getrimmten, nicht-leeren Werte.
+     */
+    private function parseRequestIds(array $rawValues, string $errorMessage = 'Die ausgewählten Helferanmeldungen sind ungültig.'): ?array
+    {
+        if ($rawValues === []) {
+            return null;
+        }
+        if (!array_is_list($rawValues) || count($rawValues) > 50) {
+            throw new BadRequestHttpException($errorMessage);
+        }
+        $values = [];
+        foreach ($rawValues as $rawValue) {
+            if (!is_string($rawValue) || trim($rawValue) === '') {
+                throw new BadRequestHttpException($errorMessage);
+            }
+            $values[] = $rawValue;
+        }
+
+        return $values;
     }
 
     #[Route('/{id}/member', name: 'api_admin_event_help_link_member', methods: ['POST'])]

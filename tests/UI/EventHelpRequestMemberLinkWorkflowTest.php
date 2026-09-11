@@ -86,11 +86,6 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         self::assertIsString($otherMemberId);
         self::assertIsString($otherMemberNumber);
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
-            'name' => 'Rasen mähen', 'description' => '', 'active' => true,
-        ], $headers);
-        self::assertResponseStatusCodeSame(201);
-
         $today = (new \DateTimeImmutable())->format('Y-m-d');
         $this->client->jsonRequest('POST', '/api/admin/v1/events', [
             'kind' => 'work_assignment',
@@ -108,42 +103,43 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         $scheduleId = $this->responseData()['id'];
         self::assertIsString($scheduleId);
 
-        // Name (case-insensitiv/getrimmt) + E-Mail passen exakt zum angelegten Mitglied -> automatisch verknüpft.
+        // Name (case-insensitiv/getrimmt) ist bereits eindeutig -> automatisch verknüpft, das
+        // Geburtsdatum wird nicht einmal gebraucht (weicht hier absichtlich ab).
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId,
             'firstName' => '  ERIKA ',
             'lastName' => ' musterfrau ',
+            'birthDate' => '1990-06-15',
             'message' => '',
             'activityIds' => [],
             'privacyAccepted' => true,
-            'isMember' => true,
-            'email' => ' Erika@Example.test ',
-            'birthDate' => '1990-06-15',
         ]);
         self::assertResponseStatusCodeSame(202);
 
-        // Kein passendes Mitglied -> bleibt unverknüpft, wird danach manuell verknüpft.
+        // Kein passendes Mitglied (auch nicht über Vor-/Nachname + Geburtsdatum allein) -> bleibt
+        // unverknüpft, wird danach manuell verknüpft.
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId,
             'firstName' => 'Helfer',
             'lastName' => 'Ohnematch',
+            'birthDate' => '1975-11-02',
             'message' => '',
             'activityIds' => [],
             'privacyAccepted' => true,
-            'isMember' => true,
         ]);
         self::assertResponseStatusCodeSame(202);
 
-        // Tippfehler im Vornamen ("Eryka" statt "Erika") -> kein automatischer Treffer, obwohl das
-        // Mitglied existiert.
+        // Tippfehler in Vor- UND Nachname -> auch die um das Geburtsdatum erweiterte Suche findet
+        // keinen eindeutigen Kandidaten (siehe `EventHelpRequestMemberMatcher`), obwohl das Mitglied
+        // existiert.
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId,
             'firstName' => 'Eryka',
-            'lastName' => 'Musterfrau',
+            'lastName' => 'Musterfroh',
+            'birthDate' => '1990-06-15',
             'message' => '',
             'activityIds' => [],
             'privacyAccepted' => true,
-            'isMember' => true,
         ]);
         self::assertResponseStatusCodeSame(202);
 
@@ -161,11 +157,16 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         }
         self::assertSame($memberNumber, $byLastName['musterfrau']['memberNumber']);
         self::assertSame($memberId, $byLastName['musterfrau']['memberId']);
+        // Straße + Geburtsdatum des verknüpften Mitglieds werden mitgeliefert (Anzeige in der
+        // Helferauflistung, analog zur Kandidatenanzeige beim manuellen Verknüpfen).
+        self::assertSame('Kirchanger 14', $byLastName['musterfrau']['memberStreet']);
+        self::assertSame('1990-06-15', $byLastName['musterfrau']['memberBirthDate']);
+        self::assertSame(['erika@example.test'], $byLastName['musterfrau']['recipientEmails']);
         self::assertNull($byLastName['Ohnematch']['memberNumber']);
         $unmatchedId = $byLastName['Ohnematch']['id'];
         self::assertIsString($unmatchedId);
-        self::assertNull($byLastName['Musterfrau']['memberNumber']);
-        $typoId = $byLastName['Musterfrau']['id'];
+        self::assertNull($byLastName['Musterfroh']['memberNumber']);
+        $typoId = $byLastName['Musterfroh']['id'];
         self::assertIsString($typoId);
 
         $this->client->request('GET', '/api/admin/v1/event-help-requests/member-candidates?search=Musterfrau', server: $headers);
@@ -296,12 +297,10 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
                 'eventIdentifier' => $scheduleId,
                 'firstName' => 'Erika',
                 'lastName' => 'Musterfrau',
+                'birthDate' => '1990-06-15',
                 'message' => '',
                 'activityIds' => $activityIds,
                 'privacyAccepted' => true,
-                'isMember' => true,
-                'email' => 'erika@example.test',
-                'birthDate' => '1990-06-15',
             ]);
         };
         $submit([$activity1Id]);
@@ -326,6 +325,77 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         $expectedActivityIds = [$activity1Id, $activity2Id];
         sort($expectedActivityIds);
         self::assertSame($expectedActivityIds, $selectedActivityIds);
+    }
+
+    /**
+     * Deckt das Beispiel aus der Anforderung ab: Ist der Name allein mehrdeutig (zwei gleichnamige
+     * Mitglieder in unterschiedlichen Haushalten) und passt das Geburtsdatum zu keinem der beiden
+     * (Tippfehler), löst die angegebene E-Mail-Adresse die Mehrdeutigkeit auf — auch wenn sie nicht
+     * der Kandidatin selbst, sondern einem anderen Mitglied ihres Haushalts gehört (siehe
+     * `EventHelpRequestMemberMatcher::emailBelongsToHousehold()`).
+     */
+    public function testAmbiguousNameIsResolvedByHouseholdEmailWhenBirthDateMatchesNeither(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+
+        $headOfHousehold = $this->validMember('Karsten', 'Kuck', 'sass.karsten@googlemail.com', '1988-11-11');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $headOfHousehold, $headers);
+        self::assertResponseStatusCodeSame(201);
+        $karsten = $this->responseData();
+        self::assertIsString($karsten['memberNumber']);
+
+        $wantedSally = $this->validMember('Sally', 'Kuck', null, '1990-06-15');
+        $wantedSally['primaryMemberNumber'] = $karsten['memberNumber'];
+        $wantedSally['familyRole'] = 'partner';
+        $wantedSally['payerType'] = 'other_member';
+        $wantedSally['payerMemberId'] = $karsten['id'];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $wantedSally, $headers);
+        self::assertResponseStatusCodeSame(201);
+        $wantedSallyId = $this->responseData()['id'];
+        self::assertIsString($wantedSallyId);
+
+        // Gleichnamiges Mitglied in einem anderen Haushalt, ohne Bezug zu Karsten.
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember('Sally', 'Kuck', null, '1985-03-20'), $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $today = (new \DateTimeImmutable())->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Sommerfest',
+            'date' => $today,
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => 'Ich möchte helfen!',
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        // Geburtsdatum (Tippfehler) passt zu keiner der beiden "Sally Kuck" -> ohne die E-Mail wäre
+        // die Anmeldung mehrdeutig; die E-Mail gehört zu Karsten, nicht zu Sally selbst.
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => $scheduleId,
+            'firstName' => 'Sally',
+            'lastName' => 'Kuck',
+            'birthDate' => '1999-09-09',
+            'email' => ' Sass.Karsten@Googlemail.com ',
+            'message' => '',
+            'activityIds' => [],
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(202);
+
+        $this->client->request('GET', '/api/admin/v1/event-help-requests', server: $headers);
+        self::assertResponseIsSuccessful();
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+        self::assertCount(1, $items);
+        self::assertIsArray($items[0]);
+        self::assertSame($wantedSallyId, $items[0]['memberId']);
     }
 
     /**
@@ -362,9 +432,11 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
 
         // Zwei (noch unverknüpfte) Anmeldungen derselben Person, z. B. weil sie sich aus Versehen
         // zweimal angemeldet hat — jede mit eigener, bereits erfasster Teilnahmezeit.
+        // Geburtsdatum bewusst abweichend von Frida Beispiels echtem Geburtsdatum, damit die
+        // Anmeldungen (Nachname passt ohnehin nicht) nicht bereits automatisch verknüpft werden.
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId, 'firstName' => 'Frida', 'lastName' => 'Duplikat1',
-            'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
+            'birthDate' => '1999-01-01', 'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
         ]);
         self::assertResponseStatusCodeSame(202);
         $firstId = $this->responseData()['id'];
@@ -372,7 +444,7 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
 
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId, 'firstName' => 'Frida', 'lastName' => 'Duplikat2',
-            'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
+            'birthDate' => '1999-01-01', 'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
         ]);
         self::assertResponseStatusCodeSame(202);
         $secondId = $this->responseData()['id'];
@@ -443,7 +515,7 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
     }
 
     /** @return array<string, mixed> */
-    private function validMember(string $firstName, string $lastName, string $email, string $birthDate): array
+    private function validMember(string $firstName, string $lastName, ?string $email, string $birthDate): array
     {
         return [
             'primaryMemberNumber' => null,

@@ -24,11 +24,11 @@ readonly class EventHelpRequest
         public array $selectedActivities,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
-        /** Angabe der/des Helfenden bei der Anmeldung, ob sie/er Vereinsmitglied ist — steuert, ob überhaupt versucht wird, die Anmeldung einem Mitgliedsdatensatz zuzuordnen (siehe `EventHelpRequestMemberMatcher`). */
+        /** Angabe der/des Helfenden bei der Anmeldung, ob sie/er Vereinsmitglied ist. Wird aktuell nicht mehr über das öffentliche Formular erfasst; das Feld bleibt für bestehende Daten sowie eine mögliche künftige Nutzung erhalten. */
         public bool $isMember = false,
         public ?string $email = null,
         public ?\DateTimeImmutable $birthDate = null,
-        /** Verweis auf `Member::$id`, entweder automatisch beim Absenden ermittelt oder nachträglich manuell verknüpft (siehe `withMember()`). Kein DB-Fremdschlüssel, analog zu `Member::$payerMemberId`. */
+        /** Verweis auf `Member::$id`, entweder automatisch beim Absenden ermittelt (siehe `EventHelpRequestMemberMatcher`) oder nachträglich manuell verknüpft (siehe `withMember()`). Kein DB-Fremdschlüssel, analog zu `Member::$payerMemberId`. */
         public ?string $memberId = null,
     ) {
         if (trim($this->eventIdentifier) === '' || trim($this->eventTitle) === '') {

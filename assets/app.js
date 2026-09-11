@@ -780,7 +780,6 @@ const openEventHelpDialog = async (block) => {
     const message = formMessage();
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Helferanmeldung schließen'}});
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
-    const isMember = element('input', {attributes: {name: 'isMember', type: 'checkbox', checked: 'checked'}});
     const activityChoices = (availability.items || []).map((activity) => {
         const isFull = activity.registeredHelpers >= activity.requiredHelpers;
         const input = element('input', {attributes: {
@@ -824,12 +823,8 @@ const openEventHelpDialog = async (block) => {
             element('h2', {text: block.eventTitle || 'Veranstaltung'}),
             element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
         ]}),
-        element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
-        element('label', {className: 'check-field', children: [isMember, element('span', {text: 'Ich bin Mitglied'})]}),
-        element('div', {className: 'form-grid', children: [
-            field('E-Mail (optional)', 'email', '', 'email'),
-            field('Geburtsdatum (optional)', 'birthDate', '', 'date'),
-        ]}),
+        element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
+        field('E-Mail (optional)', 'email', '', 'email'),
         ...(activityChoices.length ? [element('fieldset', {className: 'event-activity-choices', children: [
             element('legend', {text: 'Wobei möchtest du helfen?'}),
             ...activityChoices,
@@ -841,6 +836,7 @@ const openEventHelpDialog = async (block) => {
     ]});
     form.querySelector('[name="firstName"]').required = true;
     form.querySelector('[name="lastName"]').required = true;
+    form.querySelector('[name="birthDate"]').required = true;
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const data = new FormData(form);
@@ -854,7 +850,6 @@ const openEventHelpDialog = async (block) => {
                 message: data.get('message'),
                 activityIds: data.getAll('activityIds'),
                 privacyAccepted: data.get('privacyAccepted') === 'on',
-                isMember: data.get('isMember') === 'on',
                 email: data.get('email'),
                 birthDate: data.get('birthDate'),
             })});
@@ -3629,6 +3624,13 @@ const renderAdmin = async () => {
             updateLinkStatus();
 
             const results = element('div', {className: 'member-link-results'});
+            // Verhindert, dass ein Klick auf ein Suchergebnis zunächst das Suchfeld verlässt (Blur):
+            // Das löst sonst — weil der Browser den bereits per Enter ausgelösten `change` nicht als
+            // „committed" zählt — beim Blur ein zweites, natives `change`-Ereignis aus, das die
+            // Ergebnisliste neu rendert und damit den gerade angeklickten Button unter dem Zeiger
+            // entfernt, bevor dessen Klick überhaupt ankommt — der erste Klick auf ein Ergebnis blieb
+            // dadurch wirkungslos, erst ein zweiter traf noch ein stabiles Element.
+            results.addEventListener('mousedown', (event) => event.preventDefault());
             const renderResults = (candidates) => {
                 results.replaceChildren(...(candidates.length ? candidates.map((candidate) => {
                     const pick = element('button', {
@@ -3754,13 +3756,14 @@ const renderAdmin = async () => {
             return actionButtons;
         };
         // Nachricht, gewählte Aktivitäten und Hilfezeiträume je Anmeldung, aufklappbar.
-        const buildParticipantDetails = (requestItem) => {
+        const buildParticipantDetails = (requestItem, {includeSubmittedAt = false} = {}) => {
             const intervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
             const selectedActivities = Array.isArray(requestItem.selectedActivities) ? requestItem.selectedActivities : [];
             const hasMessage = typeof requestItem.message === 'string' && requestItem.message.trim() !== '';
             const detailsId = `event-helper-details-${requestItem.id}`;
-            const detailsBody = (hasMessage || selectedActivities.length > 0 || intervals.length > 0)
+            const detailsBody = (hasMessage || selectedActivities.length > 0 || intervals.length > 0 || includeSubmittedAt)
                 ? element('div', {className: 'event-helper-participant-details', attributes: {id: detailsId, hidden: 'hidden'}, children: [
+                    ...(includeSubmittedAt ? [element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`})] : []),
                     ...(hasMessage ? [element('p', {className: 'event-helper-participant-message', text: requestItem.message})] : []),
                     ...((selectedActivities.length || intervals.length) ? [element('div', {className: 'event-helper-participant-meta', children: [
                         ...(selectedActivities.length ? [element('div', {className: 'selected-activity-list', children: [
@@ -3826,15 +3829,40 @@ const renderAdmin = async () => {
 
             return button;
         };
-        const renderSingleParticipant = (requestItem) => {
-            const actionButtons = buildParticipationActionButtons(requestItem);
-            const {detailsBody, detailsId} = buildParticipantDetails(requestItem);
+        // Straße/Hausnummer, Geburtsdatum und die tatsächlich für den Mailversand verwendete(n)
+        // E-Mail-Adresse(n) des verknüpften Mitglieds unter dem Namen — analog zur Kandidatenanzeige
+        // beim manuellen Verknüpfen (siehe `openLinkMemberDialog`). Hat das Mitglied selbst keine
+        // Adresse hinterlegt, zeigt `recipientEmails` (siehe `EventHelpRequestRecipientResolver`)
+        // stattdessen die des ganzen Haushalts — genau die, die auch „Mail an alle Helfer"/„Mail an
+        // diesen Helfer" erreichen.
+        const buildMemberDetailLines = (primary) => {
+            if (!primary.memberNumber) return [];
+            const lines = [];
+            const parts = [];
+            if (primary.memberStreet) parts.push(primary.memberStreet);
+            if (primary.memberBirthDate) parts.push(new Date(`${primary.memberBirthDate}T00:00:00`).toLocaleDateString('de-DE'));
+            if (parts.length) lines.push(element('small', {className: 'event-helper-member-detail', text: parts.join(' • ')}));
+            if (Array.isArray(primary.recipientEmails) && primary.recipientEmails.length) {
+                lines.push(element('small', {className: 'event-helper-member-detail', text: primary.recipientEmails.join(', ')}));
+            }
+
+            return lines;
+        };
+        const renderSingleParticipant = (requestItem, event) => {
+            // Reihenfolge der Icon-Buttons ganz rechts: Teilgenommen markieren, Nicht teilgenommen,
+            // Mail — Mail deshalb angehängt statt (wie die anderen beiden) über den Teilnahmestatus
+            // ausgeblendet, da sie unabhängig davon verfügbar bleiben soll.
+            const mailButton = buildMailButton(event, [requestItem], `${requestItem.firstName} ${requestItem.lastName}`);
+            const actionButtons = [...buildParticipationActionButtons(requestItem), ...(mailButton ? [mailButton] : [])];
+            // "Angemeldet am" steht nicht mehr dauerhaft sichtbar in der Kopfzeile, sondern nur noch
+            // in den aufklappbaren Details — dort, wo sie für die Verwaltung tatsächlich gebraucht wird.
+            const {detailsBody, detailsId} = buildParticipantDetails(requestItem, {includeSubmittedAt: true});
             const identity = element('div', {className: 'event-helper-participant-identity', children: [
                 element('div', {className: 'event-helper-participant-name-row', children: [
                     element('strong', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
                     ...(() => { const bubble = buildMemberBubble([requestItem]); return bubble ? [bubble] : []; })(),
                 ]}),
-                element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
+                ...buildMemberDetailLines(requestItem),
             ]});
             return element('article', {className: `event-helper-participant status-${requestItem.status}`, children: [
                 element('header', {className: 'event-helper-participant-header', children: [
@@ -3851,7 +3879,7 @@ const renderAdmin = async () => {
         // `buildParticipantEntries`) — eine gemeinsame Kopfzeile mit Name/Mitgliedsbubble, darunter
         // jede ursprüngliche Anmeldung als eigene Zeile mit ihren eigenen Teilnahme-Aktionen, damit
         // dabei nichts von der bisherigen Einzel-Erfassung verloren geht.
-        const renderMergedParticipant = (items) => {
+        const renderMergedParticipant = (items, event) => {
             const primary = items[0];
             const name = primary.memberFirstName && primary.memberLastName
                 ? `${primary.memberFirstName} ${primary.memberLastName}`
@@ -3862,10 +3890,18 @@ const renderAdmin = async () => {
                     element('strong', {text: name}),
                     ...(bubble ? [bubble] : []),
                 ]}),
+                ...buildMemberDetailLines(primary),
                 element('small', {text: `${items.length} Anmeldungen zu dieser Veranstaltung zusammengeführt`}),
             ]});
-            const rows = items.map((requestItem) => {
-                const actionButtons = buildParticipationActionButtons(requestItem);
+            // Die Mail gilt der ganzen Person (alle zusammengeführten Anmeldungen, siehe
+            // `buildMailButton`), nicht nur einer einzelnen Zeile — Icon deshalb nur einmal, ganz
+            // rechts in der ersten Zeile, statt in jeder Zeile wiederholt.
+            const mailButton = buildMailButton(event, items, name);
+            const rows = items.map((requestItem, index) => {
+                const actionButtons = [
+                    ...buildParticipationActionButtons(requestItem),
+                    ...(index === 0 && mailButton ? [mailButton] : []),
+                ];
                 const {detailsBody, detailsId} = buildParticipantDetails(requestItem);
                 const summary = element('div', {className: 'event-helper-merged-row-summary', children: [
                     element('small', {text: `Angemeldet am ${new Date(requestItem.submittedAt).toLocaleString('de-DE')}`}),
@@ -3887,7 +3923,7 @@ const renderAdmin = async () => {
         // Fasst mehrere Anmeldungen derselben Veranstaltung zu einer Karte zusammen, wenn sie mit
         // demselben Mitglied verknüpft sind (z. B. weil sich jemand aus Versehen zweimal angemeldet
         // hat) — die ursprüngliche Reihenfolge bleibt dabei anhand des ersten Vorkommens erhalten.
-        const buildParticipantEntries = (requestList) => {
+        const buildParticipantEntries = (requestList, event) => {
             const byMemberId = new Map();
             requestList.forEach((requestItem) => {
                 if (!requestItem.memberId) return;
@@ -3900,24 +3936,183 @@ const renderAdmin = async () => {
                 if (rendered.has(requestItem.id)) return;
                 const group = requestItem.memberId ? byMemberId.get(requestItem.memberId) : [requestItem];
                 group.forEach((groupItem) => rendered.add(groupItem.id));
-                entries.push(group.length > 1 ? renderMergedParticipant(group) : renderSingleParticipant(requestItem));
+                entries.push(group.length > 1 ? renderMergedParticipant(group, event) : renderSingleParticipant(requestItem, event));
             });
             return entries;
         };
+        // Freie Rundmail (Betreff/Text selbst getippt, keine Mailvorlage) an alle Helfer dieser
+        // Veranstaltung — z. B. für den Treffpunkt, sonstige wichtige Hinweise oder als Erinnerung
+        // kurz vorher (siehe `SendEventHelpRequestBroadcastUseCase`). Ohne `requestIds` gilt das für
+        // alle Helfer der Veranstaltung (Button „Mail an alle Helfer"); mit `requestIds` (siehe
+        // `buildMailButton`) nur für die betreffende(n) Anmeldung(en) — dasselbe Overlay für beide
+        // Fälle, nur mit angepasster Überschrift und ohne den Betreff-Zusatz für den Namen.
+        //
+        // Das „An:"-Feld startet mit den automatisch ermittelten Empfängern (siehe
+        // `GetEventHelpRequestBroadcastRecipientsUseCase`), lässt sich dort aber noch anpassen
+        // (Adresse entfernen bzw. über das Eingabefeld + Vorschlagsliste ergänzen) — verschickt wird
+        // beim Senden genau die dann dort stehende Liste, nicht mehr automatisch ermittelt.
+        const openEventHelpBroadcastDialog = async (event, {requestIds = null, recipientName = null} = {}) => {
+            const query = new URLSearchParams({eventIdentifier: event.eventIdentifier});
+            (requestIds || []).forEach((id) => query.append('requestIds[]', id));
+            let recipientsData;
+            try {
+                recipientsData = await request(`/api/admin/v1/event-help-requests/broadcast-recipients?${query.toString()}`);
+            } catch (error) {
+                toast(error.message, 'error');
+                return;
+            }
+            let recipients = [...recipientsData.defaultEmails];
+            const suggestions = recipientsData.suggestedEmails;
+
+            const dialog = element('dialog', {className: 'confirm-dialog'});
+            const message = formMessage();
+            const subjectField = field('Betreff', 'subject', `Helfermitteilung - ${event.eventTitle}`);
+            const bodyField = field('Text', 'body', '', 'textarea');
+            const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+            const submit = element('button', {className: 'button button-compact', text: 'Senden', attributes: {type: 'submit'}});
+            cancel.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => dialog.remove());
+
+            // "An:"-Feld: entfernbare Chips je Empfänger, darunter ein Eingabefeld (mit Pulldown aus
+            // `suggestedEmails`, z. B. weitere Haushaltsmitglieder) zum händischen Nachtragen.
+            const recipientList = element('div', {className: 'recipient-chip-list'});
+            const datalistId = `broadcast-recipient-suggestions-${Math.random().toString(36).slice(2)}`;
+            const datalist = element('datalist', {attributes: {id: datalistId}});
+            const updateDatalist = () => {
+                datalist.replaceChildren(...suggestions
+                    .filter((suggestedEmail) => !recipients.some((existing) => existing.toLowerCase() === suggestedEmail.toLowerCase()))
+                    .map((suggestedEmail) => element('option', {attributes: {value: suggestedEmail}})));
+            };
+            const renderRecipients = () => {
+                recipientList.replaceChildren(...(recipients.length ? recipients.map((recipientEmail) => {
+                    const remove = element('button', {className: 'recipient-chip-remove', text: '×', attributes: {type: 'button', 'aria-label': `${recipientEmail} entfernen`}});
+                    remove.addEventListener('click', () => {
+                        recipients = recipients.filter((existing) => existing !== recipientEmail);
+                        renderRecipients();
+                        updateDatalist();
+                    });
+                    return element('span', {className: 'recipient-chip', children: [element('span', {text: recipientEmail}), remove]});
+                }) : [element('span', {className: 'recipient-chip-empty', text: 'Keine Empfänger — bitte mindestens eine E-Mail-Adresse hinzufügen.'})]));
+                updateDatalist();
+            };
+            renderRecipients();
+            const addInput = element('input', {attributes: {type: 'email', placeholder: 'E-Mail-Adresse hinzufügen …', list: datalistId, 'aria-label': 'E-Mail-Adresse hinzufügen'}});
+            const addRecipient = () => {
+                const newRecipientEmail = addInput.value.trim();
+                if (newRecipientEmail === '') return;
+                if (!recipients.some((existing) => existing.toLowerCase() === newRecipientEmail.toLowerCase())) {
+                    recipients = [...recipients, newRecipientEmail];
+                    renderRecipients();
+                }
+                addInput.value = '';
+                addInput.focus();
+            };
+            const addButton = element('button', {className: 'secondary-button button-compact', text: '+ Hinzufügen', attributes: {type: 'button'}});
+            addButton.addEventListener('click', addRecipient);
+            addInput.addEventListener('keydown', (keydownEvent) => {
+                if (keydownEvent.key !== 'Enter') return;
+                keydownEvent.preventDefault();
+                addRecipient();
+            });
+            const recipientsField = element('div', {className: 'field recipient-field', children: [
+                element('span', {text: 'An'}),
+                recipientList,
+                element('div', {className: 'recipient-add-row', children: [addInput, addButton, datalist]}),
+            ]});
+
+            const form = element('form', {className: 'confirm-dialog-content', children: [
+                element('p', {className: 'eyebrow', text: recipientName ? 'Mail an Helfer' : 'Mail an alle Helfer'}),
+                element('h2', {text: recipientName || event.eventTitle}),
+                ...(recipientName ? [element('p', {className: 'field-hint', text: event.eventTitle})] : []),
+                recipientsField,
+                subjectField,
+                bodyField,
+                message,
+                element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+            ]});
+            subjectField.querySelector('input').required = true;
+            bodyField.querySelector('textarea').required = true;
+            form.addEventListener('submit', async (submitEvent) => {
+                submitEvent.preventDefault();
+                if (recipients.length === 0) {
+                    toast('Mindestens eine Empfänger-E-Mail-Adresse ist erforderlich.', 'error');
+                    return;
+                }
+                submit.disabled = true;
+                try {
+                    const data = new FormData(form);
+                    const result = await request('/api/admin/v1/event-help-requests/broadcast', {method: 'POST', body: JSON.stringify({
+                        subject: data.get('subject'),
+                        body: data.get('body'),
+                        recipients,
+                    })});
+                    dialog.close();
+                    const parts = [`${result.sentCount} von ${result.recipientCount} E-Mails verschickt`];
+                    if (result.failedCount) parts.push(`${result.failedCount} fehlgeschlagen`);
+                    toast(parts.join(', ') + '.', result.failedCount ? 'info' : 'success');
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    submit.disabled = false;
+                }
+            });
+            dialog.append(form);
+            document.body.append(dialog);
+            dialog.showModal();
+            // Sonst setzt der Browser den Cursor automatisch ins erste Feld — der vorbefüllte
+            // Betreff würde damit ungewollt teilweise markiert/überschrieben.
+            cancel.focus();
+        };
+        // Icon-Button (✉) neben dem Namen einer einzelnen Anmeldung/Person — öffnet dasselbe
+        // Overlay wie „Mail an alle Helfer", aber auf diese Anmeldung(en) beschränkt (bei
+        // zusammengeführten Mehrfachanmeldungen `items` mehr als eine, siehe `buildMemberBubble`).
+        const buildMailButton = (event, items, recipientName) => {
+            if (!canEditModule('event_helpers')) return null;
+            const button = element('button', {
+                className: 'participant-icon-button participant-icon-button-mail',
+                text: '✉',
+                attributes: {type: 'button', title: 'Mail an diesen Helfer', 'aria-label': 'Mail an diesen Helfer'},
+            });
+            button.addEventListener('click', () => openEventHelpBroadcastDialog(event, {
+                requestIds: items.map((item) => item.id),
+                recipientName,
+            }));
+
+            return button;
+        };
         const renderEventHelperGroup = ({event, requests}) => {
             const participatedCount = requests.filter((requestItem) => requestItem.status === 'participated').length;
+            // "Nicht teilgenommen" steht nicht mehr in der normalen Liste, sondern gesammelt in einem
+            // eigenen, eingeklappten Accordion am Ende der Veranstaltung (siehe unten) — oben sind
+            // nur noch die Status „Neu" und „Teilgenommen" zu sehen.
+            const notParticipatedRequests = requests.filter((requestItem) => requestItem.status === 'not_participated');
+            const visibleRequests = requests.filter((requestItem) => requestItem.status !== 'not_participated');
+            const broadcastButton = element('button', {className: 'secondary-button button-compact', text: 'Mail an alle Helfer', attributes: {type: 'button'}});
+            broadcastButton.addEventListener('click', () => openEventHelpBroadcastDialog(event));
+            const visibleEntries = buildParticipantEntries(visibleRequests, event);
+            const notParticipatedAccordion = notParticipatedRequests.length ? element('details', {className: 'event-helper-archive event-helper-not-participated', children: [
+                element('summary', {children: [
+                    element('strong', {text: 'Nicht teilgenommen'}),
+                    element('span', {className: 'status-badge', text: String(notParticipatedRequests.length)}),
+                ]}),
+                element('div', {className: 'event-helper-archive-list event-helper-list', children: buildParticipantEntries(notParticipatedRequests, event)}),
+            ]}) : null;
             return element('section', {className: 'event-helper-group', children: [
             element('header', {children: [
                 element('div', {children: [
                     element('h3', {text: event.eventTitle}),
                     element('p', {text: `${new Date(`${event.eventDate}T00:00:00`).toLocaleDateString('de-DE')} · ${event.eventTime} Uhr`}),
                 ]}),
-                element('div', {className: 'event-helper-counts', children: [
-                    element('span', {className: 'status-badge', text: `${participatedCount} ${participatedCount === 1 ? 'Helfer' : 'Helfer'}`}),
-                    element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
+                element('div', {className: 'event-helper-header-actions', children: [
+                    ...(canEditModule('event_helpers') ? [broadcastButton] : []),
+                    element('div', {className: 'event-helper-counts', children: [
+                        element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
+                        element('span', {className: 'status-badge', text: `${participatedCount} ${participatedCount === 1 ? 'Helfer' : 'Helfer'}`}),
+                    ]}),
                 ]}),
             ]}),
-            element('div', {className: 'event-helper-list', children: buildParticipantEntries(requests)}),
+            element('div', {className: 'event-helper-list', children: visibleEntries.length ? visibleEntries : [emptyState('Keine offenen Helfer.')]}),
+            ...(notParticipatedAccordion ? [notParticipatedAccordion] : []),
             ]});
         };
         const {

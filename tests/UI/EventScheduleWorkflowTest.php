@@ -96,6 +96,7 @@ final class EventScheduleWorkflowTest extends WebTestCase
             'eventIdentifier' => $scheduleId,
             'firstName' => 'Helfer',
             'lastName' => 'Testfall',
+            'birthDate' => '1990-06-15',
             'message' => '',
             'activityIds' => [$activityId],
             'privacyAccepted' => true,

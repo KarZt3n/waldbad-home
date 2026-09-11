@@ -21,6 +21,7 @@ enum MailTemplateKey: string
     case MembershipApplicationApproved = 'membership_application_approved';
     case MemberAccessMagicLink = 'member_access_magic_link';
     case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
+    case EventHelpRequestConfirmation = 'event_help_request_confirmation';
 
     public function label(): string
     {
@@ -29,6 +30,7 @@ enum MailTemplateKey: string
             self::MembershipApplicationApproved => 'Bestätigung: Mitgliedsantrag angenommen',
             self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
             self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
+            self::EventHelpRequestConfirmation => 'Bestätigung: Helferanmeldung',
         };
     }
 
@@ -39,6 +41,7 @@ enum MailTemplateKey: string
             self::MembershipApplicationApproved => 'Geht an die E-Mail-Adresse der ersten antragstellenden Person, sobald ihr Mitgliedsantrag als Mitglied angelegt (freigegeben) wird.',
             self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
             self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
+            self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
         };
     }
 
@@ -52,6 +55,7 @@ enum MailTemplateKey: string
             self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'beitraege', 'vereinsname'],
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
             self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
+            self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
         };
     }
 
@@ -62,6 +66,7 @@ enum MailTemplateKey: string
             self::MembershipApplicationApproved => 'Willkommen im {{vereinsname}} – deine Mitgliedschaft ist bestätigt',
             self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
             self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
+            self::EventHelpRequestConfirmation => 'Danke für deine Helferanmeldung – {{veranstaltung}}',
         };
     }
 
@@ -115,6 +120,16 @@ enum MailTemplateKey: string
 
                 Bitte im Admin-Bereich unter „Mitgliederverwaltung“ → „Mitgliedernachrichten“ prüfen.
                 TEXT,
+            self::EventHelpRequestConfirmation => <<<'TEXT'
+                Hallo {{vorname}},
+
+                schön, dass du uns unterstützen möchtest! Wir freuen uns, dich am {{datum}} bei „{{veranstaltung}}" zu sehen.
+
+                Vielen Dank für deinen Einsatz!
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
         };
     }
 
@@ -164,6 +179,13 @@ enum MailTemplateKey: string
                 'mitgliedsnummer' => 'Bad-01234',
                 'nachricht' => 'Meine neue Telefonnummer lautet 01234 567890.',
             ],
+            self::EventHelpRequestConfirmation => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'veranstaltung' => 'Frühjahrsputz',
+                'datum' => '13.06.2026',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
         };
     }
 
@@ -180,7 +202,8 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification,
             self::MemberAccessMagicLink,
-            self::MemberMessageSubmittedNotification => [],
+            self::MemberMessageSubmittedNotification,
+            self::EventHelpRequestConfirmation => [],
             self::MembershipApplicationApproved => [
                 'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
                     .'<li style="margin-bottom:8px;font-weight:bold;">Erika Musterfrau: 50,00 € pro Jahr'

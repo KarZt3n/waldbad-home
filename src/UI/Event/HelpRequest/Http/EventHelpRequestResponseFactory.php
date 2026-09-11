@@ -60,6 +60,9 @@ readonly class EventHelpRequestResponseFactory
             'memberNumber' => $request->memberNumber,
             'memberFirstName' => $request->memberFirstName,
             'memberLastName' => $request->memberLastName,
+            'memberStreet' => $request->memberStreet,
+            'memberBirthDate' => $request->memberBirthDate?->format('Y-m-d'),
+            'recipientEmails' => $request->recipientEmails,
         ];
     }
 }

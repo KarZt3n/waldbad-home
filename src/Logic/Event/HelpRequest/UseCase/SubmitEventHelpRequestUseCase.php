@@ -11,6 +11,7 @@ use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
+use App\Logic\Event\HelpRequest\Service\EventHelpRequestConfirmationMailer;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestDuplicateMerger;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestMemberMatcher;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
@@ -23,6 +24,7 @@ readonly class SubmitEventHelpRequestUseCase
         private EventActivityManagerInterface $activityManager,
         private EventHelpRequestMemberMatcher $memberMatcher,
         private EventHelpRequestDuplicateMerger $duplicateMerger,
+        private EventHelpRequestConfirmationMailer $confirmationMailer,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
     ) {
@@ -34,10 +36,9 @@ readonly class SubmitEventHelpRequestUseCase
         string $firstName,
         string $lastName,
         string $message,
+        \DateTimeImmutable $birthDate,
         array $activityIds = [],
-        bool $isMember = false,
         ?string $email = null,
-        ?\DateTimeImmutable $birthDate = null,
     ): EventHelpRequestResponse
     {
         $event = $this->eventProvider->findPublished($eventIdentifier)
@@ -73,9 +74,7 @@ readonly class SubmitEventHelpRequestUseCase
         $trimmedFirstName = trim($firstName);
         $trimmedLastName = trim($lastName);
         $trimmedEmail = $email !== null && trim($email) !== '' ? trim($email) : null;
-        $member = $isMember
-            ? $this->memberMatcher->match($trimmedFirstName, $trimmedLastName, $trimmedEmail, $birthDate)
-            : null;
+        $member = $this->memberMatcher->match($trimmedFirstName, $trimmedLastName, $birthDate, $trimmedEmail);
         $request = new EventHelpRequest(
             id: $this->identifierGenerator->generate(),
             eventIdentifier: $eventIdentifier,
@@ -98,12 +97,12 @@ readonly class SubmitEventHelpRequestUseCase
             }, $activityIds),
             submittedAt: $now,
             updatedAt: $now,
-            isMember: $isMember,
             email: $trimmedEmail,
             birthDate: $birthDate,
             memberId: $member?->id,
         );
 
+        $response = null;
         if ($member !== null) {
             $existing = $this->duplicateMerger->findExisting($allExisting, $member->id, $eventIdentifier);
             if ($existing !== []) {
@@ -113,11 +112,15 @@ readonly class SubmitEventHelpRequestUseCase
                 // gleich mit zusammengeführt); `$request` selbst wird nicht gespeichert.
                 $survivor = count($existing) > 1 ? $this->duplicateMerger->merge($existing, $now) : $existing[0];
                 $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator);
-
-                return EventHelpRequestResponse::fromRequest($this->manager->save($merged));
+                $response = EventHelpRequestResponse::fromRequest($this->manager->save($merged));
             }
         }
+        $response ??= EventHelpRequestResponse::fromRequest($this->manager->save($request));
 
-        return EventHelpRequestResponse::fromRequest($this->manager->save($request));
+        // Nur beim automatischen Matching hier beim Absenden, nicht beim nachträglichen manuellen
+        // Verknüpfen in der Verwaltung (siehe `EventHelpRequestConfirmationMailer`).
+        $this->confirmationMailer->send($trimmedFirstName, $trimmedLastName, $event, $member, $trimmedEmail);
+
+        return $response;
     }
 }

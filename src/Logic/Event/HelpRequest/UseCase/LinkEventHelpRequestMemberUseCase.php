@@ -6,6 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestResponse;
 use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestDuplicateMerger;
+use App\Logic\Event\HelpRequest\Service\EventHelpRequestRecipientResolver;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 
 /**
@@ -21,6 +22,7 @@ readonly class LinkEventHelpRequestMemberUseCase
         private EventHelpRequestManagerInterface $manager,
         private MemberManagerInterface $members,
         private EventHelpRequestDuplicateMerger $duplicateMerger,
+        private EventHelpRequestRecipientResolver $recipientResolver,
         private ClockInterface $clock,
     ) {
     }
@@ -54,6 +56,9 @@ readonly class LinkEventHelpRequestMemberUseCase
             memberNumber: $member?->memberNumber,
             memberFirstName: $member?->firstName,
             memberLastName: $member?->lastName,
+            memberStreet: $member?->street,
+            memberBirthDate: $member?->birthDate,
+            recipientEmails: $this->recipientResolver->resolve($member, $request->email),
         );
     }
 }
