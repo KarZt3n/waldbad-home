@@ -23,6 +23,7 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
+use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditConfig;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
@@ -84,6 +85,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $householdRecalculator,
             $memberManager,
             $this->contributionRates(),
+            $this->workAssignmentCreditConfig(),
             $logger,
         ))->execute('application-1');
 
@@ -181,12 +183,97 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $householdRecalculator,
             $memberManager,
             $contributionRates,
+            $this->workAssignmentCreditConfig(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
 
         self::assertNotNull($capturedEmail);
         self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getTextBody());
         self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getHtmlBody());
+    }
+
+    /**
+     * Die Beitragsübersicht in der HTML-Mail soll je Person eine fett dargestellte Zeile sein, die
+     * einzelnen Positionen darunter kursiv — und der Arbeitseinsatz-Zuschlag nennt statt der
+     * admin-editierbaren Beitragssatz-Bezeichnung die aktuell gültige, zur vollen Rückerstattung
+     * nötige Stundenzahl (Nutzer-Vorgabe).
+     */
+    public function testConfirmationEmailFormatsThePersonLineBoldAndPositionsItalicWithWorkAssignmentHours(): void
+    {
+        $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
+        $application = $this->familyApplication($now);
+
+        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
+        $applications->method('get')->willReturn($application);
+        $applications->method('save')->willReturnCallback(static fn (MembershipApplication $saved): MembershipApplication => $saved);
+
+        $createdMembers = [];
+        $orchestrator = $this->createStub(MemberOnboardingOrchestrator::class);
+        $orchestrator->method('createFromRequest')->willReturnCallback(
+            function (CreateMemberRequest $request) use (&$createdMembers): Member {
+                $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1))
+                    ->withContribution(ContributionCategory::FamilyAdult, 5000, 1500);
+                $createdMembers[] = $member;
+
+                return $member;
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn($now);
+
+        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $memberManager = $this->createStub(MemberManagerInterface::class);
+        $memberManager->method('findByPrimaryMemberNumber')->willReturnCallback(static fn (): array => $createdMembers);
+
+        $contributionRates = $this->createStub(ContributionRateManagerInterface::class);
+        $contributionRates->method('findByCategory')->willReturn(
+            new ContributionRate('rate-1', ContributionCategory::FamilyAdult, 'Familienbeitrag Erwachsene', 5000, PaymentInterval::Yearly),
+        );
+
+        $capturedEmail = null;
+        $transport = $this->createStub(TransportInterface::class);
+        $transport->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
+            $capturedEmail = $email;
+        });
+        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
+        $transportFactory->method('create')->willReturn($transport);
+
+        $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
+        $emailSettingsManager->method('get')->willReturn(
+            new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []),
+        );
+        $templateManager = $this->createStub(MailTemplateManagerInterface::class);
+        $templateManager->method('resolve')->willReturnCallback(
+            static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
+        );
+        $signatures = $this->createStub(MailSignatureManagerInterface::class);
+        $signatures->method('find')->willReturn(null);
+        $mailer = new NotificationMailer(
+            $emailSettingsManager,
+            $transportFactory,
+            new MailTemplateRenderer($templateManager, new MailContentRenderer(), $signatures),
+            new BrandedEmailLayout(),
+            $this->createStub(EmailLogoProviderInterface::class),
+            $this->createStub(LoggerInterface::class),
+        );
+
+        (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $mailer,
+            $householdRecalculator,
+            $memberManager,
+            $contributionRates,
+            $this->workAssignmentCreditConfig(),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('application-1');
+
+        $html = (string) $capturedEmail?->getHtmlBody();
+        self::assertStringContainsString('<li style="margin-bottom:8px;font-weight:bold;">Maria Muster: ', $html);
+        self::assertStringContainsString('<li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: ', $html);
+        self::assertStringContainsString('<li style="font-style:italic;font-weight:normal;">Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 15,00 € pro Jahr</li>', $html);
     }
 
     public function testCannotReleaseTheSameApplicationTwice(): void
@@ -213,6 +300,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->createStub(HouseholdContributionRecalculator::class),
             $this->createStub(MemberManagerInterface::class),
             $this->contributionRates(),
+            $this->workAssignmentCreditConfig(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
     }
@@ -259,6 +347,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $householdRecalculator,
             $this->createStub(MemberManagerInterface::class),
             $this->contributionRates(),
+            $this->workAssignmentCreditConfig(),
             $logger,
         ))->execute('application-1');
 
@@ -355,5 +444,13 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
     private function contributionRates(): ContributionRateManagerInterface
     {
         return $this->createStub(ContributionRateManagerInterface::class);
+    }
+
+    private function workAssignmentCreditConfig(): WorkAssignmentCreditConfig
+    {
+        return new WorkAssignmentCreditConfig(
+            ['from' => '2026-01-01', 'to' => '2027-01-01'],
+            [['valid_from' => '2026-01-01', 'required_hours' => 5]],
+        );
     }
 }

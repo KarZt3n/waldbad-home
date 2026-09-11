@@ -147,7 +147,7 @@ enum MailTemplateKey: string
                       - Familienbeitrag Erwachsene: 50,00 € pro Jahr
                     - Max Mustermann: 60,00 € pro Jahr
                       - Familienbeitrag Erwachsene: 50,00 € pro Jahr
-                      - Arbeitseinsatz-Zuschlag: 10,00 € pro Jahr
+                      - Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 10,00 € pro Jahr
                     Gesamt: 110,00 € pro Jahr
                     TEXT,
                 'vereinsname' => AssociationName::CURRENT,
@@ -183,12 +183,12 @@ enum MailTemplateKey: string
             self::MemberMessageSubmittedNotification => [],
             self::MembershipApplicationApproved => [
                 'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
-                    .'<li style="margin-bottom:8px;">Erika Musterfrau: 50,00 € pro Jahr'
-                    .'<ul style="margin:4px 0 0;padding-left:20px;"><li>Familienbeitrag Erwachsene: 50,00 € pro Jahr</li></ul></li>'
-                    .'<li style="margin-bottom:8px;">Max Mustermann: 60,00 € pro Jahr'
+                    .'<li style="margin-bottom:8px;font-weight:bold;">Erika Musterfrau: 50,00 € pro Jahr'
+                    .'<ul style="margin:4px 0 0;padding-left:20px;"><li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: 50,00 € pro Jahr</li></ul></li>'
+                    .'<li style="margin-bottom:8px;font-weight:bold;">Max Mustermann: 60,00 € pro Jahr'
                     .'<ul style="margin:4px 0 0;padding-left:20px;">'
-                    .'<li>Familienbeitrag Erwachsene: 50,00 € pro Jahr</li>'
-                    .'<li>Arbeitseinsatz-Zuschlag: 10,00 € pro Jahr</li></ul></li>'
+                    .'<li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: 50,00 € pro Jahr</li>'
+                    .'<li style="font-style:italic;font-weight:normal;">Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 10,00 € pro Jahr</li></ul></li>'
                     .'</ul><p style="margin:0;font-weight:bold;">Gesamt: 110,00 € pro Jahr</p>',
             ],
         };

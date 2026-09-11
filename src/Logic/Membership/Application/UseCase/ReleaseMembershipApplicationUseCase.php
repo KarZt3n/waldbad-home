@@ -8,7 +8,6 @@ use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
-use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -19,6 +18,7 @@ use App\Logic\Membership\Member\Model\PaymentDay;
 use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
+use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditConfig;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Service\NotificationMailer;
@@ -53,6 +53,7 @@ readonly class ReleaseMembershipApplicationUseCase
         private HouseholdContributionRecalculator $householdRecalculator,
         private MemberManagerInterface $memberManager,
         private ContributionRateManagerInterface $contributionRates,
+        private WorkAssignmentCreditConfig $workAssignmentCreditConfig,
         private LoggerInterface $logger,
     ) {
     }
@@ -159,6 +160,7 @@ readonly class ReleaseMembershipApplicationUseCase
             }
 
             $head = $members[0];
+            $workAssignmentRequiredHours = $this->workAssignmentCreditConfig->requiredHoursAt($now);
             $this->notificationMailer->sendTo(
                 $applicantEmail,
                 MailTemplateKey::MembershipApplicationApproved,
@@ -168,10 +170,10 @@ readonly class ReleaseMembershipApplicationUseCase
                     'mitgliedsnummer' => $head->memberNumber,
                     'beitrittsdatum' => $now->format('d.m.Y'),
                     'personen' => $this->formatMembers($members),
-                    'beitraege' => $this->formatContributionsAsText($members),
+                    'beitraege' => $this->formatContributionsAsText($members, $workAssignmentRequiredHours),
                     'vereinsname' => AssociationName::CURRENT,
                 ],
-                ['beitraege' => $this->formatContributionsAsHtml($members)],
+                ['beitraege' => $this->formatContributionsAsHtml($members, $workAssignmentRequiredHours)],
             );
         } catch (\Throwable $exception) {
             // Die Mitglieder sind zu diesem Zeitpunkt bereits angelegt und der Antrag bereits als
@@ -212,12 +214,12 @@ readonly class ReleaseMembershipApplicationUseCase
      *
      * @param list<Member> $members
      */
-    private function formatContributionsAsText(array $members): string
+    private function formatContributionsAsText(array $members, int $workAssignmentRequiredHours): string
     {
         $lines = [];
         $totalCents = 0;
         foreach ($members as $member) {
-            $positions = $this->contributionPositions($member);
+            $positions = $this->contributionPositions($member, $workAssignmentRequiredHours);
             $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
             $totalCents += $memberTotalCents;
 
@@ -238,25 +240,25 @@ readonly class ReleaseMembershipApplicationUseCase
      *
      * @param list<Member> $members
      */
-    private function formatContributionsAsHtml(array $members): string
+    private function formatContributionsAsHtml(array $members, int $workAssignmentRequiredHours): string
     {
         $totalCents = 0;
         $items = '';
         foreach ($members as $member) {
-            $positions = $this->contributionPositions($member);
+            $positions = $this->contributionPositions($member, $workAssignmentRequiredHours);
             $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
             $totalCents += $memberTotalCents;
 
             $subItems = implode('', array_map(
                 fn (array $position): string => sprintf(
-                    '<li>%s: %s pro Jahr</li>',
+                    '<li style="font-style:italic;font-weight:normal;">%s: %s pro Jahr</li>',
                     $this->escapeHtml($position['label']),
                     $this->formatEuro($position['amountCents']),
                 ),
                 $positions,
             ));
             $items .= sprintf(
-                '<li style="margin-bottom:8px;">%s %s: %s pro Jahr<ul style="margin:4px 0 0;padding-left:20px;">%s</ul></li>',
+                '<li style="margin-bottom:8px;font-weight:bold;">%s %s: %s pro Jahr<ul style="margin:4px 0 0;padding-left:20px;">%s</ul></li>',
                 $this->escapeHtml($member->firstName),
                 $this->escapeHtml($member->lastName),
                 $this->formatEuro($memberTotalCents),
@@ -272,11 +274,14 @@ readonly class ReleaseMembershipApplicationUseCase
      * Die einzelnen Positionen, aus denen sich der Jahresbeitrag einer Person zusammensetzt: der
      * eigentliche Beitragssatz (dessen admin-editierbare Bezeichnung, z. B. „Familienbeitrag
      * Erwachsene“) sowie — nur wenn die Person laut Berechnung dafür in Frage kommt (siehe
-     * `MemberContributionCalculator`) — der Arbeitseinsatz-Zuschlag als eigene Position.
+     * `MemberContributionCalculator`) — der Arbeitseinsatz-Zuschlag als eigene Position. Dessen
+     * Bezeichnung nennt bewusst die aktuell gültige, zur vollen Rückerstattung nötige Stundenzahl
+     * (`WorkAssignmentCreditConfig::requiredHoursAt()`, siehe auch `WorkAssignmentCreditCalculator`
+     * in „Meine Mitgliedschaft") statt der admin-editierbaren Beitragssatz-Bezeichnung — Nutzer-Vorgabe.
      *
      * @return list<array{label: string, amountCents: int}>
      */
-    private function contributionPositions(Member $member): array
+    private function contributionPositions(Member $member, int $workAssignmentRequiredHours): array
     {
         $rateLabel = $member->contributionCategory !== null
             ? $this->contributionRates->findByCategory($member->contributionCategory)?->label
@@ -286,8 +291,10 @@ readonly class ReleaseMembershipApplicationUseCase
         ];
 
         if ($member->workAssignmentSurchargeCents !== null) {
-            $surchargeLabel = $this->contributionRates->findByCategory(ContributionCategory::WorkAssignmentSurcharge)?->label;
-            $positions[] = ['label' => $surchargeLabel ?? 'Arbeitseinsatz-Zuschlag', 'amountCents' => $member->workAssignmentSurchargeCents];
+            $positions[] = [
+                'label' => sprintf('Arbeitseinsatz (Rückerstattung nach %d Gemeinschaftsstunden)', $workAssignmentRequiredHours),
+                'amountCents' => $member->workAssignmentSurchargeCents,
+            ];
         }
 
         return $positions;
