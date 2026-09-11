@@ -17,8 +17,10 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenException;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
+use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\MemberMessage\Manager\MemberMessageManagerInterface;
 use App\Logic\Membership\MemberMessage\Model\MemberMessage;
@@ -50,6 +52,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->memberManager(),
             $this->createStub(ContributionRateManagerInterface::class),
             $this->contributionRateSettingsManager(),
+            $this->workAssignmentCreditCalculator(),
             new MemberAccessPasswordHasher(),
             $this->clock(),
         );
@@ -90,6 +93,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->memberManager(),
             $this->createStub(ContributionRateManagerInterface::class),
             $this->contributionRateSettingsManager(),
+            $this->workAssignmentCreditCalculator(),
             new MemberAccessPasswordHasher(),
             $this->clock(),
         );
@@ -181,6 +185,14 @@ final class SendMemberMessageUseCaseTest extends TestCase
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01T10:00:00+02:00'));
 
         return $clock;
+    }
+
+    private function workAssignmentCreditCalculator(): WorkAssignmentCreditCalculator
+    {
+        $calculator = $this->createStub(WorkAssignmentCreditCalculator::class);
+        $calculator->method('calculate')->willReturn(new WorkAssignmentCreditResponse('2026-01-01', '2027-01-01', 0, 0, 5, 300, 0, 0));
+
+        return $calculator;
     }
 
     private function identifierGenerator(): IdentifierGeneratorInterface

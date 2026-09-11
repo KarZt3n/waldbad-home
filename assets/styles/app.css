@@ -749,6 +749,8 @@ a { color: var(--forest-700); }
 .member-self-service-card-body { display: grid; gap: .4rem; padding: 1rem 1.25rem; }
 .member-self-service-card-body h4 { margin: .9rem 0 .1rem; color: var(--forest-700); font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
 .member-self-service-card-body h4:first-child { margin-top: 0; }
+.member-self-service-work-assignment { display: grid; gap: .4rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.member-self-service-work-assignment h4 { margin: 0 0 .1rem; color: var(--forest-700); font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
 .member-data-row { display: grid; grid-template-columns: 1fr 1fr; align-items: baseline; gap: .3rem 1rem; padding: .4rem 0; border-bottom: 1px solid var(--line); }
 .member-data-row:last-of-type { border-bottom: 0; }
 .member-data-label { color: var(--muted); }

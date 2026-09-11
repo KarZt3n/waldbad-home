@@ -1460,22 +1460,75 @@ const memberTotalCents = (member) => (member.contributionAmountCents || 0) + (me
  * `MemberAccessSessionResponse::$contributionRatesValidFrom`) verweist auf die zugrunde liegende
  * Beitragsordnung.
  */
-const renderMemberSelfServiceTotal = (members, validFrom) => {
+/**
+ * Fasst beitragspflichtige Haushaltsmitglieder nach Beitragssatz-Label + Betrag + Zahlungsintervall
+ * zusammen, z. B. "2x Familie: Elternteil" oder "3x Arbeitseinsatz-Zuschlag" — für die
+ * Kurzübersicht in `renderMemberSelfServiceTotal`.
+ */
+const groupMembersByAmount = (members, labelFn, amountFn) => {
+    const groups = new Map();
+    members.forEach((member) => {
+        const label = labelFn(member);
+        const cents = amountFn(member);
+        if (!label || !cents) return;
+        const key = `${label}|${cents}|${member.paymentInterval}`;
+        const group = groups.get(key) || {label, cents, interval: member.paymentInterval, count: 0};
+        group.count += 1;
+        groups.set(key, group);
+    });
+
+    return [...groups.values()];
+};
+
+const formatHoursMinutes = (totalMinutes) => {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes > 0 ? `${hours} Std ${minutes} Min` : `${hours} Std`;
+};
+
+/**
+ * Arbeitseinsatz-Gutschrift der ganzen Familie (siehe `WorkAssignmentCreditCalculator`, geleistete
+ * Stunden über alle Haushaltsmitglieder aufsummiert — innerhalb der Familie übertragbar). Bewusst
+ * getrennt vom „Gesamtbeitrag" oben dargestellt: die Gutschrift wird dort **nicht** abgezogen,
+ * sondern ist eine gesonderte Rückzahlung.
+ */
+const renderWorkAssignmentCredit = (credit) => element('div', {className: 'member-self-service-work-assignment', children: [
+    element('h4', {text: 'Geleistete Arbeitsstunden'}),
+    memberDataRow('Zeitraum', `${formatDateDE(credit.periodFrom)} – ${formatDateDE(credit.periodTo)}`),
+    memberDataRow('Arbeitseinsätze der Familie', `${credit.liableMemberCount}x (${formatEuro(credit.totalSurchargeCents)})`),
+    memberDataRow('Benötigte Stunden je Arbeitseinsatz', `${credit.requiredHoursPerAssignment} Std (${formatEuro(credit.creditPerHourCents)}/Std)`),
+    memberDataRow('Geleistete Stunden der ganzen Familie', formatHoursMinutes(credit.workedMinutes)),
+    element('div', {className: 'member-payer-total', children: [
+        element('span', {text: 'Gutschrift (gesonderte Rückzahlung)'}),
+        element('span', {text: formatEuro(credit.creditCents)}),
+    ]}),
+]});
+
+const renderMemberSelfServiceTotal = (members, validFrom, workAssignmentCredit) => {
     const liableMembers = members.filter((member) => member.contributionLiable);
     const totalsByInterval = new Map();
     liableMembers.forEach((member) => {
         totalsByInterval.set(member.paymentInterval, (totalsByInterval.get(member.paymentInterval) || 0) + memberTotalCents(member));
     });
 
+    const breakdownGroups = [
+        ...groupMembersByAmount(liableMembers, (member) => member.contributionCategoryLabel, (member) => member.contributionAmountCents),
+        ...groupMembersByAmount(liableMembers, () => 'Arbeitseinsatz-Zuschlag', (member) => member.workAssignmentSurchargeCents),
+    ];
+
     return element('article', {className: 'management-card member-self-service-total', children: [
         element('h3', {text: 'Gesamtbeitrag'}),
         liableMembers.length
-            ? [...totalsByInterval].map(([interval, cents]) => element('div', {className: 'member-payer-total', children: [
-                element('span', {text: 'Gesamtbeitrag'}),
-                element('span', {text: `${formatEuro(cents)} (${PAYMENT_INTERVAL_LABELS[interval] || interval})`}),
-            ]}))
+            ? [
+                ...breakdownGroups.map((group) => memberDataRow(`${group.count}x ${group.label}`, `${formatEuro(group.cents)} (${PAYMENT_INTERVAL_LABELS[group.interval] || group.interval})`)),
+                ...[...totalsByInterval].map(([interval, cents]) => element('div', {className: 'member-payer-total', children: [
+                    element('span', {text: 'Gesamtbeitrag'}),
+                    element('span', {text: `${formatEuro(cents)} (${PAYMENT_INTERVAL_LABELS[interval] || interval})`}),
+                ]})),
+            ]
             : element('p', {className: 'empty-copy', text: 'Kein beitragspflichtiges Mitglied in diesem Haushalt.'}),
         ...(validFrom ? [element('p', {className: 'field-hint', text: `Beitragsordnung / Beitragssätze – gültig ab ${formatDateDE(validFrom)}`})] : []),
+        ...(workAssignmentCredit && workAssignmentCredit.liableMemberCount > 0 ? [renderWorkAssignmentCredit(workAssignmentCredit)] : []),
     ].flat()});
 };
 
@@ -1488,7 +1541,12 @@ const renderMemberSelfServiceTotal = (members, validFrom) => {
  * (siehe `SendMemberMessageUseCase`).
  */
 const renderMemberSelfServiceData = (token, password, session) => {
-    const memberCards = session.members.map((member) => {
+    // Ältestes Haushaltsmitglied zuerst (Nutzer-Vorgabe) — bestimmt sowohl die Akkordeon- als auch
+    // die Pulldown-Reihenfolge; `birthDate` ist ein ISO-Datum ("YYYY-MM-DD"), daher reicht ein
+    // aufsteigender String-Vergleich.
+    const sortedMembers = [...session.members].sort((a, b) => a.birthDate.localeCompare(b.birthDate));
+
+    const memberCards = sortedMembers.map((member, index) => {
         const card = element('details', {className: 'member-self-service-card', children: [
             element('summary', {children: [
                 element('span', {className: 'member-self-service-summary-identity', children: [
@@ -1524,19 +1582,20 @@ const renderMemberSelfServiceData = (token, password, session) => {
                 ] : []),
             ]}),
         ]});
-        if (session.members.length === 1) card.open = true;
+        // Das erste (= älteste) Akkordeon ist aufgeklappt, alle anderen zugeklappt.
+        if (index === 0) card.open = true;
 
         return card;
     });
 
     const memberSelect = element('select', {attributes: {name: 'memberId', id: 'member-message-member'}});
-    session.members.forEach((member) => memberSelect.append(element('option', {
+    sortedMembers.forEach((member) => memberSelect.append(element('option', {
         text: `${member.firstName} ${member.lastName} (${member.memberNumber})`,
         attributes: {value: member.id},
     })));
-    const memberField = session.members.length > 1
+    const memberField = sortedMembers.length > 1
         ? element('label', {className: 'field', children: [element('span', {text: 'Für welche Person?'}), memberSelect]})
-        : element('input', {attributes: {type: 'hidden', name: 'memberId', value: session.members[0].id}});
+        : element('input', {attributes: {type: 'hidden', name: 'memberId', value: sortedMembers[0].id}});
 
     const message = formMessage();
     const messageForm = element('form', {className: 'public-form', children: [
@@ -1571,7 +1630,7 @@ const renderMemberSelfServiceData = (token, password, session) => {
 
     return element('div', {className: 'member-self-service', children: [
         element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
-        renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom),
+        renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom, session.workAssignmentCredit),
         ...memberCards,
         messageForm,
     ]});

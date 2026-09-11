@@ -118,6 +118,16 @@ readonly class PublicMemberAccessController
             'email' => $session->email,
             'members' => array_map($this->memberToArray(...), $session->members),
             'contributionRatesValidFrom' => $session->contributionRatesValidFrom,
+            'workAssignmentCredit' => [
+                'periodFrom' => $session->workAssignmentCredit->periodFrom,
+                'periodTo' => $session->workAssignmentCredit->periodTo,
+                'liableMemberCount' => $session->workAssignmentCredit->liableMemberCount,
+                'totalSurchargeCents' => $session->workAssignmentCredit->totalSurchargeCents,
+                'requiredHoursPerAssignment' => $session->workAssignmentCredit->requiredHoursPerAssignment,
+                'creditPerHourCents' => $session->workAssignmentCredit->creditPerHourCents,
+                'workedMinutes' => $session->workAssignmentCredit->workedMinutes,
+                'creditCents' => $session->workAssignmentCredit->creditCents,
+            ],
         ];
     }
 

@@ -17,9 +17,11 @@ use App\Logic\Membership\Member\Model\PaymentDay;
 use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenException;
+use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\PaymentInterval;
 use PHPUnit\Framework\TestCase;
@@ -100,12 +102,16 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
         $settings = $this->createStub(ContributionRateSettingsManagerInterface::class);
         $settings->method('get')->willReturn(new ContributionRateSettings(new \DateTimeImmutable('2026-01-01')));
 
-        $session = $this->useCase($tokens, $members, $rates, $settings)->execute('raw-token', self::PASSWORD);
+        $credit = $this->createStub(WorkAssignmentCreditCalculator::class);
+        $credit->method('calculate')->willReturn(new WorkAssignmentCreditResponse('2026-01-01', '2027-01-01', 0, 0, 5, 300, 0, 0));
+
+        $session = $this->useCase($tokens, $members, $rates, $settings, $credit)->execute('raw-token', self::PASSWORD);
 
         self::assertSame('erika@example.test', $session->email);
         self::assertCount(1, $session->members);
         self::assertSame('Einzelperson über 21 Jahre', $session->members[0]->contributionCategoryLabel);
         self::assertSame('2026-01-01', $session->contributionRatesValidFrom);
+        self::assertSame(0, $session->workAssignmentCredit->creditCents);
     }
 
     /**
@@ -133,15 +139,20 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
         ?MemberManagerInterface $members = null,
         ?ContributionRateManagerInterface $rates = null,
         ?ContributionRateSettingsManagerInterface $settings = null,
+        ?WorkAssignmentCreditCalculator $workAssignmentCredit = null,
     ): ResolveMemberAccessSessionUseCase {
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable(self::NOW));
+
+        $defaultCredit = $this->createStub(WorkAssignmentCreditCalculator::class);
+        $defaultCredit->method('calculate')->willReturn(new WorkAssignmentCreditResponse('2026-01-01', '2027-01-01', 0, 0, 5, 300, 0, 0));
 
         return new ResolveMemberAccessSessionUseCase(
             $tokens,
             $members ?? $this->createStub(MemberManagerInterface::class),
             $rates ?? $this->createStub(ContributionRateManagerInterface::class),
             $settings ?? $this->createStub(ContributionRateSettingsManagerInterface::class),
+            $workAssignmentCredit ?? $defaultCredit,
             new MemberAccessPasswordHasher(),
             $clock,
         );

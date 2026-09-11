@@ -13,6 +13,18 @@ interface EventHelpRequestManagerInterface
      */
     public function all(): array;
 
+    /**
+     * Geleistete (Status „Teilgenommen") Helferanmeldungen der übergebenen Mitglieds-IDs, deren
+     * Veranstaltungsdatum im Zeitraum [$from, $to) liegt ($to exklusiv) — die wiederverwendbare
+     * Grundlage für die Arbeitseinsatz-Gutschrift in „Meine Mitgliedschaft" (siehe
+     * `GetMemberWorkedMinutesQuery`) sowie für den künftigen Arbeitsstunden-Export für die
+     * Schatzmeisterei.
+     *
+     * @param list<string> $memberIds
+     * @return list<EventHelpRequest>
+     */
+    public function findParticipatedForMembersInPeriod(array $memberIds, \DateTimeImmutable $from, \DateTimeImmutable $to): array;
+
     public function save(EventHelpRequest $request): EventHelpRequest;
 
     /**

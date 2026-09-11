@@ -26,6 +26,8 @@ services:
             $memberMessageLimiter: '@limiter.member_message'
             $mediaUploadDirectory: '%media_upload_directory%'
             $logoPath: '%email_logo_path%'
+            $workAssignmentSelfServicePeriod: '%work_assignment_self_service_period%'
+            $workAssignmentRequiredHoursTiers: '%work_assignment_required_hours_tiers%'
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name

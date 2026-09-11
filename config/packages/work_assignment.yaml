@@ -1,0 +1,16 @@
+# Konfiguration für die Arbeitseinsatz-Gutschriftanzeige in „Meine Mitgliedschaft" (siehe
+# `WorkAssignmentCreditConfig`, `WorkAssignmentCreditCalculator`). Der Betrag des
+# Arbeitseinsatz-Zuschlags selbst bleibt weiterhin admin-editierbar im Beitragssatz
+# „Arbeitseinsatz-Zuschlag" (inkl. dortiger „geplante Änderung ab Datum" — siehe `ContributionRate`)
+# — hier wird nur festgelegt, für welchen Zeitraum „Meine Mitgliedschaft" die geleisteten Stunden
+# zählt, und wie viele Stunden je Arbeitseinsatz zur vollen Gutschrift nötig sind.
+parameters:
+    work_assignment_self_service_period:
+        from: '2026-01-01'
+        to: '2027-01-01'
+    # Je Stichtag, ab dem die jeweilige Stundenzahl gilt — sollte zeitlich mit einer eventuellen
+    # geplanten Änderung des Beitragssatzes „Arbeitseinsatz-Zuschlag" zusammenfallen (siehe oben).
+    # Reihenfolge in der Liste ist egal, `WorkAssignmentCreditConfig` sortiert selbst nach Datum.
+    work_assignment_required_hours_tiers:
+        - { valid_from: '2026-01-01', required_hours: 5 }
+        - { valid_from: '2027-01-01', required_hours: 6 }

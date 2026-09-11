@@ -18,6 +18,8 @@ readonly class MemberAccessSessionResponse
          * Mitgliedschaft".
          */
         public ?string $contributionRatesValidFrom,
+        /** Arbeitseinsatz-Gutschrift der ganzen Familie (siehe `WorkAssignmentCreditCalculator`). */
+        public WorkAssignmentCreditResponse $workAssignmentCredit,
     ) {
     }
 }

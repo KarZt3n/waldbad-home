@@ -12,6 +12,7 @@ use App\Logic\Membership\MemberAccess\Dto\MemberSelfServiceResponse;
 use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenException;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 
 /**
  * Löst einen per Mail verschickten Token in die zugehörigen, nur lesend freigegebenen
@@ -29,6 +30,7 @@ readonly class ResolveMemberAccessSessionUseCase
         private MemberManagerInterface $members,
         private ContributionRateManagerInterface $contributionRates,
         private ContributionRateSettingsManagerInterface $contributionRateSettings,
+        private WorkAssignmentCreditCalculator $workAssignmentCredit,
         private MemberAccessPasswordHasher $passwordHasher,
         private ClockInterface $clock,
     ) {
@@ -56,6 +58,7 @@ readonly class ResolveMemberAccessSessionUseCase
                 $members,
             ),
             contributionRatesValidFrom: $this->contributionRateSettings->get()->validFrom?->format('Y-m-d'),
+            workAssignmentCredit: $this->workAssignmentCredit->calculate($members),
         );
     }
 
