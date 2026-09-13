@@ -49,7 +49,7 @@ a { color: var(--forest-700); }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 2rem;
+    gap: 0.3rem;
     padding: 1rem clamp(1rem, 5vw, 5rem);
     color: var(--white);
     background: rgb(11 46 32 / 96%);
@@ -194,6 +194,7 @@ a { color: var(--forest-700); }
     background: transparent;
     font-size: .85rem;
     cursor: pointer;
+    margin-right: 3px;
 }
 .member-access-toggle:hover, .member-access-nav.open .member-access-toggle {
     color: var(--forest-950);
@@ -1488,6 +1489,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .site-header { position: static; flex-wrap: wrap; }
     .nav-toggle { display: flex; }
     .main-nav {
+        order: 2;
         display: none;
         width: 100%;
         flex-direction: column;
@@ -1502,6 +1504,12 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .submenu { position: static; width: 100%; margin-left: .75rem; border: 0; box-shadow: none; }
     .submenu .submenu { position: static; margin-left: .75rem; }
     .submenu::before { display: none; }
+    .member-access-nav {
+        display: flex;
+        width: 100%;
+        justify-content: flex-end;
+        order: 1;
+    }
     .member-access-label { display: none; }
     .member-access-toggle { padding: .5rem; }
     .cta-row, .site-footer, .editor-heading { align-items: stretch; flex-direction: column; }

@@ -1367,7 +1367,12 @@ const buildMemberAccessNav = () => {
     icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"></path></svg>';
     const toggle = element('button', {
         className: 'member-access-toggle',
-        attributes: {type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false'},
+        attributes: {
+            type: 'button',
+            'aria-haspopup': 'true',
+            'aria-expanded': 'false',
+            'aria-label': 'Mitgliedschaftsmenü öffnen',
+        },
     });
     toggle.append(icon);
     const menu = element('div', {className: 'member-access-menu', children: [
@@ -1377,11 +1382,13 @@ const buildMemberAccessNav = () => {
     const close = () => {
         container.classList.remove('open');
         toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Mitgliedschaftsmenü öffnen');
     };
     toggle.addEventListener('click', (event) => {
         event.stopPropagation();
         const open = container.classList.toggle('open');
         toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-label', open ? 'Mitgliedschaftsmenü schließen' : 'Mitgliedschaftsmenü öffnen');
     });
     document.addEventListener('click', close);
     document.addEventListener('keydown', (event) => {
