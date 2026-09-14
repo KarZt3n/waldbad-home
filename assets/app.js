@@ -5046,7 +5046,7 @@ const renderAdmin = async () => {
     };
 
     let memberSearchTerm = '';
-    let memberSortField = 'memberNumber';
+    let memberSortField = 'primaryMemberNumber';
     let memberSortDirection = 'asc';
     let memberStatusFilter = '';
 
@@ -5055,9 +5055,13 @@ const renderAdmin = async () => {
     // auch `GetMembershipDashboardQuery::$leavingAtYearEnd`/`$leftLastYearEnd`, dieselbe Definition).
     const isLeavingAtYearEnd = (leftAt) => !!leftAt && leftAt === `${new Date().getFullYear()}-12-31`;
     const isLeftLastYearEnd = (leftAt) => !!leftAt && leftAt === `${new Date().getFullYear() - 1}-12-31`;
-    const showMembers = async () => {
-        const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
-        const data = await request('/api/admin/v1/members' + query);
+    // Läd bewusst nicht (mehr) blockierend: der reale Mitgliederbestand (aktuell ~1000
+    // Datensätze, Sage-GS-Import) lässt die Abfrage spürbar dauern. Kopf/Suche/Filter werden
+    // daher sofort gerendert, die Tabelle zeigt währenddessen einen Ladehinweis und wird ersetzt,
+    // sobald die Antwort da ist. `membersLoadToken` verwirft veraltete Antworten, falls Suche,
+    // Filter oder Tab in der Zwischenzeit erneut wechseln.
+    let membersLoadToken = 0;
+    const showMembers = () => {
         const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
         const actions = [];
         if (canEditModule('members')) {
@@ -5121,111 +5125,134 @@ const renderAdmin = async () => {
             await showMembershipManagement();
         });
 
-        const filteredItems = data.items.filter((memberItem) => {
-            if (memberStatusFilter === 'active') return memberItem.active;
-            if (memberStatusFilter === 'inactive') return !memberItem.active;
-            if (memberStatusFilter === 'leaving_year_end') return isLeavingAtYearEnd(memberItem.leftAt);
-            if (memberStatusFilter === 'left_last_year_end') return isLeftLastYearEnd(memberItem.leftAt);
-
-            return true;
-        });
-
-        const columns = [
-            {key: 'memberNumber', label: 'Mitgl.-Nr.'},
-            {key: 'primaryMemberNumber', label: 'Hauptnr.'},
-            {key: 'salutation', label: 'Anrede'},
-            {key: 'lastName', label: 'Name'},
-            {key: 'firstName', label: 'Vorname'},
-            {key: 'birthDate', label: 'Geburtsdatum'},
-            {key: 'street', label: 'Straße'},
-            {key: 'postalCode', label: 'PLZ'},
-            {key: 'city', label: 'Ort'},
-        ];
-        const compareMemberValues = (left, right) => {
-            if (left == null && right == null) return 0;
-            if (left == null) return -1;
-            if (right == null) return 1;
-
-            return String(left).localeCompare(String(right), 'de', {numeric: true, sensitivity: 'base'});
-        };
-
-        const buildTable = () => {
-            const sortedItems = [...filteredItems].sort((left, right) => {
-                const direction = memberSortDirection === 'desc' ? -1 : 1;
-
-                return compareMemberValues(left[memberSortField], right[memberSortField]) * direction;
-            });
-            const rows = sortedItems.map((memberItem) => {
-                const row = element('tr', {
-                    className: 'member-row',
-                    attributes: {tabindex: '0', role: 'button'},
-                    children: [
-                        memberItem.memberNumber,
-                        memberItem.primaryMemberNumber,
-                        SALUTATION_LABELS[memberItem.salutation] || memberItem.salutation,
-                        memberItem.lastName,
-                        memberItem.firstName,
-                        new Date(`${memberItem.birthDate}T00:00:00`).toLocaleDateString('de-DE'),
-                        memberItem.street,
-                        memberItem.postalCode,
-                        memberItem.city,
-                    ].map((text) => element('td', {text})),
-                });
-                const open = () => openMemberDialog(memberItem, showMembershipManagement);
-                row.addEventListener('click', open);
-                row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
-
-                return row;
-            });
-            const headerCells = columns.map((column) => {
-                const isActive = column.key === memberSortField;
-                const arrow = isActive ? (memberSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
-                const th = element('th', {
-                    className: 'sortable-column',
-                    text: `${column.label}${arrow}`,
-                    attributes: {
-                        tabindex: '0',
-                        role: 'button',
-                        'aria-sort': isActive ? (memberSortDirection === 'asc' ? 'ascending' : 'descending') : 'none',
-                    },
-                });
-                const toggleSort = () => {
-                    if (memberSortField === column.key) {
-                        memberSortDirection = memberSortDirection === 'asc' ? 'desc' : 'asc';
-                    } else {
-                        memberSortField = column.key;
-                        memberSortDirection = 'asc';
-                    }
-                    const newTable = buildTable();
-                    table.replaceWith(newTable);
-                    table = newTable;
-                };
-                th.addEventListener('click', toggleSort);
-                th.addEventListener('keydown', (event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    toggleSort();
-                });
-
-                return th;
-            });
-
-            return element('table', {className: 'data-table', children: [
-                element('thead', {children: [element('tr', {children: headerCells})]}),
-                element('tbody', {children: rows}),
-            ]});
-        };
-        let table = buildTable();
+        const countLabel = element('span', {text: 'Mitglieder werden geladen …'});
+        // `table-scroll-area` (nicht nur `.data-table` selbst) braucht die Overflow-Grenze: die
+        // Tabelle steckt in einem Grid mit `1fr`-Spalte (`.admin-layout`), und ohne einen
+        // Nachfahren mit `overflow-x`/`max-width` zwischen ihr und dem Grid-Item `.admin-workspace`
+        // sprengt ihre (durch `white-space: nowrap` unzerteilbare) Breite die Spurbreite und
+        // drückt die Sidebar-Spalte schmaler, statt selbst zu scrollen.
+        const tableArea = element('div', {className: 'table-scroll-area', children: [emptyState('Mitglieder werden geladen …')]});
 
         workspace.replaceChildren(
             element('div', {className: 'management-header', children: [heading, element('div', {className: 'management-actions', children: actions})]}),
-            element('div', {className: 'management-toolbar', children: [search, statusFilter, element('span', {text: memberStatusFilter
-                ? `${filteredItems.length} von ${data.total} Mitglieder`
-                : `${data.total} Mitglieder`})]}),
-            filteredItems.length
-                ? table
-                : emptyState(data.items.length ? 'Keine Mitglieder für diesen Filter.' : 'Noch keine Mitglieder angelegt.'),
+            element('div', {className: 'management-toolbar', children: [search, statusFilter, countLabel]}),
+            tableArea,
         );
+
+        const loadToken = ++membersLoadToken;
+        (async () => {
+            let data;
+            try {
+                const query = memberSearchTerm ? `?search=${encodeURIComponent(memberSearchTerm)}` : '';
+                data = await request('/api/admin/v1/members' + query);
+            } catch (error) {
+                if (loadToken !== membersLoadToken) return;
+                countLabel.textContent = '';
+                tableArea.replaceChildren(emptyState('Die Mitgliederliste konnte nicht geladen werden.'));
+                toast(error.message, 'error');
+                return;
+            }
+            if (loadToken !== membersLoadToken) return;
+
+            const filteredItems = data.items.filter((memberItem) => {
+                if (memberStatusFilter === 'active') return memberItem.active;
+                if (memberStatusFilter === 'inactive') return !memberItem.active;
+                if (memberStatusFilter === 'leaving_year_end') return isLeavingAtYearEnd(memberItem.leftAt);
+                if (memberStatusFilter === 'left_last_year_end') return isLeftLastYearEnd(memberItem.leftAt);
+
+                return true;
+            });
+
+            const columns = [
+                {key: 'memberNumber', label: 'Mitgl.-Nr.'},
+                {key: 'primaryMemberNumber', label: 'Hauptnr.'},
+                {key: 'lastName', label: 'Name'},
+                {key: 'firstName', label: 'Vorname'},
+                {key: 'birthDate', label: 'Geburtsdatum'},
+                {key: 'street', label: 'Straße'},
+                {key: 'city', label: 'Ort'},
+            ];
+            const compareMemberValues = (left, right) => {
+                if (left == null && right == null) return 0;
+                if (left == null) return -1;
+                if (right == null) return 1;
+
+                return String(left).localeCompare(String(right), 'de', {numeric: true, sensitivity: 'base'});
+            };
+
+            const buildTable = () => {
+                const sortedItems = [...filteredItems].sort((left, right) => {
+                    const direction = memberSortDirection === 'desc' ? -1 : 1;
+
+                    return compareMemberValues(left[memberSortField], right[memberSortField]) * direction;
+                });
+                const rows = sortedItems.map((memberItem) => {
+                    const row = element('tr', {
+                        className: 'member-row',
+                        attributes: {tabindex: '0', role: 'button'},
+                        children: [
+                            memberItem.memberNumber,
+                            memberItem.primaryMemberNumber,
+                            memberItem.lastName,
+                            memberItem.firstName,
+                            new Date(`${memberItem.birthDate}T00:00:00`).toLocaleDateString('de-DE'),
+                            memberItem.street,
+                            memberItem.city,
+                        ].map((text) => element('td', {text})),
+                    });
+                    const open = () => openMemberDialog(memberItem, showMembershipManagement);
+                    row.addEventListener('click', open);
+                    row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+
+                    return row;
+                });
+                const headerCells = columns.map((column) => {
+                    const isActive = column.key === memberSortField;
+                    const arrow = isActive ? (memberSortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+                    const th = element('th', {
+                        className: 'sortable-column',
+                        text: `${column.label}${arrow}`,
+                        attributes: {
+                            tabindex: '0',
+                            role: 'button',
+                            'aria-sort': isActive ? (memberSortDirection === 'asc' ? 'ascending' : 'descending') : 'none',
+                        },
+                    });
+                    const toggleSort = () => {
+                        if (memberSortField === column.key) {
+                            memberSortDirection = memberSortDirection === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            memberSortField = column.key;
+                            memberSortDirection = 'asc';
+                        }
+                        const newTable = buildTable();
+                        table.replaceWith(newTable);
+                        table = newTable;
+                    };
+                    th.addEventListener('click', toggleSort);
+                    th.addEventListener('keydown', (event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        toggleSort();
+                    });
+
+                    return th;
+                });
+
+                return element('table', {className: 'data-table', children: [
+                    element('thead', {children: [element('tr', {children: headerCells})]}),
+                    element('tbody', {children: rows}),
+                ]});
+            };
+            let table = buildTable();
+
+            countLabel.textContent = memberStatusFilter
+                ? `${filteredItems.length} von ${data.total} Mitglieder`
+                : `${data.total} Mitglieder`;
+            tableArea.replaceChildren(filteredItems.length
+                ? table
+                : emptyState(data.items.length ? 'Keine Mitglieder für diesen Filter.' : 'Noch keine Mitglieder angelegt.'));
+        })();
     };
 
     const openContributionRateDialog = (rate, existingRates, onSaved, settings) => {

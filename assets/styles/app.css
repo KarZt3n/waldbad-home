@@ -1743,6 +1743,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .radio-field { display: flex; align-items: center; gap: .5rem; font-weight: 500; }
 .radio-field:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
 
+.table-scroll-area { max-width: 100%; overflow-x: auto; }
 .data-table { width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); }
 .data-table th, .data-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .data-table th { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
