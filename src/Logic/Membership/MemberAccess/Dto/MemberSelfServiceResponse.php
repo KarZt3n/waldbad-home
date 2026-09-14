@@ -40,7 +40,7 @@ readonly class MemberSelfServiceResponse
     ) {
     }
 
-    public static function fromMember(Member $member, ?string $contributionCategoryLabel): self
+    public static function fromMember(Member $member, ?string $contributionCategoryLabel, \DateTimeImmutable $at): self
     {
         return new self(
             id: $member->id,
@@ -57,7 +57,7 @@ readonly class MemberSelfServiceResponse
             email: $member->email,
             phone: $member->phone,
             function: $member->function->value,
-            active: $member->active,
+            active: $member->isActive($at),
             joinedAt: $member->joinedAt->format('Y-m-d'),
             leftAt: $member->leftAt?->format('Y-m-d'),
             contributionLiable: $member->contributionLiable,

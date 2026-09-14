@@ -118,6 +118,20 @@ final class MemberTest extends TestCase
         self::assertFalse($member->hasLeft(new \DateTimeImmutable('2099-01-01')));
     }
 
+    /**
+     * `isActive()` ist das Gegenteil von `hasLeft()` — es gibt kein eigenständig gesetztes
+     * Aktiv-Flag mehr, der Status ergibt sich ausschließlich aus dem Austrittsdatum.
+     */
+    public function testIsActiveIsTheOppositeOfHasLeft(): void
+    {
+        $stillMember = $this->member();
+        $left = $this->member(leftAt: new \DateTimeImmutable('2026-05-01'));
+
+        self::assertTrue($stillMember->isActive(new \DateTimeImmutable('2099-01-01')));
+        self::assertFalse($left->isActive(new \DateTimeImmutable('2026-05-01')));
+        self::assertTrue($left->isActive(new \DateTimeImmutable('2026-04-30')));
+    }
+
     public function testRejectsMandateValidUntilBeforeMandateValidFrom(): void
     {
         $this->expectException(BusinessRuleViolationException::class);
@@ -170,7 +184,6 @@ final class MemberTest extends TestCase
             familyRole: FamilyRole::None,
             joinedAt: $joinedAt,
             leftAt: $leftAt,
-            active: true,
             function: MemberFunction::Member,
             accountHolder: $accountHolder,
             iban: $iban,

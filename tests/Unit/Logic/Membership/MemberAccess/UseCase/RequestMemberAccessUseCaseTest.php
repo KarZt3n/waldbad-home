@@ -119,6 +119,35 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     }
 
     /**
+     * Ausgetretene Mitglieder (`Member::isActive()` false) erhalten keinen Zugang: auch bei
+     * passender E-Mail-Adresse und passendem Geburtsdatum wird weder ein Token gespeichert noch
+     * eine Mail verschickt.
+     */
+    public function testDoesNothingWhenTheMatchingMemberHasLeft(): void
+    {
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByEmail')->willReturn([$this->member(leftAt: new \DateTimeImmutable('2025-12-31'))]);
+        $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
+        $tokens->expects(self::never())->method('save');
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        (new RequestMemberAccessUseCase(
+            $members,
+            $tokens,
+            $this->createStub(SecureTokenGeneratorInterface::class),
+            $this->passwordGenerator(),
+            new MemberAccessPasswordHasher(),
+            $this->createStub(IdentifierGeneratorInterface::class),
+            $clock,
+            $this->notConfiguredMailer(),
+            $this->createStub(MemberAccessLinkBuilderInterface::class),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('erika@example.test', '1990-01-01');
+    }
+
+    /**
      * Kernstück: bei einer E-Mail-Adresse + Geburtsdatum, die zusammen zu einem Mitglied passen,
      * wird ein an dessen Haushalt (`primaryMemberNumber`) gebundener Token mit dem SHA-256-Hash des
      * (unveränderten) Klartext-Tokens gespeichert, der Ablauf liegt 30 Minuten in der Zukunft, und
@@ -202,7 +231,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
         ))->execute('erika@example.test', '1990-01-01');
     }
 
-    private function member(): Member
+    private function member(?\DateTimeImmutable $leftAt = null): Member
     {
         return new Member(
             id: 'member-1',
@@ -219,8 +248,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             phone: null,
             familyRole: \App\Logic\Membership\Member\Model\FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
-            leftAt: null,
-            active: true,
+            leftAt: $leftAt,
             function: \App\Logic\Membership\Member\Model\MemberFunction::Member,
             accountHolder: null,
             iban: null,

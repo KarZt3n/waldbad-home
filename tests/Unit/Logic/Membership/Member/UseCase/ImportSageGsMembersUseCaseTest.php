@@ -68,7 +68,7 @@ final class ImportSageGsMembersUseCaseTest extends TestCase
         return new CreateMemberRequest(
             $number, $payer, Salutation::Diverse, 'Test', 'Beispiel', new \DateTimeImmutable('2000-01-01'),
             'Testweg 1', '12345', 'Testort', null, null, $payer === null ? FamilyRole::None : FamilyRole::Child,
-            new \DateTimeImmutable('2020-01-01'), null, true, MemberFunction::Member,
+            new \DateTimeImmutable('2020-01-01'), null, MemberFunction::Member,
             'Test', 'DE89370400440532013000', null, 'TEST-MANDATE', PaymentMethod::SepaDirectDebit,
             PaymentInterval::Yearly, PaymentDay::First, $payer === null ? PayerType::SelfPayer : PayerType::OtherMember,
             null, $payer, 3, 2027,

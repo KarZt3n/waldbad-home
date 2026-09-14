@@ -29,7 +29,6 @@ readonly class CreateMemberRequest
         public FamilyRole $familyRole,
         public \DateTimeImmutable $joinedAt,
         public ?\DateTimeImmutable $leftAt,
-        public bool $active,
         public MemberFunction $function,
         /** Nur für Selbstzahler erforderlich. */
         public ?string $accountHolder,

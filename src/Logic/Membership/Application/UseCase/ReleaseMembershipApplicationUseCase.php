@@ -96,7 +96,6 @@ readonly class ReleaseMembershipApplicationUseCase
                 familyRole: $familyRole,
                 joinedAt: $now,
                 leftAt: null,
-                active: true,
                 function: MemberFunction::Member,
                 accountHolder: $application->accountHolder,
                 iban: $application->iban,

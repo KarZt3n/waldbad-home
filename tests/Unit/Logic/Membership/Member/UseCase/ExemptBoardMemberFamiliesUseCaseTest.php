@@ -109,7 +109,6 @@ final class ExemptBoardMemberFamiliesUseCaseTest extends TestCase
             familyRole: $familyRole,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
-            active: true,
             function: $function,
             accountHolder: 'Max Muster',
             iban: 'DE89370400440532013000',

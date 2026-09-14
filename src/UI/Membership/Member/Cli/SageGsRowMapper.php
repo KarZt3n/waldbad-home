@@ -54,7 +54,8 @@ final readonly class SageGsRowMapper
         $data['paymentInterval'] = match (mb_strtolower($row['ZAHLWEISE'] ?? '')) {
             'jährlich' => 'yearly', 'halbjährlich' => 'half_yearly', 'vierteljährlich' => 'quarterly', 'monatlich' => 'monthly', default => null,
         };
-        $data['active'] = $this->boolean($row['AKTIV'] ?? '') && ($data['leftAt'] ?? null) === null;
+        // AKTIV wird nicht mehr übernommen: Der Status ergibt sich ausschließlich aus MITSEIT/AUSTRITT
+        // (siehe Member::isActive()), ein eigenständiges Feld dafür gibt es nicht mehr.
         $data['paymentDay'] = $this->boolean($row['ZAHLANFANG'] ?? '') ? 'first' : 'fifteenth';
         $otherPayer = $this->boolean($row['ZAHLFREMD'] ?? '');
         $data['payerType'] = $otherPayer ? 'other_member' : 'self_payer';

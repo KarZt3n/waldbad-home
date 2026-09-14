@@ -110,7 +110,6 @@ readonly class ImportMembersUseCase
             familyRole: $row->familyRole,
             joinedAt: $row->joinedAt,
             leftAt: $row->leftAt,
-            active: $row->active,
             function: $row->function,
             accountHolder: $row->accountHolder,
             iban: $row->iban,

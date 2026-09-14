@@ -396,7 +396,6 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             familyRole: $request->familyRole,
             joinedAt: $request->joinedAt,
             leftAt: null,
-            active: true,
             function: MemberFunction::Member,
             accountHolder: $request->accountHolder,
             iban: $request->iban,

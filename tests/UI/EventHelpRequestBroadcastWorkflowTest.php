@@ -301,7 +301,6 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
             'familyRole' => 'none',
             'joinedAt' => '2026-01-01',
             'leftAt' => null,
-            'active' => true,
             'function' => 'member',
             'accountHolder' => $firstName.' '.$lastName,
             'iban' => 'DE89370400440532013000',

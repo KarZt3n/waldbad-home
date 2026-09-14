@@ -29,7 +29,6 @@ readonly class UpdateMemberRequest
         public FamilyRole $familyRole,
         public \DateTimeImmutable $joinedAt,
         public ?\DateTimeImmutable $leftAt,
-        public bool $active,
         public MemberFunction $function,
         public ?string $accountHolder,
         public ?string $iban,

@@ -63,8 +63,6 @@ class MemberEntity
         private \DateTimeImmutable $joinedAt,
         #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
         private ?\DateTimeImmutable $leftAt,
-        #[ORM\Column(type: Types::BOOLEAN)]
-        private bool $active,
         #[ORM\Column(type: Types::STRING, length: 20)]
         private string $function,
         #[ORM\Column(type: Types::BOOLEAN)]
@@ -151,7 +149,6 @@ class MemberEntity
     public function getFamilyRole(): string { return $this->familyRole; }
     public function getJoinedAt(): \DateTimeImmutable { return $this->joinedAt; }
     public function getLeftAt(): ?\DateTimeImmutable { return $this->leftAt; }
-    public function isActive(): bool { return $this->active; }
     public function getFunction(): string { return $this->function; }
     public function isContributionLiable(): bool { return $this->contributionLiable; }
     public function getAccountHolder(): ?string { return $this->accountHolder; }
@@ -189,7 +186,6 @@ class MemberEntity
         string $familyRole,
         \DateTimeImmutable $joinedAt,
         ?\DateTimeImmutable $leftAt,
-        bool $active,
         string $function,
         bool $contributionLiable,
         ?string $accountHolder,
@@ -224,7 +220,6 @@ class MemberEntity
         $this->familyRole = $familyRole;
         $this->joinedAt = $joinedAt;
         $this->leftAt = $leftAt;
-        $this->active = $active;
         $this->function = $function;
         $this->contributionLiable = $contributionLiable;
         $this->accountHolder = $accountHolder;

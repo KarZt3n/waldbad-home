@@ -121,7 +121,6 @@ final class WorkAssignmentCreditCalculatorTest extends TestCase
             familyRole: FamilyRole::Head,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
-            active: true,
             function: MemberFunction::Member,
             accountHolder: null,
             iban: null,

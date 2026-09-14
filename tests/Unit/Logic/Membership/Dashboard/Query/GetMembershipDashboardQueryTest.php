@@ -56,7 +56,6 @@ final class GetMembershipDashboardQueryTest extends TestCase
             familyRole: FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: $leftAt,
-            active: true,
             function: MemberFunction::Member,
             accountHolder: 'Max Muster',
             iban: 'DE89370400440532013000',

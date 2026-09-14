@@ -130,7 +130,6 @@ final class ListEventHelpRequestsQueryTest extends TestCase
             familyRole: \App\Logic\Membership\Member\Model\FamilyRole::Head,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
-            active: true,
             function: \App\Logic\Membership\Member\Model\MemberFunction::Member,
             accountHolder: null,
             iban: null,

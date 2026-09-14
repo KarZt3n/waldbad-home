@@ -36,7 +36,6 @@ final class SageGsImportCommandTest extends WebTestCase
         self::assertSame('TEST-1', $request->payerMemberNumber);
         self::assertSame('01234', $request->postalCode);
         self::assertSame('2000-03-02', $request->birthDate->format('Y-m-d'));
-        self::assertFalse($request->active);
         self::assertSame(2027, $request->nextBookingYear);
         self::assertSame('fifteenth', $request->paymentDay->value);
     }

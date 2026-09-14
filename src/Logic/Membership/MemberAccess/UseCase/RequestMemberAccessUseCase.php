@@ -96,11 +96,16 @@ readonly class RequestMemberAccessUseCase
      * Geburtsdatum ebenfalls passt — grenzt so auf die anfragende Person ein. Gibt es mehrere
      * Treffer (z. B. Zwillinge mit gemeinsamer Adresse), reicht irgendeiner davon, da alle demselben
      * Haushalt angehören.
+     *
+     * Ausgetretene Mitglieder (`Member::isActive()` liefert false) erhalten bewusst keinen Zugang:
+     * eine ausgetretene Person soll weder Zugangslink noch Passwort mehr per Mail bekommen. Da
+     * dieser Endpunkt ohnehin für passende wie nicht passende Kombinationen dieselbe Antwort gibt
+     * (siehe Klassenkommentar), bleibt dieser Unterschied nach außen unsichtbar.
      */
     private function matchingMember(string $email, \DateTimeImmutable $birthDate): ?Member
     {
         foreach ($this->members->findByEmail($email) as $member) {
-            if ($member->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d')) {
+            if ($member->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d') && $member->isActive($this->clock->now())) {
                 return $member;
             }
         }

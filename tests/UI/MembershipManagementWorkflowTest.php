@@ -285,8 +285,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertIsArray($exported['members']);
         self::assertCount(1, $exported['members']);
 
-        $csv = "memberNumber;primaryMemberNumber;salutation;lastName;firstName;birthDate;street;postalCode;city;email;phone;familyRole;joinedAt;leftAt;active;function;accountHolder;iban;bankName;mandateReference;paymentMethod;paymentInterval;paymentDay;payerType;payerMemberId;nextBookingMonth;nextBookingYear\n"
-            ."M-9001;M-9001;mr;Import;Ida;1980-05-01;Waldweg 1;14822;Borkheide;;;none;2026-01-01;;1;member;Ida Import;DE89370400440532013000;;M-9001;sepa_direct_debit;yearly;first;self_payer;;3;2027\n";
+        $csv = "memberNumber;primaryMemberNumber;salutation;lastName;firstName;birthDate;street;postalCode;city;email;phone;familyRole;joinedAt;leftAt;function;accountHolder;iban;bankName;mandateReference;paymentMethod;paymentInterval;paymentDay;payerType;payerMemberId;nextBookingMonth;nextBookingYear\n"
+            ."M-9001;M-9001;mr;Import;Ida;1980-05-01;Waldweg 1;14822;Borkheide;;;none;2026-01-01;;member;Ida Import;DE89370400440532013000;;M-9001;sepa_direct_debit;yearly;first;self_payer;;3;2027\n";
         $tmpFile = tempnam(sys_get_temp_dir(), 'members-import');
         self::assertIsString($tmpFile);
         file_put_contents($tmpFile, $csv);
@@ -539,8 +539,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
 
-        $inactive = array_replace($this->validMember(), ['lastName' => 'Inaktiv', 'active' => false]);
-        $this->client->jsonRequest('POST', '/api/admin/v1/members', $inactive, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $second = array_replace($this->validMember(), ['lastName' => 'Zweite']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $second, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
 
         // Kündigung ist laut Beitrags- und Kassenordnung nur fristgemäß zum Jahresende möglich.
@@ -561,7 +561,6 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $dashboard = $this->responseData();
         self::assertSame(4, $dashboard['totalMembers']);
-        self::assertSame(3, $dashboard['activeMembers']);
         self::assertSame(0, $dashboard['pendingApplications']);
         self::assertSame(1, $dashboard['leavingAtYearEnd']);
         self::assertSame(1, $dashboard['leftLastYearEnd']);
@@ -640,7 +639,6 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             'familyRole' => 'none',
             'joinedAt' => '2026-01-01',
             'leftAt' => null,
-            'active' => true,
             'function' => 'member',
             'accountHolder' => 'Erika Musterfrau',
             'iban' => 'DE89370400440532013000',

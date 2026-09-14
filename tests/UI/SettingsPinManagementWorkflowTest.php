@@ -180,7 +180,6 @@ final class SettingsPinManagementWorkflowTest extends WebTestCase
             'familyRole' => 'none',
             'joinedAt' => '2026-01-01',
             'leftAt' => null,
-            'active' => true,
             'function' => 'member',
             'accountHolder' => 'Erika Musterfrau',
             'iban' => 'DE89370400440532013000',

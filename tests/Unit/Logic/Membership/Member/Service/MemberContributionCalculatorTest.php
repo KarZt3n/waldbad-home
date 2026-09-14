@@ -289,7 +289,6 @@ final class MemberContributionCalculatorTest extends TestCase
             familyRole: $familyRole,
             joinedAt: new \DateTimeImmutable('2026-01-01'),
             leftAt: $leftAt === null ? null : new \DateTimeImmutable($leftAt),
-            active: true,
             function: MemberFunction::Member,
             accountHolder: 'Max Muster',
             iban: 'DE02120300000000202051',

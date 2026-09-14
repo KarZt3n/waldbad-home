@@ -184,7 +184,6 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
             familyRole: FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
-            active: true,
             function: MemberFunction::Member,
             accountHolder: null,
             iban: null,

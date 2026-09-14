@@ -54,7 +54,7 @@ readonly class ResolveMemberAccessSessionUseCase
         return new MemberAccessSessionResponse(
             email: $token->email,
             members: array_map(
-                fn (Member $member): MemberSelfServiceResponse => MemberSelfServiceResponse::fromMember($member, $this->contributionCategoryLabel($member)),
+                fn (Member $member): MemberSelfServiceResponse => MemberSelfServiceResponse::fromMember($member, $this->contributionCategoryLabel($member), $this->clock->now()),
                 $members,
             ),
             contributionRatesValidFrom: $this->contributionRateSettings->get()->validFrom?->format('Y-m-d'),

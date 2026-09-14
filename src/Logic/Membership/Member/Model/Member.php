@@ -28,7 +28,6 @@ readonly class Member
         public FamilyRole $familyRole,
         public \DateTimeImmutable $joinedAt,
         public ?\DateTimeImmutable $leftAt,
-        public bool $active,
         public MemberFunction $function,
         public ?string $accountHolder,
         public ?string $iban,
@@ -130,6 +129,16 @@ readonly class Member
         return $this->leftAt !== null && $this->leftAt <= $at;
     }
 
+    /**
+     * Ob das Mitglied zum angegebenen Zeitpunkt aktiv ist: ohne Austrittsdatum, oder mit einem
+     * Austrittsdatum, das noch nicht erreicht ist. Es gibt kein eigenständig gesetztes Aktiv-Flag
+     * mehr — der Status ergibt sich ausschließlich aus Eintritts-/Austrittsdatum.
+     */
+    public function isActive(\DateTimeImmutable $at): bool
+    {
+        return !$this->hasLeft($at);
+    }
+
     public function withContribution(?ContributionCategory $category, ?int $amountCents, ?int $workAssignmentSurchargeCents): self
     {
         return new self(
@@ -148,7 +157,6 @@ readonly class Member
             familyRole: $this->familyRole,
             joinedAt: $this->joinedAt,
             leftAt: $this->leftAt,
-            active: $this->active,
             function: $this->function,
             accountHolder: $this->accountHolder,
             iban: $this->iban,
@@ -191,7 +199,6 @@ readonly class Member
             familyRole: $this->familyRole,
             joinedAt: $this->joinedAt,
             leftAt: $this->leftAt,
-            active: $this->active,
             function: $this->function,
             accountHolder: $this->accountHolder,
             iban: $this->iban,
@@ -234,7 +241,6 @@ readonly class Member
             familyRole: $this->familyRole,
             joinedAt: $this->joinedAt,
             leftAt: $this->leftAt,
-            active: $this->active,
             function: $this->function,
             accountHolder: $this->accountHolder,
             iban: $this->iban,
@@ -277,7 +283,6 @@ readonly class Member
             familyRole: $this->familyRole,
             joinedAt: $this->joinedAt,
             leftAt: $this->leftAt,
-            active: $this->active,
             function: $this->function,
             accountHolder: $this->accountHolder,
             iban: $this->iban,
@@ -324,7 +329,6 @@ readonly class Member
             familyRole: $this->familyRole,
             joinedAt: $this->joinedAt,
             leftAt: $this->leftAt,
-            active: $this->active,
             function: $this->function,
             accountHolder: $this->accountHolder,
             iban: $this->iban,

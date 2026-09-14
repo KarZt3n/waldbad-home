@@ -41,7 +41,6 @@ readonly class GetMembershipDashboardQuery
 
         return new MembershipDashboardResponse(
             totalMembers: count($members),
-            activeMembers: count(array_filter($members, static fn (Member $member): bool => $member->active)),
             pendingApplications: count($pendingApplications),
             totalContributionCents: $totalContributionCents,
             leavingAtYearEnd: $this->countLeavingAtYearEnd($members, $currentYear),

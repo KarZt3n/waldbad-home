@@ -4372,7 +4372,6 @@ const renderAdmin = async () => {
             sectionHeading('Dashboard', 'Kennzahlen der Mitgliederverwaltung auf einen Blick'),
             element('div', {className: 'stat-tile-grid', children: [
                 tile('Mitglieder gesamt', stats.totalMembers),
-                tile('davon aktiv', stats.activeMembers),
                 tile('Offene Mitgliedsanträge', stats.pendingApplications),
                 tile('Austritte zum Jahresende', stats.leavingAtYearEnd),
                 tile('Austritte aus Vorjahr', stats.leftLastYearEnd),
@@ -4544,8 +4543,6 @@ const renderAdmin = async () => {
 
         const joinedAt = field('Eintrittsdatum', `member-joined-at-${suffix}`, member?.joinedAt || new Date().toISOString().slice(0, 10), 'date');
         const leftAt = field('Austrittsdatum (optional)', `member-left-at-${suffix}`, member?.leftAt || '', 'date');
-        const active = element('input', {attributes: {type: 'checkbox'}});
-        active.checked = member ? member.active : true;
         const memberFunction = selectField('Funktion', `member-function-${suffix}`, Object.entries(MEMBER_FUNCTION_LABELS), member?.function || 'member');
 
         const accountHolder = field('Kontoinhaber', `member-account-holder-${suffix}`, member?.accountHolder || '');
@@ -4788,7 +4785,6 @@ const renderAdmin = async () => {
                 element('fieldset', {children: [
                     element('legend', {text: 'Vereinsdaten'}),
                     memberFunction,
-                    element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktives Mitglied'})]}),
                     fieldRow([joinedAt, leftAt]),
                 ]}),
             ]],
@@ -4872,7 +4868,6 @@ const renderAdmin = async () => {
             familyRole: familyRole.querySelector('select').value,
             joinedAt: joinedAt.querySelector('input').value,
             leftAt: leftAt.querySelector('input').value || null,
-            active: active.checked,
             function: memberFunction.querySelector('select').value,
             accountHolder: accountHolder.querySelector('input').value || null,
             iban: iban.querySelector('input').value || null,

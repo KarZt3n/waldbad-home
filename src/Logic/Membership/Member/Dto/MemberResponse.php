@@ -61,6 +61,10 @@ readonly class MemberResponse
     ) {
     }
 
+    /**
+     * `$active` ist kein eigenständig gespeichertes Feld, sondern wird hier — analog zu
+     * `Member::isActive()` — aus Eintritts-/Austrittsdatum zum aktuellen Zeitpunkt abgeleitet.
+     */
     public static function fromMember(Member $member): self
     {
         return new self(
@@ -79,7 +83,7 @@ readonly class MemberResponse
             familyRole: $member->familyRole,
             joinedAt: $member->joinedAt,
             leftAt: $member->leftAt,
-            active: $member->active,
+            active: $member->isActive(new \DateTimeImmutable('today')),
             function: $member->function,
             accountHolder: $member->accountHolder,
             iban: $member->iban,
