@@ -4,6 +4,7 @@ namespace App\UI\Event\HelpRequest\Http;
 
 use App\Logic\Event\HelpRequest\Query\ListEventHelpRequestsQuery;
 use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
+use App\Logic\Event\HelpRequest\UseCase\AddEventHelpRequestUseCase;
 use App\Logic\Event\HelpRequest\UseCase\GetEventHelpRequestBroadcastRecipientsUseCase;
 use App\Logic\Event\HelpRequest\UseCase\LinkEventHelpRequestMemberUseCase;
 use App\Logic\Event\HelpRequest\UseCase\RecordEventHelpParticipationUseCase;
@@ -32,6 +33,24 @@ class AdminEventHelpRequestController extends AbstractController
         $this->denyAccessUnlessGranted(Permission::EventHelpersView->value);
 
         return new JsonResponse($this->responseFactory->collection($query->execute()));
+    }
+
+    /**
+     * Trägt ein Mitglied manuell als Helfer einer Veranstaltung ein — Button „+" neben „Mail an
+     * alle Helfer" in der Helferverwaltung (siehe `AddEventHelpRequestUseCase`).
+     */
+    #[Route('', name: 'api_admin_event_help_add', methods: ['POST'])]
+    public function add(Request $request, AddEventHelpRequestUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+        $data = $request->getPayload();
+        $eventIdentifier = trim($data->getString('eventIdentifier'));
+        $memberId = trim($data->getString('memberId'));
+        if ($eventIdentifier === '' || $memberId === '') {
+            throw new BadRequestHttpException('Veranstaltung und Mitglied sind erforderlich.');
+        }
+
+        return new JsonResponse($this->responseFactory->request($useCase->execute($eventIdentifier, $memberId)), JsonResponse::HTTP_CREATED);
     }
 
     /**

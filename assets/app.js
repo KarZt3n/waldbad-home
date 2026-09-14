@@ -3141,8 +3141,9 @@ const renderAdmin = async () => {
         const activities = activityData.items || [];
         const list = element('div', {className: 'management-list page-tree-panel'});
         const pageById = new Map(pages.items.map((page) => [page.id, page]));
-        const pointerDropTargets = new WeakMap();
         let draggedPageId = null;
+        let disabledPageIds = new Set();
+        let dropTarget = null;
         const isDescendantOf = (pageId, possibleAncestorId) => {
             let current = pageById.get(pageId);
             while (current?.parentId) {
@@ -3152,55 +3153,96 @@ const renderAdmin = async () => {
 
             return false;
         };
+        const siblingsOf = (parentId) => pages.items
+            .filter((candidate) => candidate.parentId === parentId)
+            .sort((left, right) => (left.navigationPosition - right.navigationPosition)
+                || left.title.localeCompare(right.title, 'de') || left.id.localeCompare(right.id));
+        const clearDropIndicator = () => {
+            list.querySelectorAll('.drop-before, .drop-after, .drop-into')
+                .forEach((node) => node.classList.remove('drop-before', 'drop-after', 'drop-into'));
+            dropTarget = null;
+        };
         const clearDragState = () => {
             draggedPageId = null;
+            disabledPageIds = new Set();
             list.classList.remove('is-page-dragging');
-            list.querySelectorAll('.drag-over, .is-disabled').forEach((node) => node.classList.remove('drag-over', 'is-disabled'));
+            list.querySelectorAll('.dragging').forEach((node) => node.classList.remove('dragging'));
+            clearDropIndicator();
         };
-        const reorderPage = async (parentId, position) => {
+        // Ermittelt beim Ziehen anhand der Mausposition, über welcher Zeile der Zeiger steht und in
+        // welchem Drittel: oberes/unteres Drittel = als Geschwisterseite davor/danach einsortieren,
+        // mittleres Drittel = als Unterseite in die Zielseite hinein ablegen. So verhält sich das
+        // Verschieben wie in einem Datei-Explorer, ohne eigene, dauerhaft sichtbare Ablagefelder.
+        const updateDropTarget = (clientX, clientY) => {
+            const rows = Array.from(list.querySelectorAll('.page-tree-row'));
+            if (!rows.length) {
+                clearDropIndicator();
+                return;
+            }
+            let targetRow = rows.find((row) => {
+                const rect = row.getBoundingClientRect();
+                return clientY >= rect.top && clientY <= rect.bottom;
+            });
+            if (!targetRow) {
+                const firstRect = rows[0].getBoundingClientRect();
+                const lastRect = rows[rows.length - 1].getBoundingClientRect();
+                if (clientY < firstRect.top) targetRow = rows[0];
+                else if (clientY > lastRect.bottom) targetRow = rows[rows.length - 1];
+            }
+            const pageId = targetRow?.closest('.page-tree-node')?.dataset.pageId;
+            const targetPage = pageId ? pageById.get(pageId) : null;
+            if (!targetPage || pageId === draggedPageId || disabledPageIds.has(pageId)) {
+                clearDropIndicator();
+                return;
+            }
+            const rect = targetRow.getBoundingClientRect();
+            const relativeY = (clientY - rect.top) / rect.height;
+            let mode;
+            let parentId;
+            let position;
+            if (relativeY < 0.3) {
+                mode = 'drop-before';
+                parentId = targetPage.parentId;
+                position = siblingsOf(parentId).findIndex((candidate) => candidate.id === targetPage.id);
+            } else if (relativeY > 0.7) {
+                mode = 'drop-after';
+                parentId = targetPage.parentId;
+                position = siblingsOf(parentId).findIndex((candidate) => candidate.id === targetPage.id) + 1;
+            } else {
+                mode = 'drop-into';
+                parentId = targetPage.id;
+                position = siblingsOf(targetPage.id).length;
+            }
+            if (dropTarget?.rowEl === targetRow && dropTarget.mode === mode) return;
+            clearDropIndicator();
+            dropTarget = {rowEl: targetRow, parentId, position, mode};
+            targetRow.classList.add(mode);
+        };
+        const applyDrop = async () => {
             const draggedPage = draggedPageId ? pageById.get(draggedPageId) : null;
-            if (!draggedPage || draggedPage.id === parentId || (parentId && isDescendantOf(parentId, draggedPage.id))) {
-                clearDragState();
-                if (draggedPage) toast('Eine Seite kann nicht in sich selbst oder eine eigene Unterseite verschoben werden.', 'error');
-                return;
-            }
-            const targetSiblings = pages.items
-                .filter((candidate) => candidate.parentId === parentId)
-                .sort((left, right) => (left.navigationPosition - right.navigationPosition)
-                    || left.title.localeCompare(right.title, 'de') || left.id.localeCompare(right.id));
-            const sourceIndex = targetSiblings.findIndex((candidate) => candidate.id === draggedPage.id);
-            const adjustedPosition = sourceIndex >= 0 && sourceIndex < position ? position - 1 : position;
-            if (draggedPage.parentId === parentId && sourceIndex === adjustedPosition) {
-                clearDragState();
-                return;
-            }
+            const target = dropTarget;
             clearDragState();
+            if (!draggedPage || !target) return;
+            const targetSiblings = siblingsOf(target.parentId);
+            const sourceIndex = targetSiblings.findIndex((candidate) => candidate.id === draggedPage.id);
+            const adjustedPosition = sourceIndex >= 0 && sourceIndex < target.position ? target.position - 1 : target.position;
+            if (draggedPage.parentId === target.parentId && sourceIndex === adjustedPosition) return;
             try {
                 await request(`/api/admin/v1/pages/${draggedPage.id}/position`, {
                     method: 'PUT',
                     body: JSON.stringify({
-                        parentId,
+                        parentId: target.parentId,
                         navigationPosition: adjustedPosition,
                         version: draggedPage.version,
                     }),
                 });
-                const target = parentId ? `unter „${pageById.get(parentId)?.title || 'Seite'}“` : 'als Hauptseite';
-                toast(`„${draggedPage.title}“ wurde ${target} einsortiert.`);
+                const label = target.parentId ? `unter „${pageById.get(target.parentId)?.title || 'Seite'}“` : 'als Hauptseite';
+                toast(`„${draggedPage.title}“ wurde ${label} einsortiert.`);
                 await showPages();
             } catch (error) {
                 toast(error.message, 'error');
                 await showPages();
             }
-        };
-        const pageDropZone = (parentId, position, rootLevel = false) => {
-            const zone = element('li', {
-                className: 'page-tree-drop-zone',
-                attributes: {'aria-hidden': 'true'},
-                children: [element('span', {text: rootLevel ? 'Als Hauptseite hier einsortieren' : 'Hier einsortieren'})],
-            });
-            pointerDropTargets.set(zone, () => reorderPage(parentId, position));
-
-            return zone;
         };
         if (canManagePageStructure()) {
             const create = element('button', {className: 'secondary-button full', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
@@ -3355,24 +3397,11 @@ const renderAdmin = async () => {
                 attributes: {title: `${page.title} ziehen`, 'aria-label': `${page.title} per Drag-and-drop verschieben`},
             });
             let pointerId = null;
-            let pointerTarget = null;
-            const updatePointerTarget = (clientX, clientY) => {
-                const candidate = document.elementFromPoint(clientX, clientY)?.closest('.page-tree-drop-zone, .page-tree-child-drop-zone');
-                const target = candidate && list.contains(candidate) && pointerDropTargets.has(candidate) ? candidate : null;
-                if (pointerTarget === target) return;
-                pointerTarget?.classList.remove('drag-over');
-                pointerTarget = target;
-                pointerTarget?.classList.add('drag-over');
-            };
             const endPointerDrag = async (event, drop) => {
                 if (event.pointerId !== pointerId) return;
                 dragHandle.releasePointerCapture?.(event.pointerId);
-                const action = drop && pointerTarget ? pointerDropTargets.get(pointerTarget) : null;
-                pointerTarget?.classList.remove('drag-over');
-                pointerTarget = null;
                 pointerId = null;
-                item.classList.remove('dragging');
-                if (action) await action();
+                if (drop && dropTarget) await applyDrop();
                 else clearDragState();
             };
             dragHandle.addEventListener('pointerdown', (event) => {
@@ -3380,20 +3409,18 @@ const renderAdmin = async () => {
                 event.preventDefault();
                 pointerId = event.pointerId;
                 draggedPageId = page.id;
+                disabledPageIds = new Set([
+                    page.id,
+                    ...pages.items.filter((candidate) => isDescendantOf(candidate.id, page.id)).map((candidate) => candidate.id),
+                ]);
                 list.classList.add('is-page-dragging');
                 item.classList.add('dragging');
-                list.querySelectorAll('.page-tree-child-drop-zone').forEach((zone) => {
-                    const parentPageId = zone.dataset.parentPageId;
-                    if (parentPageId === page.id || (parentPageId && isDescendantOf(parentPageId, page.id))) {
-                        zone.classList.add('is-disabled');
-                    }
-                });
                 dragHandle.setPointerCapture?.(event.pointerId);
             });
             dragHandle.addEventListener('pointermove', (event) => {
                 if (event.pointerId !== pointerId) return;
                 event.preventDefault();
-                updatePointerTarget(event.clientX, event.clientY);
+                updateDropTarget(event.clientX, event.clientY);
             });
             dragHandle.addEventListener('pointerup', (event) => endPointerDrag(event, true));
             dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
@@ -3401,16 +3428,13 @@ const renderAdmin = async () => {
                 className: 'page-tree-row',
                 children: [...(canManagePageStructure() ? [dragHandle] : []), title, ...actionContainers],
             });
-            const item = element('li', {className: `page-tree-node${page.visible ? '' : ' is-hidden'}`, children: [row]});
-            const childDropZone = element('div', {
-                className: 'page-tree-child-drop-zone',
-                attributes: {'aria-hidden': 'true', 'data-parent-page-id': page.id},
-                children: [element('span', {text: `Als Unterseite von „${page.title}“ ablegen`})],
+            const item = element('li', {
+                className: `page-tree-node${page.visible ? '' : ' is-hidden'}`,
+                attributes: {'data-page-id': page.id},
+                children: [row],
             });
-            pointerDropTargets.set(childDropZone, () => reorderPage(page.id, page.children.length));
-            item.append(childDropZone);
             if (page.children.length) {
-                const children = renderTreeLevel(page.children, page.id);
+                const children = renderTreeLevel(page.children);
                 const toggle = element('button', {className: 'tree-toggle', text: '▾', attributes: {type: 'button', title: 'Unterseiten ein- oder ausblenden', 'aria-label': `Unterseiten von ${page.title} ausblenden`, 'aria-expanded': 'true'}});
                 toggle.addEventListener('click', () => {
                     children.hidden = !children.hidden;
@@ -3426,22 +3450,17 @@ const renderAdmin = async () => {
 
             return item;
         };
-        const renderTreeLevel = (nodes, parentId, rootLevel = false) => {
-            const children = [];
-            nodes.forEach((node, index) => {
-                children.push(pageDropZone(parentId, index, rootLevel), renderTreeNode(node, index, nodes));
-            });
-            children.push(pageDropZone(parentId, nodes.length, rootLevel));
-
-            return element('ul', {className: rootLevel ? 'page-tree' : 'page-tree-children', children});
-        };
+        const renderTreeLevel = (nodes, rootLevel = false) => element('ul', {
+            className: rootLevel ? 'page-tree' : 'page-tree-children',
+            children: nodes.map((node, index) => renderTreeNode(node, index, nodes)),
+        });
         const tree = buildPageTree(pages.items);
         list.append(tree.length
-            ? renderTreeLevel(tree, null, true)
+            ? renderTreeLevel(tree, true)
             : emptyState('Noch keine Seiten vorhanden.'));
         workspace.replaceChildren(sectionHeading(
             'Seitenstruktur',
-            'Seiten am ↕-Griff ziehen, zwischen Seiten sortieren oder auf einer Seite als Untermenü ablegen',
+            'Seiten am ↕-Griff greifen und verschieben: am oberen oder unteren Rand einer Seite loslassen, um davor oder danach einzusortieren, in der Mitte, um als Unterseite abzulegen.',
         ), list);
     };
 
@@ -3701,6 +3720,85 @@ const renderAdmin = async () => {
                         }),
                     })));
                     toast(selectedMember ? 'Die Helferanmeldung wurde mit dem Mitglied verknüpft.' : 'Die Verknüpfung wurde entfernt.');
+                    dialog.close();
+                    await showEventManagement();
+                } catch (error) {
+                    message.textContent = error.message;
+                    toast(error.message, 'error');
+                    save.disabled = false;
+                }
+            });
+            dialog.append(form);
+            document.body.append(dialog);
+            dialog.showModal();
+        };
+        // Manuelles Hinzufügen einer Person als Helfer zu einer Veranstaltung (Button „+" neben
+        // „Mail an alle Helfer") — für Fälle, in denen jemand nicht über das öffentliche Formular
+        // angemeldet hat (z. B. spontan vor Ort). Nutzt denselben Mitglied-Such-Endpunkt wie
+        // „Mitglied verknüpfen" (siehe `openLinkMemberDialog` oben) und `AddEventHelpRequestUseCase`.
+        const openAddEventHelperDialog = (event) => {
+            const dialog = element('dialog', {className: 'confirm-dialog'});
+            const message = formMessage();
+            let selectedMember = null;
+
+            const results = element('div', {className: 'member-link-results'});
+            results.addEventListener('mousedown', (mousedownEvent) => mousedownEvent.preventDefault());
+            const renderResults = (candidates) => {
+                results.replaceChildren(...(candidates.length ? candidates.map((candidate) => {
+                    const pick = element('button', {
+                        className: `secondary-button member-link-candidate${selectedMember && selectedMember.id === candidate.id ? ' is-selected' : ''}`,
+                        attributes: {type: 'button'},
+                        children: [
+                            element('strong', {text: `${candidate.firstName} ${candidate.lastName} (${candidate.memberNumber})`}),
+                            element('small', {text: `${candidate.street} • ${new Date(`${candidate.birthDate}T00:00:00`).toLocaleDateString('de-DE')}`}),
+                        ],
+                    });
+                    pick.addEventListener('click', () => {
+                        selectedMember = candidate;
+                        save.disabled = false;
+                        results.querySelectorAll('.member-link-candidate').forEach((button) => {
+                            button.classList.toggle('is-selected', button === pick);
+                        });
+                    });
+
+                    return pick;
+                }) : [emptyState('Keine Mitglieder gefunden.')]));
+            };
+            const search = searchField('Name oder Mitgliedsnummer suchen …', '', async (term) => {
+                if (term === '') { results.replaceChildren(); return; }
+                const data = await request(`/api/admin/v1/event-help-requests/member-candidates?search=${encodeURIComponent(term)}`);
+                renderResults(data.items);
+            });
+            const searchInput = search.querySelector('input');
+            searchInput.addEventListener('keydown', (keydownEvent) => {
+                if (keydownEvent.key !== 'Enter') return;
+                keydownEvent.preventDefault();
+                searchInput.dispatchEvent(new Event('change'));
+            });
+
+            const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+            const save = element('button', {className: 'button button-compact', text: 'Als Helfer hinzufügen', attributes: {type: 'submit'}});
+            save.disabled = true;
+            cancel.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => dialog.remove());
+            const form = element('form', {className: 'confirm-dialog-content', children: [
+                element('p', {className: 'eyebrow', text: 'Helfer hinzufügen'}),
+                element('h2', {text: event.eventTitle}),
+                search,
+                results,
+                message,
+                element('div', {className: 'confirm-dialog-actions', children: [cancel, save]}),
+            ]});
+            form.addEventListener('submit', async (submitEvent) => {
+                submitEvent.preventDefault();
+                if (!selectedMember) return;
+                save.disabled = true;
+                try {
+                    await request('/api/admin/v1/event-help-requests', {
+                        method: 'POST',
+                        body: JSON.stringify({eventIdentifier: event.eventIdentifier, memberId: selectedMember.id}),
+                    });
+                    toast(`„${selectedMember.firstName} ${selectedMember.lastName}“ wurde als Helfer hinzugefügt.`);
                     dialog.close();
                     await showEventManagement();
                 } catch (error) {
@@ -4096,6 +4194,12 @@ const renderAdmin = async () => {
             const visibleRequests = requests.filter((requestItem) => requestItem.status !== 'not_participated');
             const broadcastButton = element('button', {className: 'secondary-button button-compact', text: 'Mail an alle Helfer', attributes: {type: 'button'}});
             broadcastButton.addEventListener('click', () => openEventHelpBroadcastDialog(event));
+            const addHelperButton = element('button', {
+                className: 'secondary-button button-compact',
+                text: '＋',
+                attributes: {type: 'button', title: 'Mitglied als Helfer hinzufügen', 'aria-label': 'Mitglied als Helfer hinzufügen'},
+            });
+            addHelperButton.addEventListener('click', () => openAddEventHelperDialog(event));
             const visibleEntries = buildParticipantEntries(visibleRequests, event);
             const notParticipatedAccordion = notParticipatedRequests.length ? element('details', {className: 'event-helper-archive event-helper-not-participated', children: [
                 element('summary', {children: [
@@ -4111,7 +4215,9 @@ const renderAdmin = async () => {
                     element('p', {text: `${new Date(`${event.eventDate}T00:00:00`).toLocaleDateString('de-DE')} · ${event.eventTime} Uhr`}),
                 ]}),
                 element('div', {className: 'event-helper-header-actions', children: [
-                    ...(canEditModule('event_helpers') ? [broadcastButton] : []),
+                    ...(canEditModule('event_helpers')
+                        ? [element('div', {className: 'event-helper-header-buttons', children: [broadcastButton, addHelperButton]})]
+                        : []),
                     element('div', {className: 'event-helper-counts', children: [
                         element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
                         element('span', {className: 'status-badge', text: `${participatedCount} ${participatedCount === 1 ? 'Helfer' : 'Helfer'}`}),

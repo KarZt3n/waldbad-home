@@ -882,9 +882,9 @@ a { color: var(--forest-700); }
 .page-tree-children { position: relative; margin-left: 1.65rem; border-left: 1px solid #b8c9bd; }
 .page-tree-node + .page-tree-node { border-top: 1px solid var(--line); }
 .page-tree > .page-tree-node { border-top: 1px solid var(--line); }
-.page-tree > .page-tree-drop-zone:first-child + .page-tree-node { border-top: 0; }
 .page-tree-children > .page-tree-node { border-top: 1px solid var(--line); }
 .page-tree-row {
+    position: relative;
     display: flex;
     min-height: 4.25rem;
     align-items: center;
@@ -911,23 +911,36 @@ a { color: var(--forest-700); }
 .page-tree-drag-handle:hover, .page-tree-drag-handle:focus-visible { color: var(--forest-900); background: var(--white); }
 .page-tree-drag-handle:active { cursor: grabbing; }
 .page-tree-panel.is-page-dragging, .page-tree-panel.is-page-dragging * { cursor: grabbing; }
-.page-tree-drop-zone { display: none; height: 0; margin: 0 .65rem; list-style: none; }
-.page-tree-panel.is-page-dragging .page-tree-drop-zone { display: grid; height: 1.5rem; place-items: center; border: 1px dashed #9ab5a3; border-radius: .45rem; color: transparent; }
-.page-tree-panel.is-page-dragging .page-tree-drop-zone.drag-over { height: 2.25rem; border: 2px solid var(--water-400); color: var(--forest-800); background: #e2f4f6; font-size: .78rem; font-weight: 800; }
-.page-tree-child-drop-zone { display: none; margin: 0 .65rem .55rem; }
-.page-tree-panel.is-page-dragging .page-tree-child-drop-zone {
-    display: grid;
-    min-height: 3.25rem;
-    place-items: center;
-    border: 2px dashed #8aab95;
-    border-radius: .55rem;
-    color: var(--forest-800);
-    background: var(--forest-100);
-    font-size: .82rem;
-    font-weight: 800;
+/* Ziel-Anzeige beim Ziehen: eine Linie über/unter der Zielzeile zeigt „davor“/„danach“ (gleiche
+   Ebene wie die Zielseite), eine Umrandung der ganzen Zeile zeigt „hinein“ (als Unterseite). */
+.page-tree-row.drop-before::before, .page-tree-row.drop-after::before {
+    content: '';
+    position: absolute;
+    right: .2rem;
+    left: .2rem;
+    z-index: 2;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--water-400);
+    box-shadow: 0 0 0 3px rgb(100 183 198 / 25%);
+    pointer-events: none;
 }
-.page-tree-panel.is-page-dragging .page-tree-child-drop-zone.drag-over { border-style: solid; border-color: var(--water-400); background: #d9f1f4; box-shadow: inset 0 0 0 2px var(--white); }
-.page-tree-panel.is-page-dragging .page-tree-child-drop-zone.is-disabled { display: none; }
+.page-tree-row.drop-before::before { top: -1px; }
+.page-tree-row.drop-after::before { bottom: -1px; }
+.page-tree-row.drop-before::after, .page-tree-row.drop-after::after {
+    content: '';
+    position: absolute;
+    left: -.15rem;
+    z-index: 2;
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--water-400);
+    pointer-events: none;
+}
+.page-tree-row.drop-before::after { top: -.25rem; }
+.page-tree-row.drop-after::after { bottom: -.25rem; }
+.page-tree-row.drop-into { border-radius: .5rem; outline: 2px solid var(--water-400); outline-offset: -2px; background: #e2f4f6; }
 .page-tree-node.is-hidden > .page-tree-row { background: #f4f4f2; }
 .page-tree-node.is-hidden > .page-tree-row .page-tree-title { color: var(--muted); }
 .page-tree-node.is-hidden > .page-tree-row .page-icon { color: var(--danger); }
@@ -1188,6 +1201,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
 .event-helper-group header p { margin-top: .25rem; color: var(--muted); }
 .event-helper-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; }
+.event-helper-header-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
 .event-helper-counts { display: flex; align-items: center; gap: .6rem; }
 .event-helper-counts small { color: var(--muted); font-weight: 650; }
 .event-helper-list { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: .85rem; background: var(--white); }
@@ -1526,6 +1540,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .membership-person-heading, .management-toolbar, .membership-admin-card > header { align-items: stretch; flex-direction: column; }
     .event-helper-group > header { align-items: stretch; flex-direction: column; }
     .event-helper-header-actions { align-items: flex-start; }
+    .event-helper-header-buttons { justify-content: flex-start; }
     .event-helper-participant-header { grid-template-columns: 1fr; }
     .event-helper-participant-side { justify-content: space-between; }
     .image-text { flex-direction: column; align-items: stretch; }
