@@ -4488,12 +4488,31 @@ const renderAdmin = async () => {
         ]});
     };
 
+    // Für die Zahler-Suche im Dialog wird die vollständige, ungefilterte Mitgliederliste gebraucht
+    // (unabhängig von einer evtl. aktiven Suche in der Tabelle) — ein Zahler kann für jedes
+    // Mitglied bezahlen, nicht nur für den eigenen Haushalt. Bei ~1000 Datensätzen lohnt es sich
+    // aber nicht, das bei jedem Öffnen eines Datensatzes neu zu laden: `payerCandidatesCache` hält
+    // das (als Promise, damit parallele Öffnungen sich nicht gegenseitig doppelt laden) bis zum
+    // nächsten echten Neuladen der Liste (`invalidatePayerCandidatesCache()`, siehe `showMembers`).
+    let payerCandidatesCache = null;
+    const invalidatePayerCandidatesCache = () => { payerCandidatesCache = null; };
+    const loadPayerCandidates = () => {
+        // Bei einem fehlgeschlagenen Request bleibt nichts Kaputtes im Cache stehen — sonst würde
+        // ein einmaliger Netzwerkfehler jeden weiteren Dialog-Aufruf bis zum nächsten Neuladen der
+        // Liste ebenfalls scheitern lassen.
+        payerCandidatesCache ??= request('/api/admin/v1/members')
+            .then((data) => data.items)
+            .catch((error) => { invalidatePayerCandidatesCache(); throw error; });
+
+        return payerCandidatesCache;
+    };
+
     const openMemberDialog = async (member, onSaved) => {
-        // Immer die vollständige, ungefilterte Mitgliederliste laden (unabhängig von einer evtl.
-        // aktiven Suche in der Tabelle), damit die Zahler-Suche jedes Mitglied findet.
+        // Die Haushaltsdaten sind serverseitig bereits auf die Hauptnummer dieses einen Mitglieds
+        // beschränkt (`GetMemberHouseholdQuery`), laden also ohnehin nur die eigene Familie.
         let [household, payerCandidates] = await Promise.all([
             member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null),
-            request('/api/admin/v1/members').then((data) => data.items),
+            loadPayerCandidates(),
         ]);
         const dialog = element('dialog', {className: 'activity-dialog member-dialog'});
         const suffix = member?.id || 'new';
@@ -5057,6 +5076,9 @@ const renderAdmin = async () => {
     // Filter oder Tab in der Zwischenzeit erneut wechseln.
     let membersLoadToken = 0;
     const showMembers = () => {
+        // Die Tabelle wird jetzt neu geladen — ein guter Zeitpunkt, auch die Zahler-Kandidaten für
+        // den nächsten Dialog-Aufruf neu zu laden, statt eine veraltete Liste weiterzuverwenden.
+        invalidatePayerCandidatesCache();
         const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
         const actions = [];
         if (canEditModule('members')) {
