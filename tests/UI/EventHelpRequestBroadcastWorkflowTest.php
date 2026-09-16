@@ -4,23 +4,26 @@ namespace App\Tests\UI;
 
 use App\Data\Membership\ContributionRate\Entity\ContributionRateEntity;
 use App\Data\Membership\Member\Entity\MemberNumberSequenceEntity;
+use App\Logic\Event\HelpRequest\Event\EventHelpRequestBroadcastRequestedEvent;
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
+use App\UI\Event\Handlers\HelpRequest\SendEventHelpRequestBroadcastHandler;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use App\Tests\Support\FixedSecureTokenGenerator;
 
 /**
  * Deckt die freie Rundmail an Helfer einer Veranstaltung ab: die Vorbelegung des „An:"-Felds
  * (`GetEventHelpRequestBroadcastRecipientsUseCase`, Button „Mail an alle Helfer"/✉-Icon je Person)
- * sowie den eigentlichen Versand an die dort ggf. angepasste, explizit mitgeschickte Liste
- * (`SendEventHelpRequestBroadcastUseCase`), siehe `openEventHelpBroadcastDialog` in `assets/admin/events.js`.
+ * sowie das asynchrone Einplanen des Versands an die dort ggf. angepasste, explizit mitgeschickte
+ * Liste, siehe `openEventHelpBroadcastDialog` in `assets/admin/events.js`.
  */
 final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
 {
@@ -170,15 +173,15 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
-    public function testBroadcastFailsWithoutConfiguredMailServer(): void
+    public function testBroadcastIsQueuedWithoutWaitingForMailServerConfiguration(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
 
         $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/broadcast', [
             'subject' => 'Treffpunkt', 'body' => 'Wir treffen uns am Eingang.', 'recipients' => ['erika@example.test'],
         ], $headers);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Mailversand', $this->responseData()['error']['message']);
+        self::assertResponseStatusCodeSame(202);
+        self::assertSame(['recipientCount' => 1, 'status' => 'queued'], $this->responseData());
     }
 
     public function testBroadcastRequiresSubjectBodyAndAtLeastOneRecipient(): void
@@ -199,34 +202,42 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
     public function testBroadcastRejectsAnInvalidRecipientEmail(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
-        $this->configureBrokenMailServer($headers);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/broadcast', [
             'subject' => 'Hallo', 'body' => 'Text', 'recipients' => ['keine-email-adresse'],
         ], $headers);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('gültige E-Mail-Adresse', $this->responseData()['error']['message']);
+        self::assertResponseStatusCodeSame(400);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        $message = $error['message'];
+        self::assertIsString($message);
+        self::assertStringContainsString('gültige E-Mail-Adresse', $message);
     }
 
-    public function testBroadcastSendsToExplicitlyGivenRecipientsAndCountsFailures(): void
+    public function testBroadcastQueuesExplicitlyGivenRecipientsAndDeduplicatesThem(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
-        // Absichtlich nicht erreichbarer Mailserver (Vorbild: SettingsEmailManagementWorkflowTest) —
-        // der eigentliche Versand schlägt fehl, ohne den restlichen Ablauf zu sprengen.
-        $this->configureBrokenMailServer($headers);
-
         $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/broadcast', [
             'subject' => 'Treffpunkt', 'body' => 'Wir treffen uns am Eingang.',
             // Dieselbe Adresse zweimal (unterschiedliche Groß-/Kleinschreibung) wird auf einen
             // Empfänger dedupliziert — das „An:"-Feld im Dialog könnte sowas theoretisch liefern.
-            'recipients' => ['erika@example.test', ' Erika@Example.test '],
+            'recipients' => ['erika@example.test', 'frida@example.test', ' Erika@Example.test '],
         ], $headers);
-        self::assertResponseIsSuccessful();
-        $result = $this->responseData();
-        self::assertSame(1, $result['recipientCount']);
-        self::assertSame(0, $result['sentCount']);
-        self::assertSame(1, $result['failedCount']);
-        self::assertArrayNotHasKey('skippedWithoutEmailCount', $result);
+        self::assertResponseStatusCodeSame(202);
+        self::assertSame(['recipientCount' => 2, 'status' => 'queued'], $this->responseData());
+
+        $transport = self::getContainer()->get('messenger.transport.async');
+        self::assertInstanceOf(InMemoryTransport::class, $transport);
+        $envelopes = $transport->getSent();
+        self::assertCount(2, $envelopes);
+        $firstMessage = $envelopes[0]->getMessage();
+        self::assertInstanceOf(EventHelpRequestBroadcastRequestedEvent::class, $firstMessage);
+        self::assertSame('Treffpunkt', $firstMessage->subject);
+        self::assertSame('Wir treffen uns am Eingang.', $firstMessage->body);
+        self::assertSame('Erika@Example.test', $firstMessage->recipient);
+        $secondMessage = $envelopes[1]->getMessage();
+        self::assertInstanceOf(EventHelpRequestBroadcastRequestedEvent::class, $secondMessage);
+        self::assertSame('frida@example.test', $secondMessage->recipient);
     }
 
     public function testNonEditorIsDeniedAccessToBroadcast(): void
@@ -238,6 +249,25 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    public function testAsyncHandlerSignalsATemporaryDeliveryFailureForMessengerRetry(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->configureBrokenMailServer($headers);
+
+        $handler = self::getContainer()->get(SendEventHelpRequestBroadcastHandler::class);
+        self::assertInstanceOf(SendEventHelpRequestBroadcastHandler::class, $handler);
+
+        $this->expectException(\RuntimeException::class);
+        $handler(new EventHelpRequestBroadcastRequestedEvent(
+            'Treffpunkt',
+            'Wir treffen uns am Eingang.',
+            'erika@example.test',
+        ));
+    }
+
+    /**
+     * @param array<string, string> $headers
+     */
     private function configureBrokenMailServer(array $headers): void
     {
         $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings', [
@@ -252,6 +282,8 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
      * Legt eine Veranstaltung und eine Helferanmeldung dazu an (Vor-/Nachname/Geburtsdatum frei
      * wählbar, damit sie sich bei Bedarf automatisch einem zuvor separat angelegten Mitglied
      * zuordnet) — Grundfall für die Empfänger-Ermittlung.
+     *
+     * @param array<string, string> $headers
      */
     private function createEventAndSubmitHelper(
         array $headers,

@@ -2,13 +2,14 @@
 
 namespace App\UI\Event\HelpRequest\Http;
 
+use App\Logic\Common\Messaging\AsyncEventPublisherInterface;
+use App\Logic\Event\HelpRequest\Event\EventHelpRequestBroadcastRequestedEvent;
 use App\Logic\Event\HelpRequest\Query\ListEventHelpRequestsQuery;
 use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
 use App\Logic\Event\HelpRequest\UseCase\AddEventHelpRequestUseCase;
 use App\Logic\Event\HelpRequest\UseCase\GetEventHelpRequestBroadcastRecipientsUseCase;
 use App\Logic\Event\HelpRequest\UseCase\LinkEventHelpRequestMemberUseCase;
 use App\Logic\Event\HelpRequest\UseCase\RecordEventHelpParticipationUseCase;
-use App\Logic\Event\HelpRequest\UseCase\SendEventHelpRequestBroadcastUseCase;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\Member;
 use App\UI\IdentityAccess\Security\Permission;
@@ -23,8 +24,10 @@ class AdminEventHelpRequestController extends AbstractController
 {
     private const int MEMBER_CANDIDATES_LIMIT = 20;
 
-    public function __construct(private readonly EventHelpRequestResponseFactory $responseFactory)
-    {
+    public function __construct(
+        private readonly EventHelpRequestResponseFactory $responseFactory,
+        private readonly AsyncEventPublisherInterface $eventPublisher,
+    ) {
     }
 
     #[Route('', name: 'api_admin_event_help_list', methods: ['GET'])]
@@ -109,10 +112,11 @@ class AdminEventHelpRequestController extends AbstractController
      * Button „Mail an alle Helfer" je Veranstaltung oder über das ✉-Icon neben einer einzelnen
      * Person, beides in `assets/app.js` (`openEventHelpBroadcastDialog`, `buildMailButton`) — beide
      * holen die Vorbelegung zuvor über `broadcastRecipients()` und schicken hier bereits die
-     * (ggf. angepasste) endgültige Liste mit.
+     * (ggf. angepasste) endgültige Liste mit. Pro Empfänger wird ein eigenes Event erzeugt, damit
+     * ein vorübergehender Versandfehler gezielt wiederholt wird, ohne andere Mails doppelt zu senden.
      */
     #[Route('/broadcast', name: 'api_admin_event_help_broadcast', methods: ['POST'])]
-    public function broadcast(Request $request, SendEventHelpRequestBroadcastUseCase $useCase): JsonResponse
+    public function broadcast(Request $request): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
         $data = $request->getPayload();
@@ -121,21 +125,48 @@ class AdminEventHelpRequestController extends AbstractController
         if ($subject === '' || $body === '') {
             throw new BadRequestHttpException('Betreff und Text sind erforderlich.');
         }
-        $recipients = $this->parseRequestIds($data->all('recipients'), 'Die Empfänger-E-Mail-Adressen sind ungültig.');
+        $recipients = $this->parseEmailRecipients($data->all('recipients'));
         if ($recipients === null || $recipients === []) {
             throw new BadRequestHttpException('Mindestens eine Empfänger-E-Mail-Adresse ist erforderlich.');
         }
 
-        $result = $useCase->execute($subject, $body, $recipients);
+        foreach ($recipients as $recipient) {
+            $this->eventPublisher->publish(new EventHelpRequestBroadcastRequestedEvent($subject, $body, $recipient));
+        }
 
         return new JsonResponse([
-            'recipientCount' => $result->recipientCount,
-            'sentCount' => $result->sentCount,
-            'failedCount' => $result->failedCount,
-        ]);
+            'recipientCount' => count($recipients),
+            'status' => 'queued',
+        ], JsonResponse::HTTP_ACCEPTED);
     }
 
     /**
+     * @param array<array-key, mixed> $rawValues
+     *
+     * @return ?list<string>
+     */
+    private function parseEmailRecipients(array $rawValues): ?array
+    {
+        $recipients = $this->parseRequestIds($rawValues, 'Die Empfänger-E-Mail-Adressen sind ungültig.');
+        if ($recipients === null) {
+            return null;
+        }
+
+        $uniqueRecipients = [];
+        foreach ($recipients as $recipient) {
+            $trimmedRecipient = trim($recipient);
+            if (filter_var($trimmedRecipient, FILTER_VALIDATE_EMAIL) === false) {
+                throw new BadRequestHttpException(sprintf('„%s“ ist keine gültige E-Mail-Adresse.', $trimmedRecipient));
+            }
+            $uniqueRecipients[mb_strtolower($trimmedRecipient)] = $trimmedRecipient;
+        }
+
+        return array_values($uniqueRecipients);
+    }
+
+    /**
+     * @param array<array-key, mixed> $rawValues
+     *
      * @return ?list<string> `null`, wenn `$rawValues` leer ist (kein Filter/keine Angabe) — sonst
      *                        die getrimmten, nicht-leeren Werte.
      */
@@ -152,7 +183,7 @@ class AdminEventHelpRequestController extends AbstractController
             if (!is_string($rawValue) || trim($rawValue) === '') {
                 throw new BadRequestHttpException($errorMessage);
             }
-            $values[] = $rawValue;
+            $values[] = trim($rawValue);
         }
 
         return $values;

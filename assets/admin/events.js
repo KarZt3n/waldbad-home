@@ -684,9 +684,7 @@ const showEventHelpers = async () => {
                     recipients,
                 })});
                 dialog.close();
-                const parts = [`${result.sentCount} von ${result.recipientCount} E-Mails verschickt`];
-                if (result.failedCount) parts.push(`${result.failedCount} fehlgeschlagen`);
-                toast(parts.join(', ') + '.', result.failedCount ? 'info' : 'success');
+                toast(`Der Versand an ${result.recipientCount} ${result.recipientCount === 1 ? 'Person wurde' : 'Personen wurde'} im Hintergrund gestartet.`, 'success');
             } catch (error) {
                 message.textContent = error.message;
                 toast(error.message, 'error');
@@ -820,7 +818,7 @@ const openActivityDialog = (activity, onSaved) => {
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
     const actions = [cancel, submit];
     if (activity) {
-        const deleteButton = element('button', {className: 'text-button danger', text: 'Löschen', attributes: {type: 'button'}});
+        const deleteButton = element('button', {className: 'button danger-button', text: 'Löschen', attributes: {type: 'button'}});
         deleteButton.addEventListener('click', async () => {
             const confirmed = await confirmAction(
                 `„${activity.name}“ löschen?`,
@@ -1220,7 +1218,7 @@ const openEventDialog = (schedule, kind, onSaved, handlers, prefill = null) => {
     const actions = [cancel, submit];
     if (schedule) {
         const deleteButton = element('button', {
-            className: 'text-button danger event-dialog-action event-dialog-action-delete',
+            className: 'button danger-button event-dialog-action event-dialog-action-delete',
             attributes: {type: 'button', title: 'Löschen', 'aria-label': 'Löschen'},
             children: [
                 element('span', {className: 'event-dialog-action-icon', text: '⌫', attributes: {'aria-hidden': 'true'}}),
@@ -1480,7 +1478,7 @@ const openEventTemplateDialog = (template, kind, onSaved, handlers) => {
     const actions = [cancel, submit];
     if (template) {
         const deleteButton = element('button', {
-            className: 'text-button danger event-dialog-action event-dialog-action-delete',
+            className: 'button danger-button event-dialog-action event-dialog-action-delete',
             attributes: {type: 'button', title: 'Löschen', 'aria-label': 'Löschen'},
             children: [
                 element('span', {className: 'event-dialog-action-icon', text: '⌫', attributes: {'aria-hidden': 'true'}}),

@@ -18,9 +18,21 @@ framework:
             messenger.bus.default: []
 
         routing:
+            App\Logic\Event\HelpRequest\Event\EventHelpRequestBroadcastRequestedEvent: async
+            App\Logic\IdentityAccess\LoginToken\Event\LoginRequestedEvent: async
             Symfony\Component\Mailer\Messenger\SendEmailMessage: async
             Symfony\Component\Notifier\Message\ChatMessage: async
             Symfony\Component\Notifier\Message\SmsMessage: async
 
             # Route your messages to the transports
             # 'App\Message\YourMessage': async
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                sync: 'sync://'
+            routing:
+                # Authentifizierungs-Workflows lösen den festen Test-Token unmittelbar ein. Die
+                # Produktivkonfiguration oben stellt LoginRequestedEvent weiterhin in `async` ein.
+                App\Logic\IdentityAccess\LoginToken\Event\LoginRequestedEvent: sync

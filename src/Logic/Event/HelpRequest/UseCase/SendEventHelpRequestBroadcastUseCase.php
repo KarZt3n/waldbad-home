@@ -26,11 +26,10 @@ use Symfony\Component\Mime\Email;
  * händisch ergänzt), und genau diese — bereits vom Frontend deduplizierte, aber hier sicherheitshalber
  * nochmals geprüfte — Liste wird angeschrieben.
  *
- * Anders als der übrige, „best effort" arbeitende Mailversand (siehe `NotificationMailer`) wird ein
- * Fehlschlag hier nicht verschluckt: Die Verwaltung löst diese Mail bewusst und einmalig aus und
- * soll erfahren, ob sie tatsächlich ankam (siehe `sentCount`/`failedCount` in der Antwort sowie das
- * Vorbild `SendTestEmailUseCase`) — nur ein Fehlschlag bei einzelnen Empfängern bricht dabei nicht
- * gleich den gesamten restlichen Versand ab.
+ * Der Rückgabewert hält erfolgreiche und fehlgeschlagene Zustellungen auseinander. Der asynchrone
+ * Handler verarbeitet jeweils genau einen Empfänger und signalisiert Messenger einen Fehlschlag,
+ * damit dessen Retry-Strategie greift. Direkte Aufrufer können weiterhin mehrere Empfänger in einem
+ * Durchlauf verarbeiten, ohne dass ein einzelner Fehler den restlichen Versand abbricht.
  */
 readonly class SendEventHelpRequestBroadcastUseCase
 {

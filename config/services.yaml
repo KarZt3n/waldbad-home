@@ -39,6 +39,7 @@ services:
             - '../src/Kernel.php'
             - '../src/Data/**/Entity/'
             - '../src/Logic/**/Dto/'
+            - '../src/Logic/*/*/Event/'
             - '../src/Logic/**/Exception/'
             - '../src/Logic/**/Model/'
             - '../src/UI/IdentityAccess/Security/AuthenticatedUser.php'
@@ -50,3 +51,5 @@ services:
     # Multiple VolunteerEventProviderInterface implementations exist (the „Veranstaltung“ module and
     # the legacy page-content-block lookup), so autowiring can no longer pick one automatically.
     App\Logic\Event\HelpRequest\VolunteerEventProviderInterface: '@App\Data\Event\Schedule\Provider\ChainVolunteerEventProvider'
+
+    App\Logic\Common\Messaging\AsyncEventPublisherInterface: '@App\Data\Infrastructure\Messenger\SymfonyAsyncEventPublisher'

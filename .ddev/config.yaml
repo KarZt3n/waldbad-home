@@ -11,7 +11,8 @@ database:
     version: "11.8"
 use_dns_when_possible: true
 composer_version: "2"
-web_environment: []
+web_environment:
+    - DEFAULT_URI=http://waldbad-home.ddev.site
 corepack_enable: false
 
 # Key features of DDEV's config.yaml:
@@ -288,7 +289,6 @@ corepack_enable: false
 # See https://docs.ddev.com/en/stable/users/extend/custom-commands/ for more
 # information on the commands that can be extended and the tasks you can define
 # for them. Example:
-#hooks:
-## Un-comment to consume async message.
-#    post-start:
-#    - exec: symfony run --daemon --watch=config,src,templates,vendor bin/console messenger:consume async -vv
+hooks:
+    post-start:
+    - exec: symfony run --daemon --watch=config,src,templates,vendor bin/console messenger:consume async --no-interaction

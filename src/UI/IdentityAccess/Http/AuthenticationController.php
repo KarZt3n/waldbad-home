@@ -3,7 +3,8 @@
 namespace App\UI\IdentityAccess\Http;
 
 use App\Logic\IdentityAccess\Authentication\Query\GetAuthenticationIdentityQuery;
-use App\Logic\IdentityAccess\LoginToken\UseCase\RequestLoginUseCase;
+use App\Logic\Common\Messaging\AsyncEventPublisherInterface;
+use App\Logic\IdentityAccess\LoginToken\Event\LoginRequestedEvent;
 use App\Logic\IdentityAccess\Session\Dto\AuthenticatedSession;
 use App\Logic\IdentityAccess\Session\Dto\IssuedSession;
 use App\Logic\IdentityAccess\Session\UseCase\LogoutUseCase;
@@ -46,11 +47,12 @@ readonly class AuthenticationController
         private GetAuthenticationIdentityQuery $identityQuery,
         private RateLimiterFactory $loginRequestLimiter,
         private RateLimiterFactory $loginSessionLimiter,
+        private AsyncEventPublisherInterface $eventPublisher,
     ) {
     }
 
     #[Route('/login-requests', name: 'api_login_request', methods: ['POST'])]
-    public function requestLogin(Request $request, RequestLoginUseCase $useCase): JsonResponse
+    public function requestLogin(Request $request): JsonResponse
     {
         $email = trim($request->getPayload()->getString('email'));
         if ($email === '') {
@@ -62,10 +64,10 @@ readonly class AuthenticationController
             throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte, bevor du einen weiteren Anmeldelink anforderst.');
         }
 
-        $useCase->execute($email);
+        $this->eventPublisher->publish(new LoginRequestedEvent($email));
 
         return new JsonResponse([
-            'message' => 'Falls diese E-Mail-Adresse hinterlegt ist, wurde soeben ein Anmeldelink verschickt.',
+            'message' => 'Falls diese E-Mail-Adresse hinterlegt ist, wird ein Anmeldelink verschickt.',
         ], JsonResponse::HTTP_ACCEPTED);
     }
 
