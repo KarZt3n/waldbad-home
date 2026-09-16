@@ -19,7 +19,7 @@ use App\Tests\Support\FixedSecureTokenGenerator;
 /**
  * Deckt das manuelle Hinzufügen eines Mitglieds als Helfer einer Veranstaltung ab (Button „+" neben
  * „Mail an alle Helfer" in der Helferverwaltung, siehe `AddEventHelpRequestUseCase` und
- * `openAddEventHelperDialog` in `assets/app.js`) — für Personen, die sich nicht über das öffentliche
+ * `openAddEventHelperDialog` in `assets/admin/events.js`) — für Personen, die sich nicht über das öffentliche
  * Formular angemeldet haben.
  */
 final class EventHelpRequestManualAddWorkflowTest extends WebTestCase

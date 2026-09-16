@@ -20,7 +20,7 @@ use App\Tests\Support\FixedSecureTokenGenerator;
  * Deckt die freie Rundmail an Helfer einer Veranstaltung ab: die Vorbelegung des „An:"-Felds
  * (`GetEventHelpRequestBroadcastRecipientsUseCase`, Button „Mail an alle Helfer"/✉-Icon je Person)
  * sowie den eigentlichen Versand an die dort ggf. angepasste, explizit mitgeschickte Liste
- * (`SendEventHelpRequestBroadcastUseCase`), siehe `openEventHelpBroadcastDialog` in `assets/app.js`.
+ * (`SendEventHelpRequestBroadcastUseCase`), siehe `openEventHelpBroadcastDialog` in `assets/admin/events.js`.
  */
 final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
 {
