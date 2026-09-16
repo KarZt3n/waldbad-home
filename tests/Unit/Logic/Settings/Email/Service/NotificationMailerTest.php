@@ -5,7 +5,6 @@ namespace App\Tests\Unit\Logic\Settings\Email\Service;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Model\NotificationEvent;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
@@ -19,95 +18,80 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mailer\Exception\TransportException;
-use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mailer\MailerInterface;
 
 final class NotificationMailerTest extends TestCase
 {
-    public function testNotifyDoesNothingWhenNotConfigured(): void
-    {
-        $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, [
-            NotificationEvent::MembershipApplicationSubmitted->value => ['a@example.test'],
-        ]));
-        $factory = $this->createMock(ConfiguredMailTransportFactory::class);
-        $factory->expects(self::never())->method('create');
-
-        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
-            ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
-    }
-
     public function testNotifyDoesNothingWithoutRecipientsForTheEvent(): void
     {
         $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn(new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', null, []));
-        $factory = $this->createMock(ConfiguredMailTransportFactory::class);
-        $factory->expects(self::never())->method('create');
+        $manager->method('get')->willReturn(new EmailSettings([]));
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::never())->method('send');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
+        $this->mailerFor($manager, $mailer)
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
     }
 
     public function testNotifySendsTheRenderedTemplateToEveryConfiguredRecipient(): void
     {
-        $settings = new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', [
-            NotificationEvent::MembershipApplicationSubmitted->value => ['a@example.test', 'b@example.test'],
-        ]);
         $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn($settings);
+        $manager->method('get')->willReturn(new EmailSettings([
+            NotificationEvent::MembershipApplicationSubmitted->value => ['a@example.test', 'b@example.test'],
+        ]));
 
-        $transport = $this->createMock(TransportInterface::class);
-        $transport->expects(self::once())->method('send');
-        $factory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $factory->method('create')->willReturn($transport);
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::once())->method('send');
 
-        (new NotificationMailer($manager, $factory, $this->renderer('Hallo {{vorname}}'), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
+        $this->mailerFor($manager, $mailer, $this->renderer('Hallo {{vorname}}'))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, ['vorname' => 'Erika']);
     }
 
     public function testNotifySwallowsATransportFailureInsteadOfThrowing(): void
     {
-        $settings = new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', null, [
-            NotificationEvent::MembershipApplicationSubmitted->value => ['a@example.test'],
-        ]);
         $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn($settings);
+        $manager->method('get')->willReturn(new EmailSettings([
+            NotificationEvent::MembershipApplicationSubmitted->value => ['a@example.test'],
+        ]));
 
-        $transport = $this->createStub(TransportInterface::class);
-        $transport->method('send')->willThrowException(new TransportException('Connection refused'));
-        $factory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $factory->method('create')->willReturn($transport);
+        $mailer = $this->createStub(MailerInterface::class);
+        $mailer->method('send')->willThrowException(new TransportException('Connection refused'));
 
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('error');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), $logger))
+        $this->mailerFor($manager, $mailer, $this->renderer(), $logger)
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, []);
-    }
-
-    public function testSendToDoesNothingWhenNotConfigured(): void
-    {
-        $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
-        $factory = $this->createMock(ConfiguredMailTransportFactory::class);
-        $factory->expects(self::never())->method('create');
-
-        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
-            ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, []);
     }
 
     public function testSendToSendsToExactlyThatRecipient(): void
     {
-        $settings = new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []);
         $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn($settings);
+        $manager->method('get')->willReturn(new EmailSettings([]));
 
-        $transport = $this->createMock(TransportInterface::class);
-        $transport->expects(self::once())->method('send');
-        $factory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $factory->method('create')->willReturn($transport);
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::once())->method('send');
 
-        (new NotificationMailer($manager, $factory, $this->renderer(), new BrandedEmailLayout(), $this->logoProvider(), new NullLogger()))
+        $this->mailerFor($manager, $mailer)
             ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, ['vorname' => 'Erika']);
+    }
+
+    private function mailerFor(
+        EmailSettingsManagerInterface $manager,
+        MailerInterface $mailer,
+        ?MailTemplateRenderer $renderer = null,
+        ?LoggerInterface $logger = null,
+    ): NotificationMailer {
+        return new NotificationMailer(
+            $mailer,
+            $manager,
+            $renderer ?? $this->renderer(),
+            new BrandedEmailLayout(),
+            $this->logoProvider(),
+            $logger ?? new NullLogger(),
+            'from@example.test',
+            'Verein',
+        );
     }
 
     private function renderer(string $body = 'Text'): MailTemplateRenderer

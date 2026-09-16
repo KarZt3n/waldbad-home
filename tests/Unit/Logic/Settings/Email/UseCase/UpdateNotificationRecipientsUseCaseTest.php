@@ -14,7 +14,7 @@ final class UpdateNotificationRecipientsUseCaseTest extends TestCase
     public function testNormalizesTrimsLowercasesAndDeduplicatesRecipients(): void
     {
         $manager = $this->createMock(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+        $manager->method('get')->willReturn(new EmailSettings([]));
         $manager->expects(self::once())->method('save')->willReturnCallback(
             static function (EmailSettings $settings): EmailSettings {
                 self::assertSame(
@@ -35,7 +35,7 @@ final class UpdateNotificationRecipientsUseCaseTest extends TestCase
     public function testRejectsAnInvalidEmailAddress(): void
     {
         $manager = $this->createStub(EmailSettingsManagerInterface::class);
-        $manager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+        $manager->method('get')->willReturn(new EmailSettings([]));
 
         $this->expectException(BusinessRuleViolationException::class);
 

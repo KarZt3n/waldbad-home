@@ -15,13 +15,13 @@ use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Settings\Email\Model\EmailSettings;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use App\Logic\Membership\Application\UseCase\SubmitMembershipApplicationUseCase;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\Mailer\MailerInterface;
 
 final class SubmitMembershipApplicationUseCaseTest extends TestCase
 {
@@ -122,14 +122,21 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
 
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        // Kein Mailserver konfiguriert: NotificationMailer::notify() wird dadurch zum No-op, ohne
-        // dass hier ein echter Transport aufgebaut werden müsste.
-        $emailSettingsManager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
-        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
-        // Wird durch das nicht konfigurierte $emailSettingsManager oben nie tatsächlich aufgerufen.
+        // Kein Empfänger für das Ereignis hinterlegt: NotificationMailer::notify() wird dadurch zum
+        // No-op, ohne dass hier ein echter Mailer aufgebaut werden müsste.
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
         $templateRenderer = $this->createStub(MailTemplateRenderer::class);
         $logoProvider = $this->createStub(EmailLogoProviderInterface::class);
-        $notificationMailer = new NotificationMailer($emailSettingsManager, $transportFactory, $templateRenderer, new BrandedEmailLayout(), $logoProvider, new NullLogger());
+        $notificationMailer = new NotificationMailer(
+            $this->createStub(MailerInterface::class),
+            $emailSettingsManager,
+            $templateRenderer,
+            new BrandedEmailLayout(),
+            $logoProvider,
+            new NullLogger(),
+            'from@example.test',
+            'Verein',
+        );
 
         (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker))
             ->execute($request);

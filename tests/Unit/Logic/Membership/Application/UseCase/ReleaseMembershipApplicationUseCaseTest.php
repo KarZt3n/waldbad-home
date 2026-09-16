@@ -27,7 +27,6 @@ use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditConfig;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
@@ -39,7 +38,7 @@ use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 
 final class ReleaseMembershipApplicationUseCaseTest extends TestCase
@@ -149,17 +148,13 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         );
 
         $capturedEmail = null;
-        $transport = $this->createStub(TransportInterface::class);
-        $transport->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
+        $mailerStub = $this->createStub(MailerInterface::class);
+        $mailerStub->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
             $capturedEmail = $email;
         });
-        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $transportFactory->method('create')->willReturn($transport);
 
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(
-            new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []),
-        );
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
         $templateManager = $this->createStub(MailTemplateManagerInterface::class);
         $templateManager->method('resolve')->willReturnCallback(
             static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
@@ -167,12 +162,14 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $signatures = $this->createStub(MailSignatureManagerInterface::class);
         $signatures->method('find')->willReturn(null);
         $mailer = new NotificationMailer(
+            $mailerStub,
             $emailSettingsManager,
-            $transportFactory,
             new MailTemplateRenderer($templateManager, new MailContentRenderer(), $signatures),
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
 
         (new ReleaseMembershipApplicationUseCase(
@@ -232,17 +229,13 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         );
 
         $capturedEmail = null;
-        $transport = $this->createStub(TransportInterface::class);
-        $transport->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
+        $mailerStub = $this->createStub(MailerInterface::class);
+        $mailerStub->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
             $capturedEmail = $email;
         });
-        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $transportFactory->method('create')->willReturn($transport);
 
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(
-            new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []),
-        );
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
         $templateManager = $this->createStub(MailTemplateManagerInterface::class);
         $templateManager->method('resolve')->willReturnCallback(
             static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
@@ -250,12 +243,14 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $signatures = $this->createStub(MailSignatureManagerInterface::class);
         $signatures->method('find')->willReturn(null);
         $mailer = new NotificationMailer(
+            $mailerStub,
             $emailSettingsManager,
-            $transportFactory,
             new MailTemplateRenderer($templateManager, new MailContentRenderer(), $signatures),
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
 
         (new ReleaseMembershipApplicationUseCase(
@@ -418,21 +413,25 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
     }
 
     /**
-     * Kein Mailserver konfiguriert: `NotificationMailer::sendTo()` wird dadurch zum No-op, ohne
-     * dass hier ein echter Transport aufgebaut werden müsste.
+     * Der eigentliche Mailversand ist für diese Tests irrelevant, es genügt ein Stub-`MailerInterface`.
      */
     private function notConfiguredMailer(): NotificationMailer
     {
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
+
+        $renderer = $this->createStub(MailTemplateRenderer::class);
+        $renderer->method('render')->willReturn(['subject' => 'Betreff', 'body' => 'Text', 'html' => '<p>Text</p>']);
 
         return new NotificationMailer(
+            $this->createStub(MailerInterface::class),
             $emailSettingsManager,
-            $this->createStub(ConfiguredMailTransportFactory::class),
-            $this->createStub(MailTemplateRenderer::class),
+            $renderer,
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
     }
 

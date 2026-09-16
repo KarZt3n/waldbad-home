@@ -4,13 +4,12 @@ namespace App\Logic\Event\HelpRequest\UseCase;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestBroadcastResponse;
-use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\AssociationName;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 
@@ -34,12 +33,13 @@ use Symfony\Component\Mime\Email;
 readonly class SendEventHelpRequestBroadcastUseCase
 {
     public function __construct(
-        private EmailSettingsManagerInterface $emailSettingsManager,
-        private ConfiguredMailTransportFactory $transportFactory,
+        private MailerInterface $mailer,
         private MailContentRenderer $contentRenderer,
         private BrandedEmailLayout $layout,
         private EmailLogoProviderInterface $logoProvider,
         private LoggerInterface $logger,
+        private string $fromAddress,
+        private ?string $fromName,
     ) {
     }
 
@@ -68,10 +68,6 @@ readonly class SendEventHelpRequestBroadcastUseCase
             throw new BusinessRuleViolationException('Es ist keine E-Mail-Adresse als Empfänger angegeben.');
         }
 
-        $settings = $this->emailSettingsManager->get();
-        // Wirft eine passende Exception, falls kein Mailserver eingerichtet ist.
-        $transport = $this->transportFactory->create($settings);
-
         $html = $this->layout->wrap(
             $trimmedSubject,
             $this->contentRenderer->toHtmlFragment($trimmedBody),
@@ -84,12 +80,12 @@ readonly class SendEventHelpRequestBroadcastUseCase
         foreach ($uniqueRecipients as $recipient) {
             try {
                 $email = (new Email())
-                    ->from(new Address((string) $settings->fromAddress, (string) ($settings->fromName ?? '')))
+                    ->from(new Address($this->fromAddress, $this->fromName ?? ''))
                     ->to($recipient)
                     ->subject($trimmedSubject)
                     ->text($trimmedBody)
                     ->html($html);
-                $transport->send($email);
+                $this->mailer->send($email);
                 ++$sent;
             } catch (\Throwable $exception) {
                 ++$failed;

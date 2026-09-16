@@ -13,18 +13,6 @@ readonly class GetEmailSettingsQuery
 
     public function execute(): EmailSettingsResponse
     {
-        $settings = $this->manager->get();
-
-        return new EmailSettingsResponse(
-            provider: $settings->provider?->value,
-            host: $settings->host,
-            port: $settings->port,
-            username: $settings->username,
-            passwordIsSet: $settings->password !== null,
-            fromAddress: $settings->fromAddress,
-            fromName: $settings->fromName,
-            configured: $settings->isConfigured(),
-            notificationRecipients: $settings->notificationRecipients,
-        );
+        return new EmailSettingsResponse(notificationRecipients: $this->manager->get()->notificationRecipients);
     }
 }

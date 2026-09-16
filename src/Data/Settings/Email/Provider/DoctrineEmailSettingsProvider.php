@@ -24,6 +24,6 @@ readonly class DoctrineEmailSettingsProvider implements EmailSettingsProviderInt
         // dennoch (z. B. ein per SchemaTool aus den Mappings aufgebautes Test-Schema ohne
         // Migrationslauf), wird ein leerer Ausgangszustand geliefert, ohne dass Aufrufer den
         // „noch nicht angelegt“-Fall gesondert behandeln müssen.
-        return $entity === null ? new EmailSettings(null, null, null, null, null, null, null, []) : $this->mapper->toModel($entity);
+        return $entity === null ? new EmailSettings([]) : $this->mapper->toModel($entity);
     }
 }

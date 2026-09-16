@@ -28,7 +28,6 @@ use App\Logic\Membership\MemberMessage\UseCase\SendMemberMessageUseCase;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
@@ -40,6 +39,7 @@ use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mailer\MailerInterface;
 
 final class SendMemberMessageUseCaseTest extends TestCase
 {
@@ -74,7 +74,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $messages,
             $this->identifierGenerator(),
             $this->clock(),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
         );
 
         $response = $useCase->execute('raw-token', self::PASSWORD, 'member-1', 'Meine Adresse hat sich geändert.');
@@ -106,7 +106,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $messages,
             $this->identifierGenerator(),
             $this->clock(),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
         );
 
         $this->expectException(InvalidMemberAccessTokenException::class);
@@ -202,10 +202,10 @@ final class SendMemberMessageUseCaseTest extends TestCase
         return $generator;
     }
 
-    private function notConfiguredMailer(): NotificationMailer
+    private function noopMailer(): NotificationMailer
     {
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
 
         $manager = $this->createStub(MailTemplateManagerInterface::class);
         $manager->method('resolve')->willReturnCallback(
@@ -214,12 +214,14 @@ final class SendMemberMessageUseCaseTest extends TestCase
         $renderer = new MailTemplateRenderer($manager, new MailContentRenderer(), $this->createStub(MailSignatureManagerInterface::class));
 
         return new NotificationMailer(
+            $this->createStub(MailerInterface::class),
             $emailSettingsManager,
-            $this->createStub(ConfiguredMailTransportFactory::class),
             $renderer,
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
     }
 }

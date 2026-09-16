@@ -15,7 +15,6 @@ use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
 use App\Logic\Membership\MemberAccess\UseCase\RequestMemberAccessUseCase;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
-use App\Logic\Settings\Email\Service\ConfiguredMailTransportFactory;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
@@ -27,7 +26,7 @@ use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
 use App\Logic\Settings\MailTemplate\Service\MailTemplateRenderer;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Mailer\Transport\TransportInterface;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
 
 final class RequestMemberAccessUseCaseTest extends TestCase
@@ -49,7 +48,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $this->createStub(ClockInterface::class),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
         ))->execute('unknown@example.test', '1990-01-01');
@@ -68,7 +67,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $this->createStub(ClockInterface::class),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
         ))->execute('not-an-email', '1990-01-01');
@@ -87,7 +86,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $this->createStub(ClockInterface::class),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
         ))->execute('erika@example.test', 'not-a-date');
@@ -112,7 +111,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $this->createStub(ClockInterface::class),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
         ))->execute('erika@example.test', '1991-02-03');
@@ -141,7 +140,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $clock,
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
         ))->execute('erika@example.test', '1990-01-01');
@@ -225,7 +224,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->createStub(IdentifierGeneratorInterface::class),
             $this->createStub(ClockInterface::class),
-            $this->notConfiguredMailer(),
+            $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $logger,
         ))->execute('erika@example.test', '1990-01-01');
@@ -287,47 +286,49 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     }
 
     /**
-     * Kein Mailserver konfiguriert: `NotificationMailer::sendTo()` wird dadurch zum No-op.
+     * Der eigentliche Mailversand ist für diese Tests irrelevant: `NotificationMailer::sendTo()`
+     * wird in den No-op-Szenarien hier gar nicht erst aufgerufen.
      */
-    private function notConfiguredMailer(): NotificationMailer
+    private function noopMailer(): NotificationMailer
     {
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(new EmailSettings(null, null, null, null, null, null, null, []));
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
 
         return new NotificationMailer(
+            $this->createStub(MailerInterface::class),
             $emailSettingsManager,
-            $this->createStub(ConfiguredMailTransportFactory::class),
             $this->realRenderer(),
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
     }
 
     /**
-     * Konfigurierter Mailserver mit einem Transport, der die gebaute Mail abfängt statt sie zu
-     * verschicken — `$capturedEmail` wird per Referenz befüllt.
+     * Ein `MailerInterface`, der die gebaute Mail abfängt statt sie zu verschicken —
+     * `$capturedEmail` wird per Referenz befüllt.
      */
     private function configuredMailer(?Email &$capturedEmail): NotificationMailer
     {
-        $settings = new EmailSettings(null, 'smtp.example.test', 587, null, null, 'from@example.test', 'Verein', []);
         $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn($settings);
+        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
 
-        $transport = $this->createStub(TransportInterface::class);
-        $transport->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
+        $mailer = $this->createStub(MailerInterface::class);
+        $mailer->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
             $capturedEmail = $email;
         });
-        $transportFactory = $this->createStub(ConfiguredMailTransportFactory::class);
-        $transportFactory->method('create')->willReturn($transport);
 
         return new NotificationMailer(
+            $mailer,
             $emailSettingsManager,
-            $transportFactory,
             $this->realRenderer(),
             new BrandedEmailLayout(),
             $this->createStub(EmailLogoProviderInterface::class),
             $this->createStub(LoggerInterface::class),
+            'from@example.test',
+            'Verein',
         );
     }
 

@@ -39,34 +39,15 @@ final class SettingsEmailManagementWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
-    public function testAdministratorCanConfigureConnectionAndNotificationRecipients(): void
+    public function testAdministratorCanConfigureNotificationRecipients(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
 
         $this->client->request('GET', '/api/admin/v1/email-settings', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $initial = $this->responseData();
-        self::assertFalse($this->bool($initial, 'configured'));
-        self::assertFalse($this->bool($initial, 'passwordIsSet'));
-        $presets = $this->arrayList($initial, 'providerPresets');
-        self::assertNotEmpty($presets);
         $events = $this->arrayList($initial, 'notificationEvents');
         self::assertSame('membership_application_submitted', $this->string($this->firstEntry($events), 'key'));
-
-        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings', [
-            'provider' => 'google',
-            'host' => 'smtp.gmail.com',
-            'port' => 587,
-            'username' => 'verein@example.test',
-            'password' => 'app-password',
-            'fromAddress' => 'verein@example.test',
-            'fromName' => 'Waldbad Borkheide',
-        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
-        self::assertResponseIsSuccessful();
-        $updated = $this->responseData();
-        self::assertTrue($this->bool($updated, 'configured'));
-        self::assertTrue($this->bool($updated, 'passwordIsSet'));
-        self::assertSame('smtp.gmail.com', $updated['host']);
 
         // Ungültige E-Mail-Adresse wird abgelehnt.
         $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/membership_application_submitted', [
@@ -87,18 +68,9 @@ final class SettingsEmailManagementWorkflowTest extends WebTestCase
     {
         $csrfToken = $this->loginAsSuperAdmin();
 
-        // Absichtlich nicht erreichbarer Mailserver: die Antragsannahme selbst darf davon nicht
-        // beeinträchtigt werden (siehe NotificationMailer, „best effort“).
-        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings', [
-            'provider' => 'custom',
-            'host' => '127.0.0.1',
-            'port' => 1,
-            'username' => null,
-            'password' => null,
-            'fromAddress' => 'verein@example.test',
-            'fromName' => null,
-        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
-        self::assertResponseIsSuccessful();
+        // Der Mailversand selbst (MAILER_DSN) ist in der Testumgebung der Null-Transport — die
+        // Antragsannahme selbst darf davon nicht beeinträchtigt werden (siehe NotificationMailer,
+        // „best effort“).
         $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/membership_application_submitted', [
             'recipients' => ['vorstand@example.test'],
         ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
@@ -106,25 +78,6 @@ final class SettingsEmailManagementWorkflowTest extends WebTestCase
 
         $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', $this->validApplication());
         self::assertResponseStatusCodeSame(202);
-    }
-
-    public function testTestEmailReportsATransportFailureInsteadOfSwallowingIt(): void
-    {
-        $csrfToken = $this->loginAsSuperAdmin();
-
-        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings', [
-            'provider' => 'custom',
-            'host' => '127.0.0.1',
-            'port' => 1,
-            'username' => null,
-            'password' => null,
-            'fromAddress' => 'verein@example.test',
-            'fromName' => null,
-        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
-        self::assertResponseIsSuccessful();
-
-        $this->client->jsonRequest('POST', '/api/admin/v1/email-settings/test', ['to' => 'admin@example.test'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
-        self::assertResponseStatusCodeSame(422);
     }
 
     /**
@@ -205,16 +158,6 @@ final class SettingsEmailManagementWorkflowTest extends WebTestCase
     private function string(array $data, string $key): string
     {
         self::assertIsString($data[$key]);
-
-        return $data[$key];
-    }
-
-    /**
-     * @param array<array-key, mixed> $data
-     */
-    private function bool(array $data, string $key): bool
-    {
-        self::assertIsBool($data[$key]);
 
         return $data[$key];
     }

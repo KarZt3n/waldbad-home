@@ -16,6 +16,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Mailer\Exception\TransportException;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use App\Tests\Support\FixedSecureTokenGenerator;
 
@@ -251,8 +253,12 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
 
     public function testAsyncHandlerSignalsATemporaryDeliveryFailureForMessengerRetry(): void
     {
-        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
-        $this->configureBrokenMailServer($headers);
+        // Simuliert einen fehlgeschlagenen Zustellversuch, indem der reguläre `symfony/mailer`
+        // (aus `MAILER_DSN`) im Testcontainer durch einen immer fehlschlagenden Mailer ersetzt wird
+        // — statt zuvor über die inzwischen entfernte admin-editierbare SMTP-Konfiguration.
+        $failingMailer = $this->createStub(MailerInterface::class);
+        $failingMailer->method('send')->willThrowException(new TransportException('Verbindung verweigert'));
+        self::getContainer()->set(MailerInterface::class, $failingMailer);
 
         $handler = self::getContainer()->get(SendEventHelpRequestBroadcastHandler::class);
         self::assertInstanceOf(SendEventHelpRequestBroadcastHandler::class, $handler);
@@ -263,19 +269,6 @@ final class EventHelpRequestBroadcastWorkflowTest extends WebTestCase
             'Wir treffen uns am Eingang.',
             'erika@example.test',
         ));
-    }
-
-    /**
-     * @param array<string, string> $headers
-     */
-    private function configureBrokenMailServer(array $headers): void
-    {
-        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings', [
-            'provider' => 'custom', 'host' => '127.0.0.1', 'port' => 1,
-            'username' => null, 'password' => null,
-            'fromAddress' => 'verein@example.test', 'fromName' => 'Naturbad Borkheide e.V.',
-        ], $headers);
-        self::assertResponseIsSuccessful();
     }
 
     /**

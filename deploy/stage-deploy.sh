@@ -79,6 +79,14 @@ if [ ! -s "$secret_dir/stage_htpasswd" ]; then
     exit 1
 fi
 
+if [ ! -s "$secret_dir/mailer_dsn" ]; then
+    printf 'Es ist noch kein Mailversand eingerichtet.\n' >&2
+    printf 'Legen Sie zuerst %s mit dem SMTP-DSN an, z. B.:\n' "$secret_dir/mailer_dsn" >&2
+    printf '  printf '"'"'smtp://user%%40example.test:app-passwort@smtp.example.test:587'"'"' > %s\n' "$secret_dir/mailer_dsn" >&2
+    printf '  chmod 0600 %s\n' "$secret_dir/mailer_dsn" >&2
+    exit 1
+fi
+
 chmod 0600 "$secret_dir"/*
 
 if ! docker network inspect web >/dev/null 2>&1; then

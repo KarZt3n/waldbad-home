@@ -143,88 +143,14 @@ const showPinProtection = async () => {
 };
 
 // Reiter „E-Mail-Einstellungen“ innerhalb von „E-Mail-Einstellungen“ (siehe
-// `showEmailSettingsManagement`) — hier werden die SMTP-Zugangsdaten für den Mailversand sowie,
-// je `NotificationEvent`, die zu benachrichtigenden Empfänger gepflegt
-// (`AdminEmailSettingsController`). Erstes Beispiel eines Ereignisses: ein neuer
-// Mitgliedsantrag (siehe `SubmitMembershipApplicationUseCase`). Die Texte der versendeten
-// Mails selbst stehen nicht hier, sondern im Nachbar-Reiter „Mailvorlagen“
-// (`showMailTemplates`).
+// `showEmailSettingsManagement`) — hier werden, je `NotificationEvent`, die zu benachrichtigenden
+// Empfänger gepflegt (`AdminEmailSettingsController`). Erstes Beispiel eines Ereignisses: ein neuer
+// Mitgliedsantrag (siehe `SubmitMembershipApplicationUseCase`). Die SMTP-Zugangsdaten selbst sind
+// nicht hier admin-editierbar, sondern kommen aus der Deployment-Konfiguration (`MAILER_DSN`, siehe
+// `NotificationMailer`). Die Texte der versendeten Mails selbst stehen ebenfalls nicht hier, sondern
+// im Nachbar-Reiter „Mailvorlagen“ (`showMailTemplates`).
 const showEmailConnectionSettings = async () => {
     const data = await request('/api/admin/v1/email-settings');
-    const message = formMessage();
-
-    const providerSelect = selectField('Anbieter', 'email-provider', [
-        ['', '– Bitte wählen –'],
-        ...data.providerPresets.map((preset) => [preset.key, preset.label]),
-    ], data.provider || '');
-    const providerSelectInput = providerSelect.querySelector('select');
-    const host = field('SMTP-Server', 'email-host', data.host || '');
-    const hostInput = host.querySelector('input');
-    const port = field('Port', 'email-port', data.port ?? '', 'number');
-    const portInput = port.querySelector('input');
-    const username = field('Benutzername', 'email-username', data.username || '');
-    const password = field(data.passwordIsSet ? 'Neues Passwort (leer lassen zum Beibehalten)' : 'Passwort', 'email-password', '', 'password');
-    const passwordInput = password.querySelector('input');
-    passwordInput.autocomplete = 'off';
-    const fromAddress = field('Absender-E-Mail-Adresse', 'email-from-address', data.fromAddress || '', 'email');
-    const fromName = field('Absender-Name (optional)', 'email-from-name', data.fromName || '');
-
-    const providerHint = element('p', {className: 'field-hint'});
-    const applyProviderHint = () => {
-        const preset = data.providerPresets.find((entry) => entry.key === providerSelectInput.value);
-        providerHint.textContent = preset ? preset.hint : '';
-    };
-    providerSelectInput.addEventListener('change', () => {
-        // Bewusst überschreiben (nicht nur bei leerem Feld vorbelegen): Der Sinn der
-        // Preset-Auswahl ist gerade, Host/Port auf die bekannt richtigen Werte für den
-        // gewählten Anbieter umzustellen — auch wenn zuvor schon ein anderer Anbieter
-        // gespeichert war. Zugangsdaten/Absender bleiben davon unberührt.
-        const preset = data.providerPresets.find((entry) => entry.key === providerSelectInput.value);
-        if (preset) {
-            if (preset.defaultHost) hostInput.value = preset.defaultHost;
-            if (preset.defaultPort) portInput.value = String(preset.defaultPort);
-        }
-        applyProviderHint();
-    });
-    applyProviderHint();
-
-    const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
-    save.addEventListener('click', async () => {
-        save.disabled = true;
-        try {
-            await request('/api/admin/v1/email-settings', {method: 'PUT', body: JSON.stringify({
-                provider: providerSelectInput.value || null,
-                host: hostInput.value || null,
-                port: portInput.value ? Number.parseInt(portInput.value, 10) : null,
-                username: username.querySelector('input').value || null,
-                password: passwordInput.value || null,
-                fromAddress: fromAddress.querySelector('input').value || null,
-                fromName: fromName.querySelector('input').value || null,
-            })});
-            toast('Die E-Mail-Einstellungen wurden gespeichert.');
-            await showSettingsManagement();
-        } catch (error) {
-            message.textContent = error.message;
-            toast(error.message, 'error');
-            save.disabled = false;
-        }
-    });
-
-    const testTo = field('Testmail senden an', 'email-test-to', '', 'email');
-    const testButton = element('button', {className: 'secondary-button', text: 'Testmail senden', attributes: {type: 'button'}});
-    testButton.addEventListener('click', async () => {
-        const to = testTo.querySelector('input').value.trim();
-        if (!to) return;
-        testButton.disabled = true;
-        try {
-            await request('/api/admin/v1/email-settings/test', {method: 'POST', body: JSON.stringify({to})});
-            toast('Die Testmail wurde gesendet.');
-        } catch (error) {
-            toast(error.message, 'error');
-        } finally {
-            testButton.disabled = false;
-        }
-    });
 
     const notificationRows = data.notificationEvents.map((event) => {
         const currentRecipients = (data.notificationRecipients[event.key] || []).join(', ');
@@ -247,23 +173,8 @@ const showEmailConnectionSettings = async () => {
     });
 
     workspace.replaceChildren(
-        sectionHeading('E-Mail-Einstellungen', 'Mailversand konfigurieren und Empfänger für automatische Benachrichtigungen festlegen'),
+        sectionHeading('E-Mail-Einstellungen', 'Empfänger für automatische Benachrichtigungen festlegen'),
         element('div', {className: 'card-list', children: [
-            element('article', {className: 'management-card', children: [
-                element('h3', {text: 'Mailserver'}),
-                ...(data.configured ? [] : [element('p', {className: 'field-hint', text: 'Noch nicht vollständig konfiguriert — mindestens Server und Absender-E-Mail-Adresse sind erforderlich.'})]),
-                fieldRow([providerSelect, host]),
-                fieldRow([port, username]),
-                password,
-                fieldRow([fromAddress, fromName]),
-                providerHint,
-                save, message,
-            ]}),
-            element('article', {className: 'management-card', children: [
-                element('h3', {text: 'Testmail'}),
-                testTo,
-                testButton,
-            ]}),
             element('article', {className: 'management-card', children: [
                 element('h3', {text: 'Benachrichtigungen'}),
                 element('p', {className: 'field-hint', text: 'Mehrere Adressen mit Komma trennen. Leer lassen, um für dieses Ereignis keine Benachrichtigung zu versenden.'}),

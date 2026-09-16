@@ -40,7 +40,8 @@ services:
       APP_ENV: prod
       APP_DEBUG: "0"
       DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
-      MAILER_DSN: smtp://127.0.0.1:1025
+      MAILER_FROM_ADDRESS: waldbadhome@gmail.com
+      MAILER_FROM_NAME: "Naturbad Borkheide e.V."
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "1"
     secrets:
@@ -48,6 +49,7 @@ services:
       - db_user
       - db_password
       - app_secret
+      - mailer_dsn
     volumes:
       - type: bind
         source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
@@ -77,7 +79,8 @@ services:
       APP_ENV: prod
       APP_DEBUG: "0"
       DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
-      MAILER_DSN: null://null
+      MAILER_FROM_ADDRESS: waldbadhome@gmail.com
+      MAILER_FROM_NAME: "Naturbad Borkheide e.V."
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "0"
       DROP_TO_WWW_DATA: "1"
@@ -86,6 +89,7 @@ services:
       - db_user
       - db_password
       - app_secret
+      - mailer_dsn
     volumes:
       - type: bind
         source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
@@ -134,6 +138,8 @@ secrets:
     file: /srv/webapps/waldbad-home/secrets/db_root_password
   app_secret:
     file: /srv/webapps/waldbad-home/secrets/app_secret
+  mailer_dsn:
+    file: /srv/webapps/waldbad-home/secrets/mailer_dsn
   stage_htpasswd:
     file: /srv/webapps/waldbad-home/secrets/stage_htpasswd
 

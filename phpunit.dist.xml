@@ -20,6 +20,8 @@
         <server name="DATABASE_URL" value="sqlite:///%kernel.project_dir%/var/test.db" force="true" />
         <server name="MESSENGER_TRANSPORT_DSN" value="in-memory://" force="true" />
         <server name="MAILER_DSN" value="null://null" force="true" />
+        <server name="MAILER_FROM_ADDRESS" value="noreply@example.test" force="true" />
+        <server name="MAILER_FROM_NAME" value="Naturbad Borkheide e.V." force="true" />
         <server name="DEFAULT_URI" value="http://localhost" force="true" />
         <server name="SHELL_VERBOSITY" value="-1" />
     </php>

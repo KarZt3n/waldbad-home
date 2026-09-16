@@ -28,6 +28,8 @@ services:
             $memberMessageLimiter: '@limiter.member_message'
             $mediaUploadDirectory: '%media_upload_directory%'
             $logoPath: '%email_logo_path%'
+            $fromAddress: '%env(MAILER_FROM_ADDRESS)%'
+            $fromName: '%env(MAILER_FROM_NAME)%'
             $workAssignmentSelfServicePeriod: '%work_assignment_self_service_period%'
             $workAssignmentRequiredHoursTiers: '%work_assignment_required_hours_tiers%'
 
