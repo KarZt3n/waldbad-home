@@ -40,7 +40,7 @@ services:
       APP_ENV: prod
       APP_DEBUG: "0"
       DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
-      MAILER_DSN: null://null
+      MAILER_DSN: smtp://127.0.0.1:1025
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "1"
     secrets:

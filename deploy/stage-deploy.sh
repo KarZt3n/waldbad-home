@@ -107,6 +107,11 @@ until curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8083/api/p
     sleep 2
 done
 
+# Datenbankmigrationen durchführen
+docker compose -f "$compose_file" run --rm --no-deps \
+    -e RUN_MIGRATIONS=0 \
+    app php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+
 if [ "${WALDBAD_INITIALIZE_SITE:-0}" = '1' ]; then
     docker compose -f "$compose_file" run --rm --no-deps -e RUN_MIGRATIONS=0 app php bin/console app:site:initialize --no-interaction
 fi
