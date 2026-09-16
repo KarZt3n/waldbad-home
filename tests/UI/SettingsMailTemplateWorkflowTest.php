@@ -12,6 +12,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 /**
  * End-to-End-Abdeckung für Mailvorlagen (`AdminMailTemplateController`) und Signaturen
@@ -176,14 +177,11 @@ final class SettingsMailTemplateWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: $email,
             displayName: 'Test User',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: $roles,
             moduleAccess: $moduleAccess,
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => $email,
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => $email]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
 
         return $this->string($this->responseData(), 'csrfToken');

@@ -73,7 +73,6 @@ class AdminUserController extends AbstractController
         $user = $useCase->execute(new CreateUserRequest(
             email: $this->requiredString($data, 'email'),
             displayName: $this->requiredString($data, 'displayName'),
-            plainPassword: $this->requiredString($data, 'password'),
             roles: $roles,
             moduleAccess: $this->parseModuleAccess($data),
             pageAccess: $this->parsePageAccess($data),

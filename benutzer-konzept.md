@@ -72,6 +72,13 @@ Innerhalb des freigeschalteten Moduls `pages` ignorieren Admin und SuperAdmin ei
 
 ## 5. Benutzerverwaltung und Schutzregeln
 
+Die Anmeldung ist passwortlos: „Benutzer anlegen" vergibt kein Passwort, die Anmeldung erfolgt
+über einen 30 Minuten gültigen, einmalig verwendbaren Anmeldelink per Mail (siehe
+`RequestLoginUseCase`, `RedeemLoginTokenUseCase`). Die laufende Sitzung nutzt ein Access-/
+Refresh-Token-Paar (15 Minuten Access-Token, gleitend rotierender Refresh-Token, absolute
+Obergrenze 12 Stunden, siehe `SessionTokenIssuer`); das Frontend meldet nach 15 Minuten
+Inaktivität automatisch ab.
+
 Die Benutzerverwaltung selbst ist ebenfalls ein Modul:
 
 - `Viewer` darf Benutzer und deren Zuweisungen ansehen.

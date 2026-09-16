@@ -17,7 +17,6 @@ readonly class AuthenticationIdentity
         public string $id,
         public string $email,
         public string $displayName,
-        public string $passwordHash,
         public array $roles,
         public array $moduleAccess,
         public bool $active,

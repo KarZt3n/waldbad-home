@@ -14,6 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 final class MembershipApplicationWorkflowTest extends WebTestCase
 {
@@ -138,17 +139,14 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'membership-admin-with-members@example.test',
             displayName: 'Membership Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [
                 new ModuleAccess(CmsModule::MembershipApplications, ModuleRole::Editor),
                 new ModuleAccess(CmsModule::Members, ModuleRole::Editor),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'membership-admin-with-members@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'membership-admin-with-members@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $csrfToken = $this->responseData()['csrfToken'];
 
@@ -254,17 +252,14 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'membership-admin@example.test',
             displayName: 'Membership Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [
                 new ModuleAccess(CmsModule::MembershipApplications, ModuleRole::Editor),
                 new ModuleAccess(CmsModule::Pages, ModuleRole::Publisher),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'membership-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'membership-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = $this->responseData();
         self::assertIsString($login['csrfToken']);

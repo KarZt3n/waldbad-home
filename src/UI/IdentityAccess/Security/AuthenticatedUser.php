@@ -10,10 +10,9 @@ use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\Model\PageAccess;
 use App\Logic\IdentityAccess\User\Model\PageAccessRole;
-use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
-readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticatedUserInterface
+readonly class AuthenticatedUser implements UserInterface
 {
     public function __construct(private AuthenticationIdentity $identity)
     {
@@ -112,11 +111,6 @@ readonly class AuthenticatedUser implements UserInterface, PasswordAuthenticated
         }
 
         return array_values(array_unique($roles));
-    }
-
-    public function getPassword(): string
-    {
-        return $this->identity->passwordHash;
     }
 
     public function eraseCredentials(): void

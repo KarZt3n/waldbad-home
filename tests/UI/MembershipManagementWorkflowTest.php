@@ -15,6 +15,7 @@ use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 final class MembershipManagementWorkflowTest extends WebTestCase
 {
@@ -663,7 +664,6 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'membership-management-admin@example.test',
             displayName: 'Membership Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [
                 new ModuleAccess(CmsModule::Members, ModuleRole::Editor),
@@ -671,10 +671,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
                 new ModuleAccess(CmsModule::MembershipApplications, ModuleRole::Editor),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'membership-management-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'membership-management-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
 
         return $this->string($this->responseData(), 'csrfToken');

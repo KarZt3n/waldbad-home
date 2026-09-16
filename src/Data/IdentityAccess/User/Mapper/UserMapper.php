@@ -19,7 +19,6 @@ readonly class UserMapper
             id: $entity->getId(),
             email: $entity->getEmail(),
             displayName: $entity->getDisplayName(),
-            passwordHash: $entity->getPasswordHash(),
             roles: array_map(Role::from(...), $entity->getRoles()),
             moduleAccess: $this->toModuleAccess($entity->getModules()),
             active: $entity->isActive(),
@@ -37,7 +36,6 @@ readonly class UserMapper
             id: $user->id,
             email: $user->email,
             displayName: $user->displayName,
-            passwordHash: $user->passwordHash,
             roles: array_map(static fn (Role $role): string => $role->value, $user->roles),
             modules: $this->toStorage($user->moduleAccess),
             pageAccess: $this->pageAccessToStorage($user->pageAccess),
@@ -52,7 +50,6 @@ readonly class UserMapper
     {
         $entity->update(
             displayName: $user->displayName,
-            passwordHash: $user->passwordHash,
             roles: array_map(static fn (Role $role): string => $role->value, $user->roles),
             modules: $this->toStorage($user->moduleAccess),
             pageAccess: $this->pageAccessToStorage($user->pageAccess),

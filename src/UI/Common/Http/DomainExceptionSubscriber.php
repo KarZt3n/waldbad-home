@@ -7,6 +7,7 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\Exception\ConcurrencyException;
 use App\Logic\Common\Exception\DomainException;
 use App\Logic\Common\Exception\ResourceNotFoundException;
+use App\Logic\Common\Exception\UnauthenticatedException;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
@@ -22,6 +23,7 @@ readonly class DomainExceptionSubscriber
             $exception instanceof ConcurrencyException => JsonResponse::HTTP_CONFLICT,
             $exception instanceof ResourceNotFoundException => JsonResponse::HTTP_NOT_FOUND,
             $exception instanceof AccessDeniedException => JsonResponse::HTTP_FORBIDDEN,
+            $exception instanceof UnauthenticatedException => JsonResponse::HTTP_UNAUTHORIZED,
             $exception instanceof BusinessRuleViolationException => JsonResponse::HTTP_UNPROCESSABLE_ENTITY,
             $exception instanceof BadRequestHttpException,
             $exception instanceof \JsonException => JsonResponse::HTTP_BAD_REQUEST,

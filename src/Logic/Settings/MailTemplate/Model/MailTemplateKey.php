@@ -19,6 +19,7 @@ enum MailTemplateKey: string
 {
     case MembershipApplicationSubmittedNotification = 'membership_application_submitted_notification';
     case MembershipApplicationApproved = 'membership_application_approved';
+    case AdminLoginMagicLink = 'admin_login_magic_link';
     case MemberAccessMagicLink = 'member_access_magic_link';
     case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
     case EventHelpRequestConfirmation = 'event_help_request_confirmation';
@@ -28,6 +29,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Benachrichtigung: neuer Mitgliedsantrag',
             self::MembershipApplicationApproved => 'Bestätigung: Mitgliedsantrag angenommen',
+            self::AdminLoginMagicLink => 'Anmeldelink: Redaktion',
             self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
             self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
             self::EventHelpRequestConfirmation => 'Bestätigung: Helferanmeldung',
@@ -39,6 +41,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald jemand einen Mitgliedsantrag stellt.',
             self::MembershipApplicationApproved => 'Geht an die E-Mail-Adresse der ersten antragstellenden Person, sobald ihr Mitgliedsantrag als Mitglied angelegt (freigegeben) wird.',
+            self::AdminLoginMagicLink => 'Geht an die E-Mail-Adresse eines Redaktions-Benutzers, sobald über die Anmeldeseite ein Anmeldelink angefordert wird.',
             self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
             self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
             self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
@@ -53,6 +56,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart'],
             self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'beitraege', 'vereinsname'],
+            self::AdminLoginMagicLink => ['link', 'gueltig_minuten', 'vereinsname'],
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
             self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
@@ -64,6 +68,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Neuer Mitgliedsantrag eingegangen',
             self::MembershipApplicationApproved => 'Willkommen im {{vereinsname}} – deine Mitgliedschaft ist bestätigt',
+            self::AdminLoginMagicLink => 'Dein Anmeldelink für die Redaktion',
             self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
             self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
             self::EventHelpRequestConfirmation => 'Danke für deine Helferanmeldung – {{veranstaltung}}',
@@ -93,6 +98,20 @@ enum MailTemplateKey: string
                 {{beitraege}}
 
                 Bei Fragen melde dich gerne bei uns.
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
+            self::AdminLoginMagicLink => <<<'TEXT'
+                Hallo,
+
+                hier ist dein Anmeldelink für die Redaktion im {{vereinsname}}:
+
+                {{link}}
+
+                Der Link ist {{gueltig_minuten}} Minuten gültig und kann nur einmal verwendet werden. Danach kannst du auf der Anmeldeseite einfach einen neuen Link anfordern.
+
+                Hast du diese E-Mail nicht angefordert, kannst du sie einfach ignorieren.
 
                 Viele Grüße
                 Dein {{vereinsname}}
@@ -167,6 +186,11 @@ enum MailTemplateKey: string
                     TEXT,
                 'vereinsname' => AssociationName::CURRENT,
             ],
+            self::AdminLoginMagicLink => [
+                'link' => 'https://waldbad-borkheide.de/admin?login_token=beispiel-token',
+                'gueltig_minuten' => '30',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
             self::MemberAccessMagicLink => [
                 'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft?token=beispiel-token',
                 'passwort' => 'aB3!xy9?',
@@ -201,6 +225,7 @@ enum MailTemplateKey: string
     {
         return match ($this) {
             self::MembershipApplicationSubmittedNotification,
+            self::AdminLoginMagicLink,
             self::MemberAccessMagicLink,
             self::MemberMessageSubmittedNotification,
             self::EventHelpRequestConfirmation => [],

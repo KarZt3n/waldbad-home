@@ -19,7 +19,6 @@ readonly class GetAuthenticationIdentityQuery
             id: $user->id,
             email: $user->email,
             displayName: $user->displayName,
-            passwordHash: $user->passwordHash,
             roles: $user->roles,
             moduleAccess: $user->moduleAccess,
             active: $user->active,

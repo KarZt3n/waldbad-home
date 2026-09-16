@@ -21,6 +21,8 @@ services:
             $membershipApplicationLimiter: '@limiter.membership_application'
             $eventHelpFormLimiter: '@limiter.event_help_form'
             $pinVerificationLimiter: '@limiter.pin_verification'
+            $loginRequestLimiter: '@limiter.login_request'
+            $loginSessionLimiter: '@limiter.login_session'
             $memberAccessRequestLimiter: '@limiter.member_access_request'
             $memberAccessSessionLimiter: '@limiter.member_access_session'
             $memberMessageLimiter: '@limiter.member_message'

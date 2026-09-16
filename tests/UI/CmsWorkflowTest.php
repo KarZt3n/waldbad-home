@@ -19,6 +19,7 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 final class CmsWorkflowTest extends WebTestCase
 {
@@ -111,22 +112,18 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'module-super-admin@example.test',
             displayName: 'Module Super Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: self::allModuleAccess(),
         ));
         $limitedUser = $createUser->execute(new CreateUserRequest(
             email: 'page-admin@example.test',
             displayName: 'Page Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::Admin],
             moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
         ));
 
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'module-super-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'module-super-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -144,10 +141,8 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame(['pages' => 'viewer'], $updatedUser['moduleAccess']);
 
         $this->client->request('POST', '/api/auth/v1/logout');
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'page-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'page-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $adminLogin = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($adminLogin);
@@ -185,15 +180,12 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'page-only-editor@example.test',
             displayName: 'Page Only Editor',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [],
             moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
         ));
 
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'page-only-editor@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'page-only-editor@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -227,22 +219,18 @@ final class CmsWorkflowTest extends WebTestCase
         $superAdmin = $createUser->execute(new CreateUserRequest(
             email: 'protected-super-admin@example.test',
             displayName: 'Protected Super Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [new ModuleAccess(CmsModule::UserManagement, ModuleRole::Editor)],
         ));
         $createUser->execute(new CreateUserRequest(
             email: 'restricted-admin@example.test',
             displayName: 'Restricted Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::Admin],
             moduleAccess: [new ModuleAccess(CmsModule::UserManagement, ModuleRole::Viewer)],
         ));
 
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'restricted-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'restricted-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -278,17 +266,14 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'module-editor@example.test',
             displayName: 'Module Editor',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [],
             moduleAccess: [
                 new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer),
                 new ModuleAccess(CmsModule::Guestbook, ModuleRole::Editor),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'module-editor@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'module-editor@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -321,7 +306,6 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'scoped-pages@example.test',
             displayName: 'Scoped Pages',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [],
             moduleAccess: [new ModuleAccess(CmsModule::Pages, ModuleRole::Viewer)],
             pageAccess: [
@@ -330,10 +314,8 @@ final class CmsWorkflowTest extends WebTestCase
             ],
         ));
 
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'scoped-pages@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'scoped-pages@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -450,15 +432,12 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'admin@example.test',
             displayName: 'Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: self::allModuleAccess(),
         ));
 
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);
@@ -979,14 +958,11 @@ final class CmsWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'structure-admin@example.test',
             displayName: 'Struktur-Admin',
-            plainPassword: 'Ein-sicheres-Strukturpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: self::allModuleAccess(),
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'structure-admin@example.test',
-            'password' => 'Ein-sicheres-Strukturpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'structure-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($login);

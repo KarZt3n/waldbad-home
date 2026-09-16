@@ -15,7 +15,6 @@ readonly class User
         public string $id,
         public string $email,
         public string $displayName,
-        public string $passwordHash,
         public array $roles,
         public array $moduleAccess,
         public bool $active,
@@ -71,7 +70,6 @@ readonly class User
             id: $this->id,
             email: $this->email,
             displayName: $this->displayName,
-            passwordHash: $this->passwordHash,
             roles: $roles,
             moduleAccess: $moduleAccess,
             active: $this->active,
@@ -89,7 +87,6 @@ readonly class User
             id: $this->id,
             email: $this->email,
             displayName: $this->displayName,
-            passwordHash: $this->passwordHash,
             roles: $this->roles,
             moduleAccess: $this->moduleAccess,
             active: false,
@@ -97,6 +94,23 @@ readonly class User
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
             lastLoginAt: $this->lastLoginAt,
+            pageAccess: $this->pageAccess,
+        );
+    }
+
+    public function recordLogin(\DateTimeImmutable $at): self
+    {
+        return new self(
+            id: $this->id,
+            email: $this->email,
+            displayName: $this->displayName,
+            roles: $this->roles,
+            moduleAccess: $this->moduleAccess,
+            active: $this->active,
+            version: $this->version,
+            createdAt: $this->createdAt,
+            updatedAt: $this->updatedAt,
+            lastLoginAt: $at,
             pageAccess: $this->pageAccess,
         );
     }

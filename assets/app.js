@@ -30,6 +30,62 @@ let currentRoles = [];
 let currentModuleAccess = {};
 let currentPageAccess = null;
 
+// Sitzungs-Timer für die Redaktion (siehe `SessionTokenIssuer`, `AuthenticationController`): ein
+// Inaktivitäts-Logout nach 15 Minuten ohne Interaktion — unabhängig vom Token-Status — sowie ein
+// proaktiver Refresh alle 10 Minuten, solange der Tab offen und die Person aktiv ist. Beide laufen
+// nur während einer bestehenden Redaktions-Sitzung (siehe `startSessionTimers`/`stopSessionTimers`,
+// aufgerufen aus `renderAdmin`/`forceLogout`).
+const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+const SESSION_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
+const SESSION_ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
+let sessionIdleTimer = null;
+let sessionRefreshTimer = null;
+
+const resetSessionIdleTimer = () => {
+    if (sessionIdleTimer) clearTimeout(sessionIdleTimer);
+    sessionIdleTimer = setTimeout(() => {
+        request('/api/auth/v1/logout', {method: 'POST'}).catch(() => {});
+        forceLogout('Du wurdest wegen Inaktivität abgemeldet.');
+    }, SESSION_IDLE_TIMEOUT_MS);
+};
+
+const stopSessionTimers = () => {
+    if (sessionIdleTimer) clearTimeout(sessionIdleTimer);
+    if (sessionRefreshTimer) clearInterval(sessionRefreshTimer);
+    sessionIdleTimer = null;
+    sessionRefreshTimer = null;
+    SESSION_ACTIVITY_EVENTS.forEach((eventName) => document.removeEventListener(eventName, resetSessionIdleTimer));
+};
+
+const startSessionTimers = () => {
+    stopSessionTimers();
+    resetSessionIdleTimer();
+    SESSION_ACTIVITY_EVENTS.forEach((eventName) => document.addEventListener(eventName, resetSessionIdleTimer, {passive: true}));
+    sessionRefreshTimer = setInterval(() => {
+        // Ein Fehlschlag hier (z. B. weil der Refresh-Token abgelaufen ist) landet als 401 im
+        // `request()`-Wrapper, der die Sitzung dann selbst beendet (siehe dort) — hier reicht es,
+        // die sonst unbehandelte Promise-Ablehnung abzufangen.
+        request('/api/auth/v1/refresh', {method: 'POST'}).catch(() => {});
+    }, SESSION_REFRESH_INTERVAL_MS);
+};
+
+/**
+ * Beendet die Redaktions-Sitzung ausschließlich clientseitig (Timer stoppen, Sitzungszustand
+ * zurücksetzen, Anmeldeseite zeigen) — der Server-Logout-Aufruf selbst obliegt dem jeweiligen
+ * Aufrufer (siehe Logout-Button, Inaktivitäts-Timer, `request()`).
+ */
+const forceLogout = (message) => {
+    stopSessionTimers();
+    csrfToken = null;
+    currentRoles = [];
+    currentModuleAccess = {};
+    currentPageAccess = null;
+    clearPinSessionUnlocks();
+    window.onpopstate = null;
+    if (message) toast(message, 'info');
+    renderLogin();
+};
+
 const CMS_MODULES = [
     ['pages', 'Seiten'],
     ['events', 'Veranstaltungen'],
@@ -469,6 +525,12 @@ const request = async (url, options = {}) => {
         // Manche Fehler (z. B. „PIN erforderlich“, siehe pin-settings) müssen von Aufrufern
         // unterschieden werden können, statt nur als Text im Toast zu landen.
         error.code = data?.error?.code || null;
+        // Nur innerhalb einer bestehenden Sitzung (csrfToken gesetzt) automatisch abmelden — sonst
+        // würde ein 401 auf /login-requests, /login oder /me (dort erwartet, siehe renderAdmin)
+        // die gerade angezeigte Anmeldeseite unterbrechen.
+        if (response.status === 401 && csrfToken) {
+            forceLogout('Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.');
+        }
         throw error;
     }
 
@@ -1787,34 +1849,49 @@ const parentPageField = (pages, page, initialParentId) => {
     return element('label', {className: 'field', children: [element('span', {text: 'Übergeordnete Seite'}), select]});
 };
 
-const renderLogin = () => {
+/**
+ * Passwortlose Anmeldung: nur die E-Mail-Adresse anfordern, der eigentliche Anmeldelink kommt per
+ * Mail (siehe `RequestLoginUseCase`) — bewusst immer dieselbe Erfolgsmeldung, unabhängig davon, ob
+ * die E-Mail-Adresse zu einem Redaktions-Benutzer gehört (vgl. `renderMemberAccessRequestForm`).
+ * Der Link selbst wird nicht hier, sondern beim Laden von `renderAdmin()` eingelöst (siehe dort,
+ * `login_token`-Query-Parameter).
+ */
+const renderLogin = (initialMessage) => {
     app.onkeydown = null;
     const message = element('p', {className: 'form-message', attributes: {'aria-live': 'polite'}});
+    if (initialMessage) message.textContent = initialMessage;
+    const emailField = field('E-Mail-Adresse', 'email', '', 'email');
     const form = element('form', {
         className: 'login-card',
         children: [
             element('p', {className: 'eyebrow', text: 'Waldbad Borkheide'}),
             element('h1', {text: 'Redaktion'}),
-            element('p', {text: 'Melde dich an, um Inhalte zu bearbeiten.'}),
-            field('E-Mail-Adresse', 'email', '', 'email'),
-            field('Passwort', 'password', '', 'password'),
+            element('p', {text: 'Trage deine E-Mail-Adresse ein. Du erhältst per Mail einen Anmeldelink, der 30 Minuten gültig ist.'}),
+            emailField,
             message,
-            element('button', {className: 'button', text: 'Anmelden', attributes: {type: 'submit'}}),
+            element('button', {className: 'button', text: 'Anmeldelink anfordern', attributes: {type: 'submit'}}),
         ],
     });
+    emailField.querySelector('input').required = true;
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const data = new FormData(form);
+        const button = form.querySelector('button');
+        button.disabled = true;
         try {
-            await request('/api/auth/v1/login', {
+            const result = await request('/api/auth/v1/login-requests', {
                 method: 'POST',
-                body: JSON.stringify({email: data.get('email'), password: data.get('password')}),
+                body: JSON.stringify({email: data.get('email')}),
             });
-            toast('Erfolgreich angemeldet.');
-            await renderAdmin();
+            form.reset();
+            message.textContent = result.message;
+            message.classList.add('success');
+            toast(result.message);
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
+        } finally {
+            button.disabled = false;
         }
     });
     app.replaceChildren(element('main', {className: 'login-shell', children: [form]}));
@@ -3051,18 +3128,33 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
 };
 
 const renderAdmin = async () => {
+    // Ein Anmeldelink landet hier als `?login_token=…` (siehe `LoginLinkBuilder`) — wird sofort
+    // eingelöst, bevor überhaupt geprüft wird, ob schon eine Sitzung besteht.
+    const loginToken = new URLSearchParams(window.location.search).get('login_token');
     let session;
-    try {
-        session = await request('/api/auth/v1/me');
-    } catch {
-        renderLogin();
-        return;
+    if (loginToken !== null) {
+        try {
+            session = await request('/api/auth/v1/login', {method: 'POST', body: JSON.stringify({token: loginToken})});
+        } catch (error) {
+            renderLogin(error.message);
+            return;
+        } finally {
+            window.history.replaceState(null, '', window.location.pathname);
+        }
+    } else {
+        try {
+            session = await request('/api/auth/v1/me');
+        } catch {
+            renderLogin();
+            return;
+        }
     }
 
     csrfToken = session.csrfToken;
     currentRoles = session.user.roles;
     currentModuleAccess = session.user.moduleAccess || {};
     currentPageAccess = session.user.pageAccess ?? null;
+    startSessionTimers();
     const workspace = element('section', {className: 'admin-workspace'});
     const sidebarTitle = element('h1', {text: 'Redaktion'});
     const menu = element('nav', {className: 'admin-menu', attributes: {id: 'admin-navigation-menu', 'aria-label': 'Redaktionsbereiche'}});
@@ -4490,16 +4582,18 @@ const renderAdmin = async () => {
 
     // Für die Zahler-Suche im Dialog wird die vollständige, ungefilterte Mitgliederliste gebraucht
     // (unabhängig von einer evtl. aktiven Suche in der Tabelle) — ein Zahler kann für jedes
-    // Mitglied bezahlen, nicht nur für den eigenen Haushalt. Bei ~1000 Datensätzen lohnt es sich
-    // aber nicht, das bei jedem Öffnen eines Datensatzes neu zu laden: `payerCandidatesCache` hält
-    // das (als Promise, damit parallele Öffnungen sich nicht gegenseitig doppelt laden) bis zum
-    // nächsten echten Neuladen der Liste (`invalidatePayerCandidatesCache()`, siehe `showMembers`).
+    // Mitglied bezahlen, nicht nur für den eigenen Haushalt. `payerCandidatesCache` hält diese Liste
+    // (als Promise, damit parallele Öffnungen sich nicht gegenseitig doppelt laden), damit das
+    // Öffnen eines Datensatzes selbst keinen eigenen "members"-Request mehr braucht: `showMembers`
+    // befüllt den Cache bereits direkt aus ihrer eigenen (bei leerer Suche ohnehin ungefilterten)
+    // Listenantwort mit. Erst wenn der Cache noch nie befüllt wurde (z. B. Dialog-Öffnen, bevor der
+    // Tab „Mitglieder" je geladen wurde), lädt `loadPayerCandidates()` hier selbst nach.
     let payerCandidatesCache = null;
     const invalidatePayerCandidatesCache = () => { payerCandidatesCache = null; };
     const loadPayerCandidates = () => {
         // Bei einem fehlgeschlagenen Request bleibt nichts Kaputtes im Cache stehen — sonst würde
-        // ein einmaliger Netzwerkfehler jeden weiteren Dialog-Aufruf bis zum nächsten Neuladen der
-        // Liste ebenfalls scheitern lassen.
+        // ein einmaliger Netzwerkfehler jeden weiteren Dialog-Aufruf bis zum nächsten erfolgreichen
+        // Laden der Liste ebenfalls scheitern lassen.
         payerCandidatesCache ??= request('/api/admin/v1/members')
             .then((data) => data.items)
             .catch((error) => { invalidatePayerCandidatesCache(); throw error; });
@@ -5076,9 +5170,6 @@ const renderAdmin = async () => {
     // Filter oder Tab in der Zwischenzeit erneut wechseln.
     let membersLoadToken = 0;
     const showMembers = () => {
-        // Die Tabelle wird jetzt neu geladen — ein guter Zeitpunkt, auch die Zahler-Kandidaten für
-        // den nächsten Dialog-Aufruf neu zu laden, statt eine veraltete Liste weiterzuverwenden.
-        invalidatePayerCandidatesCache();
         const heading = sectionHeading('Mitglieder', 'Stammdaten aller Vereinsmitglieder verwalten');
         const actions = [];
         if (canEditModule('members')) {
@@ -5170,6 +5261,15 @@ const renderAdmin = async () => {
                 return;
             }
             if (loadToken !== membersLoadToken) return;
+
+            // Diese Liste ist — sofern gerade keine Suche aktiv ist — bereits die vollständige,
+            // ungefilterte Mitgliederliste: dieselben Daten, die `loadPayerCandidates()` sonst per
+            // eigenem Request nachladen würde. Hier direkt als Cache übernehmen, damit das Öffnen
+            // eines Datensatzes (`openMemberDialog`) nicht zusätzlich "members" anfragt, sondern nur
+            // noch den Haushalt lädt. Bei aktiver Suche bleibt ein zuvor gefüllter Cache unangetastet
+            // (kein Überschreiben mit der gefilterten Teilmenge) und wird beim nächsten ungefilterten
+            // Laden wieder aufgefrischt.
+            if (!memberSearchTerm) payerCandidatesCache = Promise.resolve(data.items);
 
             const filteredItems = data.items.filter((memberItem) => {
                 if (memberStatusFilter === 'active') return memberItem.active;
@@ -6839,14 +6939,7 @@ const renderAdmin = async () => {
     const logout = element('button', {className: 'text-button', text: 'Abmelden', attributes: {type: 'button'}});
     logout.addEventListener('click', async () => {
         await request('/api/auth/v1/logout', {method: 'POST'});
-        csrfToken = null;
-        currentRoles = [];
-        currentModuleAccess = {};
-        currentPageAccess = null;
-        clearPinSessionUnlocks();
-        window.onpopstate = null;
-        toast('Du wurdest abgemeldet.', 'info');
-        renderLogin();
+        forceLogout('Du wurdest abgemeldet.');
     });
 
     app.replaceChildren(
@@ -7226,7 +7319,8 @@ const userCreationForm = (refresh, pages) => {
     const message = formMessage();
     const form = element('form', {className: 'compact-form', children: [
         element('h3', {text: 'Benutzer anlegen'}),
-        element('div', {className: 'form-grid', children: [field('Name', 'displayName'), field('E-Mail', 'email', '', 'email'), field('Initialpasswort', 'password', '', 'password')]}),
+        element('div', {className: 'form-grid', children: [field('Name', 'displayName'), field('E-Mail', 'email', '', 'email')]}),
+        element('p', {className: 'field-hint', text: 'Der Zugang erfolgt ohne Passwort: die Person erhält beim Anmelden per Mail einen Anmeldelink.'}),
         element('fieldset', {children: [
             element('legend', {text: 'Globale Administratorrolle'}),
             globalRoleField(),
@@ -7244,7 +7338,7 @@ const userCreationForm = (refresh, pages) => {
         const pageAccess = readPageAccess(form);
         try {
             await request('/api/admin/v1/users', {method: 'POST', body: JSON.stringify({
-                displayName: data.get('displayName'), email: data.get('email'), password: data.get('password'),
+                displayName: data.get('displayName'), email: data.get('email'),
                 roles: globalRole ? [globalRole] : [], moduleAccess: readModuleAccess(form),
                 pageAccessRestricted: pageAccess.restricted, pageAccess: pageAccess.pageAccess,
             })});

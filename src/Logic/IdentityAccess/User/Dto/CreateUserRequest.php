@@ -15,7 +15,6 @@ readonly class CreateUserRequest
     public function __construct(
         public string $email,
         public string $displayName,
-        public string $plainPassword,
         public array $roles,
         public array $moduleAccess,
         public ?array $pageAccess = null,

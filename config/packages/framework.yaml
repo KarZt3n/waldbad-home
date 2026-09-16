@@ -27,6 +27,14 @@ framework:
             policy: fixed_window
             limit: 10
             interval: '15 minutes'
+        login_request:
+            policy: fixed_window
+            limit: 5
+            interval: '15 minutes'
+        login_session:
+            policy: fixed_window
+            limit: 20
+            interval: '15 minutes'
         member_access_request:
             policy: fixed_window
             limit: 5
@@ -59,6 +67,10 @@ when@test:
                 policy: no_limit
             pin_verification:
                 policy: no_limit
+            login_request:
+                policy: no_limit
+            login_session:
+                policy: no_limit
             member_access_request:
                 policy: no_limit
             member_access_session:
@@ -72,6 +84,8 @@ when@dev:
             membership_application:
                 policy: no_limit
             event_help_form:
+                policy: no_limit
+            login_request:
                 policy: no_limit
             member_access_request:
                 policy: no_limit

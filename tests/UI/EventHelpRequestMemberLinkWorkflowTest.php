@@ -14,6 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 /**
  * Deckt die Zuordnung einer Helferanmeldung ("Ich möchte Helfen!") zu einem Mitgliedsdatensatz ab
@@ -555,7 +556,6 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'event-help-member-link-admin@example.test',
             displayName: 'Events Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [
                 new ModuleAccess(CmsModule::Events, ModuleRole::Editor),
@@ -564,10 +564,8 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
                 new ModuleAccess(CmsModule::Members, ModuleRole::Editor),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'event-help-member-link-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'event-help-member-link-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = $this->responseData();
         self::assertIsString($login['csrfToken']);

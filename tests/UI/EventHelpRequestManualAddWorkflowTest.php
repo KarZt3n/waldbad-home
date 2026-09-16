@@ -14,6 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use App\Tests\Support\FixedSecureTokenGenerator;
 
 /**
  * Deckt das manuelle Hinzufügen eines Mitglieds als Helfer einer Veranstaltung ab (Button „+" neben
@@ -205,7 +206,6 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
         $createUser->execute(new CreateUserRequest(
             email: 'event-help-manual-add-admin@example.test',
             displayName: 'Events Admin',
-            plainPassword: 'Ein-sicheres-Testpasswort-2026',
             roles: [Role::SuperAdmin],
             moduleAccess: [
                 new ModuleAccess(CmsModule::Events, ModuleRole::Editor),
@@ -214,10 +214,8 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
                 new ModuleAccess(CmsModule::Members, ModuleRole::Editor),
             ],
         ));
-        $this->client->jsonRequest('POST', '/api/auth/v1/login', [
-            'email' => 'event-help-manual-add-admin@example.test',
-            'password' => 'Ein-sicheres-Testpasswort-2026',
-        ]);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'event-help-manual-add-admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $login = $this->responseData();
         self::assertIsString($login['csrfToken']);

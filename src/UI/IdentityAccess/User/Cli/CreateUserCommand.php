@@ -31,8 +31,7 @@ class CreateUserCommand extends Command
             ->addArgument('email', InputArgument::REQUIRED)
             ->addArgument('display-name', InputArgument::REQUIRED)
             ->addOption('role', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Globale Rolle: admin oder super_admin', [])
-            ->addOption('module', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'CMS-Modul im Format modul=rolle', array_map(static fn (CmsModule $module): string => $module->value.'=viewer', CmsModule::cases()))
-            ->addOption('password', null, InputOption::VALUE_REQUIRED, 'Passwort; ohne Option wird interaktiv gefragt');
+            ->addOption('module', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'CMS-Modul im Format modul=rolle', array_map(static fn (CmsModule $module): string => $module->value.'=viewer', CmsModule::cases()));
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -40,21 +39,11 @@ class CreateUserCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $email = $input->getArgument('email');
         $displayName = $input->getArgument('display-name');
-        $password = $input->getOption('password');
         $roleValues = $input->getOption('role');
         $moduleValues = $input->getOption('module');
 
         if (!is_string($email) || !is_string($displayName) || !is_array($roleValues) || !is_array($moduleValues)) {
             $io->error('Ungültige Eingabe.');
-
-            return Command::INVALID;
-        }
-
-        if (!is_string($password) || $password === '') {
-            $password = $io->askHidden('Passwort');
-        }
-        if (!is_string($password) || $password === '') {
-            $io->error('Ein Passwort ist erforderlich.');
 
             return Command::INVALID;
         }
@@ -71,7 +60,7 @@ class CreateUserCommand extends Command
             return Command::INVALID;
         }
 
-        $user = $this->useCase->execute(new CreateUserRequest($email, $displayName, $password, $roles, $moduleAccess));
+        $user = $this->useCase->execute(new CreateUserRequest($email, $displayName, $roles, $moduleAccess));
         $io->success(sprintf('Benutzer %s wurde angelegt.', $user->email));
 
         return Command::SUCCESS;

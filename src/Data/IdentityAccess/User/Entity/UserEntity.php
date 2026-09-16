@@ -45,8 +45,6 @@ class UserEntity
         private string $email,
         #[ORM\Column(type: Types::STRING, length: 180)]
         private string $displayName,
-        #[ORM\Column(type: Types::STRING, length: 255)]
-        private string $passwordHash,
         array $roles,
         array $modules,
         ?array $pageAccess,
@@ -77,11 +75,6 @@ class UserEntity
     public function getDisplayName(): string
     {
         return $this->displayName;
-    }
-
-    public function getPasswordHash(): string
-    {
-        return $this->passwordHash;
     }
 
     /**
@@ -140,7 +133,6 @@ class UserEntity
      */
     public function update(
         string $displayName,
-        string $passwordHash,
         array $roles,
         array $modules,
         ?array $pageAccess,
@@ -149,7 +141,6 @@ class UserEntity
         ?\DateTimeImmutable $lastLoginAt,
     ): void {
         $this->displayName = $displayName;
-        $this->passwordHash = $passwordHash;
         $this->roles = $roles;
         $this->modules = $modules;
         $this->pageAccess = $pageAccess;
