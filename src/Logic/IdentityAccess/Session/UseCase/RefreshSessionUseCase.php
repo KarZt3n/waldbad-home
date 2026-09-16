@@ -6,6 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\IdentityAccess\Session\Dto\AuthenticatedSession;
 use App\Logic\IdentityAccess\Session\Exception\InvalidSessionException;
 use App\Logic\IdentityAccess\Session\Manager\RefreshTokenManagerInterface;
+use App\Logic\IdentityAccess\Session\Model\RefreshToken;
 use App\Logic\IdentityAccess\Session\Service\SessionTokenIssuer;
 use App\Logic\IdentityAccess\User\Manager\UserManagerInterface;
 
@@ -17,10 +18,15 @@ use App\Logic\IdentityAccess\User\Manager\UserManagerInterface;
  *
  * Wird ein bereits rotiertes (gesperrtes) Token erneut vorgelegt, deutet das auf einen gestohlenen
  * Token hin — vorsorglich werden dann alle Refresh-Tokens des Benutzers gesperrt, was die gesamte
- * Sitzung überall beendet.
+ * Sitzung überall beendet. Ausnahme: Wurde das Token erst vor Kurzem (siehe
+ * `REUSE_GRACE_PERIOD_SECONDS`) rotiert, wird die Wiedervorlage als harmloser Wettlauf behandelt
+ * (z. B. zwei gleichzeitig geöffnete Redaktions-Tabs, deren proaktive Refresh-Timer kollidieren) und
+ * stattdessen einfach erneut ausgestellt, statt die Sitzung zu beenden.
  */
 readonly class RefreshSessionUseCase
 {
+    private const int REUSE_GRACE_PERIOD_SECONDS = 30;
+
     public function __construct(
         private RefreshTokenManagerInterface $refreshTokens,
         private UserManagerInterface $users,
@@ -35,22 +41,34 @@ readonly class RefreshSessionUseCase
         $token = $this->refreshTokens->findByHash(hash('sha256', $rawRefreshToken)) ?? throw new InvalidSessionException();
 
         if ($token->isRevoked()) {
-            $this->refreshTokens->revokeAllForUser($token->userId, $now);
-            throw new InvalidSessionException();
-        }
-        if ($token->isExpired($now)) {
+            if (!$this->isWithinReuseGracePeriod($token, $now)) {
+                $this->refreshTokens->revokeAllForUser($token->userId, $now);
+                throw new InvalidSessionException();
+            }
+        } elseif ($token->isExpired($now)) {
             $this->refreshTokens->revoke($token->id, $now);
             throw new InvalidSessionException();
         }
 
         $user = $this->users->get($token->userId);
         if (!$user->active) {
-            $this->refreshTokens->revoke($token->id, $now);
+            if (!$token->isRevoked()) {
+                $this->refreshTokens->revoke($token->id, $now);
+            }
             throw new InvalidSessionException();
         }
 
-        $this->refreshTokens->revoke($token->id, $now);
+        if (!$token->isRevoked()) {
+            $this->refreshTokens->revoke($token->id, $now);
+        }
 
         return new AuthenticatedSession($user, $this->issuer->rotate($token));
+    }
+
+    private function isWithinReuseGracePeriod(RefreshToken $token, \DateTimeImmutable $now): bool
+    {
+        return $token->revokedAt !== null
+            && $now < $token->revokedAt->modify('+'.self::REUSE_GRACE_PERIOD_SECONDS.' seconds')
+            && $now < $token->absoluteExpiresAt;
     }
 }

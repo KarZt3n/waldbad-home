@@ -1627,6 +1627,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .activity-list-row:disabled { opacity: 1; cursor: default; }
 .activity-list-row:disabled:hover { background: transparent; }
 .activity-list-row.is-inactive:disabled:hover { background: #f5f6f5; }
+.activity-list-row-title { display: block; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .activity-list-copy { display: grid; gap: .25rem; min-width: 0; }
 .activity-list-copy strong { font-size: 1.05rem; }
 .activity-list-copy small { overflow: hidden; color: var(--muted); font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }

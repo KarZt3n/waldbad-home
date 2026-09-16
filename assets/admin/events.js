@@ -818,6 +818,27 @@ const openActivityDialog = (activity, onSaved) => {
     const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+    const actions = [cancel, submit];
+    if (activity) {
+        const deleteButton = element('button', {className: 'text-button danger', text: 'Löschen', attributes: {type: 'button'}});
+        deleteButton.addEventListener('click', async () => {
+            const confirmed = await confirmAction(
+                `„${activity.name}“ löschen?`,
+                'Die Aktivität wird endgültig entfernt und dabei aus allen Veranstaltungen, Arbeitseinsätzen und Vorlagen entfernt, die sie zuordnen. Das kann nicht rückgängig gemacht werden.',
+                'Löschen',
+            );
+            if (!confirmed) return;
+            try {
+                await request(`/api/admin/v1/event-activities/${activity.id}`, {method: 'DELETE'});
+                toast('Aktivität wurde gelöscht.');
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        });
+        actions.unshift(deleteButton);
+    }
     const form = element('form', {className: 'activity-dialog-content', children: [
         element('header', {children: [
             element('div', {children: [
@@ -833,7 +854,7 @@ const openActivityDialog = (activity, onSaved) => {
         element('label', {className: 'check-field', children: [alwaysIncluded, element('span', {text: 'Immer in neue Veranstaltungen einbinden'})]}),
         element('small', {text: 'Wird beim Anlegen einer neuen Veranstaltung automatisch zugeordnet.'}),
         message,
-        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+        element('div', {className: 'confirm-dialog-actions', children: actions}),
     ]});
     name.querySelector('input').required = true;
     cancel.addEventListener('click', () => dialog.close());
@@ -901,44 +922,15 @@ const showActivities = async () => {
     );
 };
 
-const openEventDialog = (schedule, kind, onSaved, handlers) => {
-    const draft = {
-        content: schedule?.content || '',
-        mediaUrl: schedule?.mediaUrl || null,
-        mediaAlt: schedule?.mediaAlt || null,
-        mediaSource: schedule?.mediaSource || null,
-    };
-    const effectiveKind = schedule?.kind || kind;
-    const dialogKey = schedule?.id || 'new';
-    const dialog = element('dialog', {className: 'event-schedule-dialog'});
-
-    const title = field('Überschrift', 'event-title-' + dialogKey, schedule?.title || '');
-    const date = field('Datum', 'event-date-' + dialogKey, schedule?.date || '', 'date');
-    const time = field('Uhrzeit', 'event-time-' + dialogKey, schedule?.time || '14:00', 'time');
-    title.querySelector('input').required = true;
-    date.querySelector('input').required = true;
-    time.querySelector('input').required = true;
-
-    const visible = element('input', {attributes: {type: 'checkbox'}});
-    visible.checked = schedule ? schedule.visible !== false : true;
-
-    const helpEnabled = element('input', {attributes: {type: 'checkbox'}});
-    helpEnabled.checked = schedule ? schedule.helpEnabled === true : effectiveKind === 'work_assignment';
-    const helpLabel = field('Beschriftung des Buttons', 'event-help-label-' + dialogKey, schedule?.helpButtonLabel || 'Ich möchte helfen!');
-    const helpLabelInput = helpLabel.querySelector('input');
-
+/**
+ * Aktivitäts-Zuordnungs-Editor (Aktivität, Anzahl, Start/Ende, Treffort, Bemerkung je Zuordnung,
+ * inkl. „Zuordnen"/„Neue Aktivität anlegen") — gemeinsam genutzt von `openEventDialog` und
+ * `openEventTemplateDialog`. `activities` wird in place mutiert (push/splice), die aufrufende
+ * Stelle behält dieselbe Referenz für Validierung (`list`, siehe dort die Zählfeld-Prüfung beim
+ * Absenden) und die spätere Nutzlast.
+ */
+const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message) => {
     let activityCatalog = (handlers.activities || []).slice();
-    // Bei einer neuen Veranstaltung werden alle als „immer einbinden“ markierten Aktivitäten
-    // automatisch vorbelegt; beim Bearbeiten bleiben die gespeicherten Zuordnungen unangetastet.
-    const activities = schedule
-        ? schedule.activities.map((activity) => ({...activity}))
-        : activityCatalog
-            .filter((activity) => activity.active && activity.alwaysIncluded)
-            .map((activity) => ({
-                activityId: activity.id,
-                requiredHelpers: String(activity.defaultRequiredHelpers ?? 1),
-                time: null, meetTime: null, meetPlace: null, remark: null,
-            }));
     const activityList = element('div', {className: 'event-activity-editor-list'});
     const renderActivityRows = () => {
         activityList.replaceChildren(...activities.map((assignment, assignmentIndex) => {
@@ -1056,17 +1048,21 @@ const openEventDialog = (schedule, kind, onSaved, handlers) => {
         });
     });
     renderActivityRows();
-    const activityEditor = element('fieldset', {className: 'event-activity-editor', children: [
+    const editor = element('fieldset', {className: 'event-activity-editor', children: [
         element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
         element('small', {text: 'Start, Ende, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt.'}),
         activityList,
         element('div', {className: 'event-activity-editor-actions', children: [addActivity, addNewActivity]}),
     ]});
-    const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
-    helpConfiguration.hidden = !helpEnabled.checked;
-    helpEnabled.addEventListener('change', () => helpConfiguration.hidden = !helpEnabled.checked);
 
-    const callToActions = (schedule?.callToActions || []).map((action) => ({...action}));
+    return {editor, list: activityList};
+};
+
+/**
+ * Aktionsbutton-Editor (Beschriftung + Ziel-URL/-Seite, mehrere möglich) — gemeinsam genutzt von
+ * `openEventDialog` und `openEventTemplateDialog`. `callToActions` wird in place mutiert.
+ */
+const buildCallToActionEditor = (callToActions, pages, dialogKey) => {
     const actionList = element('div', {className: 'event-call-action-editor-list'});
     const renderActions = () => {
         actionList.replaceChildren(...callToActions.map((action, actionIndex) => {
@@ -1086,7 +1082,7 @@ const openEventDialog = (schedule, kind, onSaved, handlers) => {
                 if (targetType.value === 'page') {
                     const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
                     pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
-                    flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
+                    flattenPageTree(buildPageTree(pages || [])).forEach(({page: candidate, depth}) => {
                         pageSelect.append(element('option', {
                             text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
                             attributes: {value: candidate.id},
@@ -1136,7 +1132,71 @@ const openEventDialog = (schedule, kind, onSaved, handlers) => {
     });
     renderActions();
 
+    return element('fieldset', {className: 'event-call-action-editor', children: [
+        element('legend', {text: 'Weitere Aktionsbuttons'}),
+        element('small', {text: 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.'}),
+        actionList,
+        addAction,
+    ]});
+};
+
+/**
+ * Öffnet den Dialog für eine neue/zu bearbeitende Veranstaltung bzw. einen Arbeitseinsatz. Mit
+ * `prefill` (einer Vorlage, siehe `openEventTemplateDialog`/„Vorlage verwenden") werden alle Felder
+ * außer Datum/Uhrzeit aus der Vorlage übernommen — nur gültig, wenn `schedule` null ist (Vorlagen
+ * werden nur beim Neuanlegen vorbelegt, nie beim Bearbeiten eines bestehenden Eintrags).
+ */
+const openEventDialog = (schedule, kind, onSaved, handlers, prefill = null) => {
+    const draft = {
+        content: schedule?.content || prefill?.content || '',
+        mediaUrl: schedule?.mediaUrl || prefill?.mediaUrl || null,
+        mediaAlt: schedule?.mediaAlt || prefill?.mediaAlt || null,
+        mediaSource: schedule?.mediaSource || prefill?.mediaSource || null,
+    };
+    const effectiveKind = schedule?.kind || kind;
+    const dialogKey = schedule?.id || 'new';
+    const dialog = element('dialog', {className: 'event-schedule-dialog'});
+
+    const title = field('Überschrift', 'event-title-' + dialogKey, schedule?.title || prefill?.title || '');
+    const date = field('Datum', 'event-date-' + dialogKey, schedule?.date || '', 'date');
+    const time = field('Uhrzeit', 'event-time-' + dialogKey, schedule?.time || '14:00', 'time');
+    title.querySelector('input').required = true;
+    date.querySelector('input').required = true;
+    time.querySelector('input').required = true;
+
+    const visible = element('input', {attributes: {type: 'checkbox'}});
+    visible.checked = schedule ? schedule.visible !== false : true;
+
+    const helpEnabled = element('input', {attributes: {type: 'checkbox'}});
+    helpEnabled.checked = schedule ? schedule.helpEnabled === true : (prefill ? prefill.helpEnabled === true : effectiveKind === 'work_assignment');
+    const helpLabel = field('Beschriftung des Buttons', 'event-help-label-' + dialogKey, schedule?.helpButtonLabel || prefill?.helpButtonLabel || 'Ich möchte helfen!');
+    const helpLabelInput = helpLabel.querySelector('input');
+
     const message = formMessage();
+
+    // Ohne Vorlage werden bei einer neuen Veranstaltung alle als „immer einbinden“ markierten
+    // Aktivitäten automatisch vorbelegt; mit Vorlage übernimmt deren eigene Zuordnung (auch wenn
+    // leer — die Vorlage ist dann bewusst maßgeblich), beim Bearbeiten bleiben die gespeicherten
+    // Zuordnungen unangetastet.
+    const activities = schedule
+        ? schedule.activities.map((activity) => ({...activity}))
+        : prefill
+            ? prefill.activities.map((activity) => ({...activity}))
+            : (handlers.activities || [])
+                .filter((activity) => activity.active && activity.alwaysIncluded)
+                .map((activity) => ({
+                    activityId: activity.id,
+                    requiredHelpers: String(activity.defaultRequiredHelpers ?? 1),
+                    time: null, meetTime: null, meetPlace: null, remark: null,
+                }));
+    const {editor: activityEditor, list: activityList} = buildActivityAssignmentEditor(activities, handlers, dialogKey, message);
+    const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
+    helpConfiguration.hidden = !helpEnabled.checked;
+    helpEnabled.addEventListener('change', () => helpConfiguration.hidden = !helpEnabled.checked);
+
+    const callToActions = (schedule?.callToActions || prefill?.callToActions || []).map((action) => ({...action}));
+    const callToActionEditor = buildCallToActionEditor(callToActions, handlers.pages, dialogKey);
+
     const submitLabel = schedule
         ? 'Änderungen speichern'
         : (effectiveKind === 'work_assignment' ? 'Arbeitseinsatz anlegen' : 'Veranstaltung anlegen');
@@ -1206,12 +1266,7 @@ const openEventDialog = (schedule, kind, onSaved, handlers) => {
             element('span', {text: 'Im Frontend den Button „Ich möchte helfen!“ mit Anmeldeformular anzeigen'}),
         ]}),
         helpConfiguration,
-        element('fieldset', {className: 'event-call-action-editor', children: [
-            element('legend', {text: 'Weitere Aktionsbuttons'}),
-            element('small', {text: 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.'}),
-            actionList,
-            addAction,
-        ]}),
+        callToActionEditor,
         message,
         element('div', {className: 'confirm-dialog-actions', children: actions}),
     ]});
@@ -1369,7 +1424,230 @@ const showEvents = async () => {
 };
 
 
-const eventTabsBySlug = {termine: 'events', helfer: 'helpers', aktivitaeten: 'activities'};
+/**
+ * Öffnet den Dialog für eine neue/zu bearbeitende Vorlage — wie `openEventDialog`, aber ohne
+ * Datum/Uhrzeit/„Im Frontend sichtbar" (eine Vorlage hat keinen eigenen Termin) und gegen
+ * `/api/admin/v1/event-templates` statt `/api/admin/v1/events`.
+ */
+const openEventTemplateDialog = (template, kind, onSaved, handlers) => {
+    const draft = {
+        content: template?.content || '',
+        mediaUrl: template?.mediaUrl || null,
+        mediaAlt: template?.mediaAlt || null,
+        mediaSource: template?.mediaSource || null,
+    };
+    const effectiveKind = template?.kind || kind;
+    const dialogKey = template?.id || 'new';
+    const dialog = element('dialog', {className: 'event-schedule-dialog'});
+
+    const title = field('Überschrift', 'event-template-title-' + dialogKey, template?.title || '');
+    title.querySelector('input').required = true;
+
+    const helpEnabled = element('input', {attributes: {type: 'checkbox'}});
+    helpEnabled.checked = template ? template.helpEnabled === true : effectiveKind === 'work_assignment';
+    const helpLabel = field('Beschriftung des Buttons', 'event-template-help-label-' + dialogKey, template?.helpButtonLabel || 'Ich möchte helfen!');
+    const helpLabelInput = helpLabel.querySelector('input');
+
+    const message = formMessage();
+
+    const activities = template ? template.activities.map((activity) => ({...activity})) : [];
+    const {editor: activityEditor, list: activityList} = buildActivityAssignmentEditor(activities, handlers, dialogKey, message);
+    const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
+    helpConfiguration.hidden = !helpEnabled.checked;
+    helpEnabled.addEventListener('change', () => helpConfiguration.hidden = !helpEnabled.checked);
+
+    const callToActions = (template?.callToActions || []).map((action) => ({...action}));
+    const callToActionEditor = buildCallToActionEditor(callToActions, handlers.pages, dialogKey);
+
+    const submitLabel = template ? 'Änderungen speichern' : 'Vorlage anlegen';
+    const submit = element('button', {
+        className: 'button event-dialog-action event-dialog-action-save',
+        attributes: {type: 'submit', title: submitLabel, 'aria-label': submitLabel},
+        children: [
+            element('span', {className: 'event-dialog-action-icon', text: '✓', attributes: {'aria-hidden': 'true'}}),
+            element('span', {className: 'event-dialog-action-label', text: submitLabel}),
+        ],
+    });
+    const cancel = element('button', {
+        className: 'secondary-button event-dialog-action event-dialog-action-cancel',
+        attributes: {type: 'button', title: 'Abbrechen', 'aria-label': 'Abbrechen'},
+        children: [
+            element('span', {className: 'event-dialog-action-icon', text: '×', attributes: {'aria-hidden': 'true'}}),
+            element('span', {className: 'event-dialog-action-label', text: 'Abbrechen'}),
+        ],
+    });
+    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+    const actions = [cancel, submit];
+    if (template) {
+        const deleteButton = element('button', {
+            className: 'text-button danger event-dialog-action event-dialog-action-delete',
+            attributes: {type: 'button', title: 'Löschen', 'aria-label': 'Löschen'},
+            children: [
+                element('span', {className: 'event-dialog-action-icon', text: '⌫', attributes: {'aria-hidden': 'true'}}),
+                element('span', {className: 'event-dialog-action-label', text: 'Löschen'}),
+            ],
+        });
+        deleteButton.addEventListener('click', async () => {
+            const confirmed = await confirmAction(
+                `„${template.title}“ löschen?`,
+                'Die Vorlage wird endgültig entfernt. Bereits erstellte Veranstaltungen/Arbeitseinsätze bleiben unverändert.',
+                'Löschen',
+            );
+            if (!confirmed) return;
+            try {
+                await request('/api/admin/v1/event-templates/' + template.id, {method: 'DELETE'});
+                toast('Die Vorlage wurde gelöscht.');
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        });
+        actions.unshift(deleteButton);
+    }
+
+    const form = element('form', {className: 'event-schedule-dialog-content', children: [
+        element('header', {children: [
+            element('div', {children: [
+                element('p', {className: 'eyebrow', text: `Vorlage · ${EVENT_SCHEDULE_KIND_LABELS[effectiveKind] || effectiveKind}`}),
+                element('h2', {text: template ? template.title : 'Vorlage anlegen'}),
+            ]}),
+        ]}),
+        title,
+        element('div', {className: 'field', children: [
+            element('span', {text: 'Zusatzinformationen (optional)'}),
+            richTextEditor(draft, 'event-template-' + dialogKey, null, 'Zusatzinformationen zur Veranstaltung'),
+        ]}),
+        collectionItemMediaEditor(draft, 'event-template-' + dialogKey),
+        element('label', {className: 'check-field event-help-option', children: [
+            helpEnabled,
+            element('span', {text: 'Im Frontend den Button „Ich möchte helfen!“ mit Anmeldeformular anzeigen'}),
+        ]}),
+        helpConfiguration,
+        callToActionEditor,
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: actions}),
+    ]});
+
+    cancel.addEventListener('click', () => dialog.close());
+    close.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        try {
+            const countInputs = activityList.querySelectorAll('.event-activity-field-count input');
+            const invalidCount = Array.from(countInputs).find((input, index) => {
+                const value = Number(input.value);
+                const valid = input.value.trim() !== '' && Number.isInteger(value) && value > 0 && value <= 999;
+                input.setCustomValidity(valid ? '' : 'Bitte eine ganze Zahl zwischen 1 und 999 eingeben.');
+                input.toggleAttribute('aria-invalid', !valid);
+                if (valid) activities[index].requiredHelpers = value;
+                return !valid;
+            });
+            if (invalidCount) {
+                message.textContent = 'Die Anzahl der benötigten Helfer muss zwischen 1 und 999 liegen.';
+                invalidCount.reportValidity();
+                invalidCount.focus();
+                submit.disabled = false;
+                return;
+            }
+            const payload = {
+                title: title.querySelector('input').value,
+                content: draft.content,
+                mediaUrl: draft.mediaUrl,
+                mediaAlt: draft.mediaAlt,
+                mediaSource: draft.mediaSource,
+                helpEnabled: helpEnabled.checked,
+                helpButtonLabel: helpLabelInput.value || null,
+                activities: activities.map((activity) => ({
+                    activityId: activity.activityId,
+                    requiredHelpers: activity.requiredHelpers,
+                    time: activity.time || null,
+                    meetTime: activity.meetTime || null,
+                    meetPlace: activity.meetPlace || null,
+                    remark: activity.remark || null,
+                })),
+                callToActions,
+            };
+            if (template) {
+                await request('/api/admin/v1/event-templates/' + template.id, {method: 'PUT', body: JSON.stringify(payload)});
+                toast('Änderungen wurden gespeichert.');
+            } else {
+                await request('/api/admin/v1/event-templates', {method: 'POST', body: JSON.stringify({...payload, kind: effectiveKind})});
+                toast('Vorlage wurde angelegt.');
+            }
+            dialog.close();
+            await onSaved();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            submit.disabled = false;
+        }
+    });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.append(close, form);
+    document.body.append(dialog);
+    dialog.showModal();
+};
+
+/**
+ * Reiter „Vorlagen": wiederverwendbare Vorlagen für Veranstaltungen (grün) und Arbeitseinsätze
+ * (gelb), dieselben `event-kind-*`/`event-kind-badge-*`-Klassen wie in „Termine". „Vorlage
+ * verwenden" öffnet den regulären Anlage-Dialog vorausgefüllt (siehe `openEventDialog`s
+ * `prefill`-Parameter) — nur Datum/Uhrzeit sind danach noch auszufüllen.
+ */
+const showEventTemplates = async () => {
+    const [templateData, activityData, pageData] = await Promise.all([
+        request('/api/admin/v1/event-templates'),
+        request('/api/admin/v1/event-activities'),
+        request('/api/admin/v1/pages'),
+    ]);
+    const handlers = {activities: activityData.items, pages: pageData.items};
+
+    const heading = sectionHeading('Vorlagen', 'Wiederverwendbare Vorlagen für Veranstaltungen und Arbeitseinsätze anlegen und verwenden');
+    if (canEditModule('events')) {
+        const createEvent = element('button', {className: 'button event-create-button event-create-event', text: '＋ Vorlage (Veranstaltung)', attributes: {type: 'button'}});
+        const createWorkAssignment = element('button', {className: 'button event-create-button event-create-work-assignment', text: '＋ Vorlage (Arbeitseinsatz)', attributes: {type: 'button'}});
+        createEvent.addEventListener('click', () => openEventTemplateDialog(null, 'event', showEventManagement, handlers));
+        createWorkAssignment.addEventListener('click', () => openEventTemplateDialog(null, 'work_assignment', showEventManagement, handlers));
+        heading.append(createEvent, createWorkAssignment);
+    }
+
+    // Keine verschachtelten <button>: die Zeile selbst ist kein Button (anders als bei „Termine"/
+    // „Aktivitäten"), da „Vorlage verwenden" als eigenständiger, nicht verschachtelter Button
+    // daneben steht.
+    const renderRow = (template) => {
+        const titleButton = element('button', {
+            className: 'activity-list-row-title',
+            attributes: {type: 'button', title: `${template.title} bearbeiten`, ...(canEditModule('events') ? {} : {disabled: 'disabled'})},
+            children: [
+                element('span', {className: 'activity-list-copy', children: [
+                    element('strong', {text: template.title}),
+                    element('small', {text: `${template.activities.length} ${template.activities.length === 1 ? 'Aktivität' : 'Aktivitäten'} zugeordnet`}),
+                ]}),
+            ],
+        });
+        if (canEditModule('events')) titleButton.addEventListener('click', () => openEventTemplateDialog(template, template.kind, showEventManagement, handlers));
+
+        const useTemplate = element('button', {className: 'secondary-button', text: 'Vorlage verwenden', attributes: {type: 'button'}});
+        useTemplate.addEventListener('click', () => openEventDialog(null, template.kind, showEventManagement, handlers, template));
+
+        return element('div', {className: `activity-list-row event-kind-${template.kind}`, children: [
+            titleButton,
+            element('span', {className: `status-badge event-kind-badge-${template.kind}`, text: EVENT_SCHEDULE_KIND_LABELS[template.kind] || template.kind}),
+            useTemplate,
+        ]});
+    };
+
+    workspace.replaceChildren(
+        heading,
+        element('div', {className: 'activity-list', children: templateData.items.length
+            ? templateData.items.map(renderRow)
+            : [emptyState('Noch keine Vorlagen angelegt.')]}),
+    );
+};
+
+const eventTabsBySlug = {termine: 'events', helfer: 'helpers', aktivitaeten: 'activities', vorlagen: 'templates'};
 const eventSlugsByTab = Object.fromEntries(Object.entries(eventTabsBySlug).map(([slug, tab]) => [tab, slug]));
 let activeEventTab = null;
 
@@ -1381,6 +1659,7 @@ const showEventManagement = async (segments = []) => {
         ...(hasModule('events') ? [['events', 'Veranstaltungen', showEvents]] : []),
         ...(hasModule('event_helpers') ? [['helpers', 'Veranstaltungshelfer', showEventHelpers]] : []),
         ...(hasModule('activities') ? [['activities', 'Aktivitäten', showActivities]] : []),
+        ...(hasModule('events') ? [['templates', 'Vorlagen', showEventTemplates]] : []),
     ];
     if (!tabs.some(([key]) => key === activeEventTab)) activeEventTab = tabs[0]?.[0] || null;
     if (activeEventTab) {

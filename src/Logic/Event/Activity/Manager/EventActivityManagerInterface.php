@@ -12,4 +12,6 @@ interface EventActivityManagerInterface
     public function all(): array;
 
     public function save(EventActivity $activity): EventActivity;
+
+    public function delete(string $id): void;
 }

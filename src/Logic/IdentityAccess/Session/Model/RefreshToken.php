@@ -14,7 +14,8 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
  *
  * Wird bei jeder Nutzung rotiert: das bisherige Token wird invalidiert (`$revokedAt`), nicht
  * gelöscht — eine erneute Vorlage eines bereits rotierten Tokens deutet auf einen gestohlenen
- * Token hin und lässt `RefreshSessionUseCase` vorsorglich alle Refresh-Tokens des Benutzers sperren.
+ * Token hin und lässt `RefreshSessionUseCase` vorsorglich alle Refresh-Tokens des Benutzers sperren
+ * (außer innerhalb einer kurzen Gnadenfrist nach der Rotation, siehe dort).
  */
 readonly class RefreshToken
 {

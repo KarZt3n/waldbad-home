@@ -5,6 +5,7 @@ namespace App\Data\Event\Activity\Processor;
 use App\Data\Event\Activity\Entity\EventActivityEntity;
 use App\Data\Event\Activity\Mapper\EventActivityMapper;
 use App\Logic\Event\Activity\EventActivityProcessorInterface;
+use App\Logic\Event\Activity\Exception\EventActivityNotFoundException;
 use App\Logic\Event\Activity\Model\EventActivity;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -28,5 +29,15 @@ readonly class DoctrineEventActivityProcessor implements EventActivityProcessorI
         $this->entityManager->flush();
 
         return $this->mapper->toModel($entity);
+    }
+
+    public function delete(string $id): void
+    {
+        $entity = $this->entityManager->find(EventActivityEntity::class, $id);
+        if ($entity === null) {
+            throw new EventActivityNotFoundException($id);
+        }
+        $this->entityManager->remove($entity);
+        $this->entityManager->flush();
     }
 }

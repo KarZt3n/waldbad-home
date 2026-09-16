@@ -29,4 +29,9 @@ readonly class EventActivityManager implements EventActivityManagerInterface
     {
         return $this->processor->save($activity);
     }
+
+    public function delete(string $id): void
+    {
+        $this->processor->delete($id);
+    }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Data\Event\Schedule\Processor;
 
+use App\Data\Event\Schedule\Entity\EventScheduleActivityEntity;
 use App\Data\Event\Schedule\Entity\EventScheduleEntity;
 use App\Data\Event\Schedule\Mapper\EventScheduleMapper;
 use App\Logic\Event\Schedule\EventScheduleProcessorInterface;
@@ -39,5 +40,15 @@ readonly class DoctrineEventScheduleProcessor implements EventScheduleProcessorI
         }
         $this->entityManager->remove($entity);
         $this->entityManager->flush();
+    }
+
+    public function removeActivityReferences(string $activityId): void
+    {
+        $this->entityManager->createQueryBuilder()
+            ->delete(EventScheduleActivityEntity::class, 'activity')
+            ->where('activity.activityId = :activityId')
+            ->setParameter('activityId', $activityId)
+            ->getQuery()
+            ->execute();
     }
 }

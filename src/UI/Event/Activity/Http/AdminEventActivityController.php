@@ -6,6 +6,7 @@ use App\Logic\Event\Activity\Dto\CreateEventActivityRequest;
 use App\Logic\Event\Activity\Dto\UpdateEventActivityRequest;
 use App\Logic\Event\Activity\Query\ListEventActivitiesQuery;
 use App\Logic\Event\Activity\UseCase\CreateEventActivityUseCase;
+use App\Logic\Event\Activity\UseCase\DeleteEventActivityUseCase;
 use App\Logic\Event\Activity\UseCase\UpdateEventActivityUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -60,6 +61,15 @@ final class AdminEventActivityController extends AbstractController
             defaultRequiredHelpers: $this->defaultRequiredHelpers($data->get('defaultRequiredHelpers')),
             alwaysIncluded: $data->getBoolean('alwaysIncluded', false),
         ))));
+    }
+
+    #[Route('/{id}', name: 'api_admin_event_activity_delete', methods: ['DELETE'])]
+    public function delete(string $id, DeleteEventActivityUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::ActivitiesEdit->value);
+        $useCase->execute($id);
+
+        return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
     }
 
     private function defaultRequiredHelpers(mixed $value): ?int

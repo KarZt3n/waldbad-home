@@ -14,4 +14,6 @@ interface EventScheduleManagerInterface
     public function save(EventSchedule $schedule): EventSchedule;
 
     public function delete(string $id): void;
+
+    public function removeActivityReferences(string $activityId): void;
 }

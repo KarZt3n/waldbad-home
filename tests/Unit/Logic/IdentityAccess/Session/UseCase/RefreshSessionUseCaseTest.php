@@ -48,6 +48,33 @@ final class RefreshSessionUseCaseTest extends TestCase
         $this->useCase($tokens, now: $now)->execute('raw-refresh-token');
     }
 
+    /**
+     * Wurde das Token erst vor Kurzem rotiert (hier: 5 Sekunden), wird die Wiedervorlage als
+     * harmloser Wettlauf behandelt (z. B. zwei Redaktions-Tabs, deren Refresh-Timer kollidieren) —
+     * statt die gesamte Sitzung zu beenden, wird einfach erneut ausgestellt.
+     */
+    public function testReissuesForAnAlreadyRevokedTokenWithinTheGracePeriod(): void
+    {
+        $now = new \DateTimeImmutable(self::NOW);
+        $token = $this->token(revokedAt: new \DateTimeImmutable('2026-06-01T09:59:55+02:00'));
+
+        $tokens = $this->createMock(RefreshTokenManagerInterface::class);
+        $tokens->method('findByHash')->willReturn($token);
+        $tokens->expects(self::never())->method('revokeAllForUser');
+        $tokens->expects(self::never())->method('revoke');
+
+        $users = $this->createStub(UserManagerInterface::class);
+        $users->method('get')->willReturn($this->user());
+
+        $issuedTokens = new IssuedSession('raw-access', $now->modify('+15 minutes'), 'raw-refresh-2', $now->modify('+15 minutes'));
+        $issuer = $this->createMock(SessionTokenIssuer::class);
+        $issuer->expects(self::once())->method('rotate')->with($token)->willReturn($issuedTokens);
+
+        $session = $this->useCase($tokens, $users, $issuer, $now)->execute('raw-refresh-token');
+
+        self::assertSame($issuedTokens, $session->tokens);
+    }
+
     public function testRevokesAndThrowsForAnExpiredToken(): void
     {
         $now = new \DateTimeImmutable(self::NOW);

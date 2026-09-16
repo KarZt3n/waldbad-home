@@ -34,4 +34,9 @@ readonly class EventScheduleManager implements EventScheduleManagerInterface
     {
         $this->processor->delete($id);
     }
+
+    public function removeActivityReferences(string $activityId): void
+    {
+        $this->processor->removeActivityReferences($activityId);
+    }
 }
