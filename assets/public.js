@@ -9,6 +9,7 @@ import {renderContactForm} from './public/contact.js';
 import {renderGuestbook} from './public/guestbook.js';
 import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './public/site-chrome.js';
 import {renderMemberSelfServicePage} from './public/member-self-service.js';
+import {EMAIL_CONSENT_SLUG, renderEmailConsentPage} from './public/email-consent.js';
 
 const updateDocumentMetadata = (page) => {
     document.title = `${page.seoTitle || page.title} – Waldbad Borkheide`;
@@ -28,6 +29,10 @@ const renderPublic = async () => {
 
         if (slug === MEMBER_ACCESS_SLUG) {
             await renderMemberSelfServicePage(navigationTree);
+            return;
+        }
+        if (slug === EMAIL_CONSENT_SLUG) {
+            await renderEmailConsentPage(navigationTree);
             return;
         }
 

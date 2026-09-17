@@ -18,7 +18,7 @@ const setCsrfToken = (value) => { csrfToken = value; };
 let unauthenticatedHandler = null;
 const setUnauthenticatedHandler = (handler) => { unauthenticatedHandler = handler; };
 
-const request = async (url, options = {}) => {
+const request = async (url, options = {}, isCsrfRetry = false) => {
     const method = options.method || 'GET';
     const usesFormData = options.body instanceof FormData;
     const response = await fetch(url, {
@@ -34,10 +34,31 @@ const request = async (url, options = {}) => {
     const contentType = response.headers.get('content-type') || '';
     const data = response.status === 204 || !contentType.includes('application/json') ? null : await response.json();
     if (!response.ok) {
+        const errorCode = data?.error?.code || null;
+        // Der im Speicher gehaltene CSRF-Token kann veralten, ohne dass die Sitzung selbst abgelaufen
+        // ist (siehe `AdminCsrfSubscriber` — dessen Prüfung hängt an der serverseitigen PHP-Session,
+        // die z. B. nach längerer Inaktivität im Hintergrund verworfen werden kann). Statt die Person
+        // zum manuellen Neuladen zu zwingen, wird einmalig ein frischer Token geholt und der Request
+        // automatisch wiederholt — schlägt auch das fehl, ist die Sitzung tatsächlich vorbei und der
+        // reguläre Fehler unten greift.
+        if (response.status === 403 && errorCode === 'invalid_csrf_token' && csrfToken && !isCsrfRetry) {
+            try {
+                const refreshed = await request('/api/auth/v1/refresh', {method: 'POST'});
+                if (refreshed?.csrfToken) {
+                    setCsrfToken(refreshed.csrfToken);
+
+                    return request(url, options, true);
+                }
+            } catch {
+                // Sitzung endgültig abgelaufen — der 401-Handler oben hat bereits reagiert (der
+                // Refresh-Aufruf lief selbst durch `request()`); hier bleibt nur der Fallthrough zum
+                // ursprünglichen CSRF-Fehler unten.
+            }
+        }
         const error = new Error(data?.error?.message || data?.detail || data?.message || 'Die Anfrage ist fehlgeschlagen.');
         // Manche Fehler (z. B. „PIN erforderlich“, siehe pin-settings) müssen von Aufrufern
         // unterschieden werden können, statt nur als Text im Toast zu landen.
-        error.code = data?.error?.code || null;
+        error.code = errorCode;
         // Nur innerhalb einer bestehenden Sitzung (csrfToken gesetzt) automatisch abmelden — sonst
         // würde ein 401 auf /login-requests, /login oder /me (dort erwartet, siehe admin/auth.js)
         // die gerade angezeigte Anmeldeseite unterbrechen.

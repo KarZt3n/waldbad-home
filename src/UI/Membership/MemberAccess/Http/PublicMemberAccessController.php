@@ -6,6 +6,8 @@ use App\Logic\Membership\MemberAccess\Dto\MemberAccessSessionResponse;
 use App\Logic\Membership\MemberAccess\Dto\MemberSelfServiceResponse;
 use App\Logic\Membership\MemberAccess\UseCase\RequestMemberAccessUseCase;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
+use App\Logic\Membership\MemberAccess\UseCase\SetMemberEmailConsentSelfServiceUseCase;
+use App\Logic\Membership\MemberAccess\UseCase\UpdateMemberSelfServiceContactUseCase;
 use App\Logic\Membership\MemberMessage\UseCase\SendMemberMessageUseCase;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -18,8 +20,9 @@ use Symfony\Component\Routing\Attribute\Route;
  * „Meine Mitgliedschaft": ein per E-Mail-Adresse angeforderter, 30 Minuten gültiger Zugangslink
  * (siehe `RequestMemberAccessUseCase`), über den die eigenen — nur lesbaren — Mitgliedsdaten
  * eingesehen (`ResolveMemberAccessSessionUseCase`) und eine Nachricht an den Verein gesendet werden
- * kann (`SendMemberMessageUseCase`). Komplett ohne Login/Session: jeder Aufruf prüft den Token
- * erneut.
+ * kann (`SendMemberMessageUseCase`), sowie Kontaktdaten und E-Mail-Einwilligung pflegen kann
+ * (`UpdateMemberSelfServiceContactUseCase`, `SetMemberEmailConsentSelfServiceUseCase`). Komplett
+ * ohne Login/Session: jeder Aufruf prüft den Token erneut.
  */
 #[Route('/api/public/v1/member-access')]
 readonly class PublicMemberAccessController
@@ -28,6 +31,7 @@ readonly class PublicMemberAccessController
         private RateLimiterFactory $memberAccessRequestLimiter,
         private RateLimiterFactory $memberAccessSessionLimiter,
         private RateLimiterFactory $memberMessageLimiter,
+        private RateLimiterFactory $memberSelfServiceUpdateLimiter,
     ) {
     }
 
@@ -110,6 +114,74 @@ readonly class PublicMemberAccessController
     }
 
     /**
+     * Aktualisiert Vor-/Nachname, Anschrift und Kontaktdaten eines über den Token erreichbaren
+     * Mitglieds; optional (`applyAddressToHousehold`) wird die neue Anschrift auf den ganzen
+     * Haushalt übertragen.
+     */
+    #[Route('/member-updates', name: 'api_public_member_access_update_contact', methods: ['POST'])]
+    public function updateContact(Request $request, UpdateMemberSelfServiceContactUseCase $useCase): JsonResponse
+    {
+        $data = $request->getPayload();
+        $token = trim($data->getString('token'));
+        $password = trim($data->getString('password'));
+        $memberId = trim($data->getString('memberId'));
+        $firstName = trim($data->getString('firstName'));
+        $lastName = trim($data->getString('lastName'));
+        $street = trim($data->getString('street'));
+        $postalCode = trim($data->getString('postalCode'));
+        $city = trim($data->getString('city'));
+        if ($token === '' || $password === '' || $memberId === '' || $firstName === '' || $lastName === '' || $street === '' || $postalCode === '' || $city === '') {
+            throw new BadRequestHttpException('Vorname, Nachname und Anschrift sind erforderlich.');
+        }
+
+        $limit = $this->memberSelfServiceUpdateLimiter->create($request->getClientIp() ?? 'unknown')->consume();
+        if (!$limit->isAccepted()) {
+            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+        }
+
+        $session = $useCase->execute(
+            $token,
+            $password,
+            $memberId,
+            $firstName,
+            $lastName,
+            $street,
+            $postalCode,
+            $city,
+            $data->get('phone') === null ? null : trim($data->getString('phone')),
+            $data->get('email') === null ? null : trim($data->getString('email')),
+            $data->getBoolean('applyAddressToHousehold'),
+        );
+
+        return new JsonResponse($this->sessionToArray($session));
+    }
+
+    /**
+     * Setzt die E-Mail-Einwilligung eines über den Token erreichbaren Mitglieds — direkt, ohne
+     * Doppel-Opt-in (siehe `SetMemberEmailConsentSelfServiceUseCase`).
+     */
+    #[Route('/email-consent', name: 'api_public_member_access_email_consent', methods: ['POST'])]
+    public function setEmailConsent(Request $request, SetMemberEmailConsentSelfServiceUseCase $useCase): JsonResponse
+    {
+        $data = $request->getPayload();
+        $token = trim($data->getString('token'));
+        $password = trim($data->getString('password'));
+        $memberId = trim($data->getString('memberId'));
+        if ($token === '' || $password === '' || $memberId === '') {
+            throw new BadRequestHttpException('Token, Passwort und Mitglied sind erforderlich.');
+        }
+
+        $limit = $this->memberSelfServiceUpdateLimiter->create($request->getClientIp() ?? 'unknown')->consume();
+        if (!$limit->isAccepted()) {
+            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+        }
+
+        $session = $useCase->execute($token, $password, $memberId, $data->getBoolean('granted'));
+
+        return new JsonResponse($this->sessionToArray($session));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function sessionToArray(MemberAccessSessionResponse $session): array
@@ -150,6 +222,7 @@ readonly class PublicMemberAccessController
             'city' => $member->city,
             'email' => $member->email,
             'phone' => $member->phone,
+            'emailConsent' => $member->emailConsent,
             'function' => $member->function,
             'active' => $member->active,
             'joinedAt' => $member->joinedAt,

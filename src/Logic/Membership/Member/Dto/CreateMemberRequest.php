@@ -52,6 +52,8 @@ readonly class CreateMemberRequest
         public bool $contributionLiable = true,
         public ?\DateTimeImmutable $mandateValidFrom = null,
         public ?\DateTimeImmutable $mandateValidUntil = null,
+        /** Aus dem Häkchen im Mitgliedsantrag übernommen (siehe `Member::$emailConsent`); bei manueller Anlage im Admin-Bereich stets false. */
+        public bool $emailConsent = false,
     ) {
     }
 }

@@ -48,6 +48,7 @@ readonly class MemberResponseFactory
             'city' => $member->city,
             'email' => $member->email,
             'phone' => $member->phone,
+            'emailConsent' => $member->emailConsent,
             'familyRole' => $member->familyRole->value,
             'joinedAt' => $member->joinedAt->format('Y-m-d'),
             'leftAt' => $member->leftAt?->format('Y-m-d'),

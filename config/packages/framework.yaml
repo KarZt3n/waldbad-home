@@ -47,6 +47,14 @@ framework:
             policy: fixed_window
             limit: 5
             interval: '15 minutes'
+        email_consent_confirm:
+            policy: fixed_window
+            limit: 20
+            interval: '15 minutes'
+        member_self_service_update:
+            policy: fixed_window
+            limit: 20
+            interval: '15 minutes'
 
     #esi: true
     #fragments: true
@@ -76,6 +84,10 @@ when@test:
             member_access_session:
                 policy: no_limit
             member_message:
+                policy: no_limit
+            email_consent_confirm:
+                policy: no_limit
+            member_self_service_update:
                 policy: no_limit
 
 when@dev:

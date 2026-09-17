@@ -109,6 +109,7 @@ readonly class ReleaseMembershipApplicationUseCase
                 payerMemberNumber: null,
                 nextBookingMonth: null,
                 nextBookingYear: null,
+                emailConsent: $application->emailConsent,
             ));
 
             $members[] = $member;

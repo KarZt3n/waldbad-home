@@ -564,6 +564,30 @@ const openMemberDialog = async (member, onSaved) => {
         payerBody,
     ]}) : null;
 
+    // Ausgelagert, damit der Klick auf „E-Mail-Einwilligung senden“ nur diesen Status-Text
+    // austauschen kann, ohne den Dialog zu schließen (siehe `recalculate` oben für dasselbe Muster).
+    const emailConsentStatusContent = (currentMember) => `E-Mail-Einwilligung erteilt: ${currentMember.emailConsent ? 'Ja' : 'Nein'}`;
+    const emailConsentStatus = member ? element('p', {className: 'field-hint', text: emailConsentStatusContent(member)}) : null;
+    const sendEmailConsentRequest = member ? element('button', {className: 'secondary-button', text: 'E-Mail-Einwilligung senden', attributes: {type: 'button'}}) : null;
+    const sendEmailConsentRequestHint = member ? element('small', {text: 'Verschickt einen Bestätigungslink an die hinterlegte E-Mail-Adresse (Doppel-Opt-in) — die Einwilligung gilt erst als erteilt, sobald das Mitglied den Link anklickt.'}) : null;
+    if (sendEmailConsentRequestHint) sendEmailConsentRequestHint.hidden = member.emailConsent;
+    if (sendEmailConsentRequest) {
+        sendEmailConsentRequest.hidden = member.emailConsent;
+        sendEmailConsentRequest.disabled = !member.email;
+        sendEmailConsentRequest.addEventListener('click', async () => {
+            sendEmailConsentRequest.disabled = true;
+            try {
+                member = await request(`/api/admin/v1/members/${member.id}/email-consent-requests`, {method: 'POST'});
+                emailConsentStatus.textContent = emailConsentStatusContent(member);
+                toast('Der Bestätigungslink wurde per E-Mail verschickt.');
+            } catch (error) {
+                toast(error.message, 'error');
+            } finally {
+                sendEmailConsentRequest.disabled = false;
+            }
+        });
+    }
+
     const tabs = [
         ['stammdaten', 'Stammdaten', [
             element('fieldset', {children: [
@@ -578,7 +602,15 @@ const openMemberDialog = async (member, onSaved) => {
         ]],
         ['kontakt', 'Kontaktdaten', [
             element('fieldset', {children: [element('legend', {text: 'Adresse'}), street, fieldRow([postalCode, city])]}),
-            element('fieldset', {children: [element('legend', {text: 'Kontakt'}), email, phone]}),
+            element('fieldset', {children: [
+                element('legend', {text: 'Kontakt'}),
+                email, phone,
+                ...(emailConsentStatus ? [
+                    emailConsentStatus,
+                    sendEmailConsentRequest,
+                    sendEmailConsentRequestHint,
+                ] : []),
+            ]}),
         ]],
         ['verein', 'Vereinsdaten', [
             element('fieldset', {children: [

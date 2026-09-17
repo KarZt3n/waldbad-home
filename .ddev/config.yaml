@@ -12,7 +12,7 @@ database:
 use_dns_when_possible: true
 composer_version: "2"
 web_environment:
-    - DEFAULT_URI=http://waldbad-home.ddev.site
+    - DEFAULT_URI=https://waldbad-home.ddev.site
 corepack_enable: false
 
 # Key features of DDEV's config.yaml:

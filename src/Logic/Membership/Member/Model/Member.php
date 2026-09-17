@@ -55,6 +55,13 @@ readonly class Member
         /** Beginn/Ende der Gültigkeit des SEPA-Mandats (aus dem Sage-GS-Bestand übernommen: MANDATABDATUM/MANDATBISDATUM). */
         public ?\DateTimeImmutable $mandateValidFrom = null,
         public ?\DateTimeImmutable $mandateValidUntil = null,
+        /**
+         * Ob das Mitglied dem Erhalt von Vereinsinformationen per E-Mail zugestimmt hat — zunächst
+         * aus dem Häkchen im Mitgliedsantrag übernommen (siehe `ReleaseMembershipApplicationUseCase`),
+         * per Doppel-Opt-in nachträglich bestätigbar (siehe `SendMemberEmailConsentRequestUseCase`,
+         * `ConfirmMemberEmailConsentUseCase`).
+         */
+        public bool $emailConsent = false,
     ) {
         if (trim($this->memberNumber) === '') {
             throw new BusinessRuleViolationException('Die Mitgliedsnummer ist erforderlich.');
@@ -178,6 +185,7 @@ readonly class Member
             contributionLiable: $this->contributionLiable,
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 
@@ -220,6 +228,7 @@ readonly class Member
             contributionLiable: $this->contributionLiable,
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 
@@ -262,6 +271,7 @@ readonly class Member
             contributionLiable: $contributionLiable,
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 
@@ -304,6 +314,7 @@ readonly class Member
             contributionLiable: $this->contributionLiable,
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 
@@ -350,6 +361,146 @@ readonly class Member
             contributionLiable: $this->contributionLiable,
             mandateValidFrom: $validFrom,
             mandateValidUntil: $validUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    public function withEmailConsent(bool $emailConsent): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $emailConsent,
+        );
+    }
+
+    /**
+     * Für „Meine Mitgliedschaft" (Selbstauskunft, siehe `UpdateMemberSelfServiceContactUseCase"):
+     * Vor- und Nachname, Anschrift und Kontaktdaten können vom Mitglied selbst gepflegt werden —
+     * bewusst ohne Bankdaten, Vereins- oder Beitragsdaten, die bleiben admin-only.
+     */
+    public function withContactInfo(string $firstName, string $lastName, string $street, string $postalCode, string $city, ?string $phone, ?string $email): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $lastName,
+            firstName: $firstName,
+            birthDate: $this->birthDate,
+            street: $street,
+            postalCode: $postalCode,
+            city: $city,
+            email: $email,
+            phone: $phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    /**
+     * Für die „Für die ganze Familie übernehmen"-Option beim Adressändern in „Meine Mitgliedschaft"
+     * (siehe `UpdateMemberSelfServiceContactUseCase`): nur die Anschrift der übrigen
+     * Haushaltsmitglieder, ohne deren Name/Kontaktdaten anzufassen.
+     */
+    public function withAddress(string $street, string $postalCode, string $city): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $street,
+            postalCode: $postalCode,
+            city: $city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 

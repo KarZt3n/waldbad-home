@@ -33,6 +33,17 @@ class FrontendController extends AbstractController
         return $this->render('site/public.html.twig', ['slug' => 'meine-mitgliedschaft']);
     }
 
+    /**
+     * Bestätigungsseite für die E-Mail-Einwilligung (siehe `PublicEmailConsentController`,
+     * `MemberEmailConsentLinkBuilder`) — aus demselben Grund wie `memberAccess()` eine eigene, feste
+     * Route statt einer CMS-Seite.
+     */
+    #[Route('/e-mail-einwilligung', name: 'public_email_consent', methods: ['GET'])]
+    public function emailConsent(): Response
+    {
+        return $this->render('site/public.html.twig', ['slug' => 'e-mail-einwilligung']);
+    }
+
     #[Route('/admin/{path}', name: 'admin_app', requirements: ['path' => '.*'], defaults: ['path' => ''], methods: ['GET'])]
     public function admin(): Response
     {

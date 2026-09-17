@@ -23,6 +23,8 @@ enum MailTemplateKey: string
     case MemberAccessMagicLink = 'member_access_magic_link';
     case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
     case EventHelpRequestConfirmation = 'event_help_request_confirmation';
+    case MemberEmailConsentRequest = 'member_email_consent_request';
+    case MemberEmailConsentOptOutRegret = 'member_email_consent_opt_out_regret';
 
     public function label(): string
     {
@@ -33,6 +35,8 @@ enum MailTemplateKey: string
             self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
             self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
             self::EventHelpRequestConfirmation => 'Bestätigung: Helferanmeldung',
+            self::MemberEmailConsentRequest => 'Bestätigungslink: E-Mail-Einwilligung',
+            self::MemberEmailConsentOptOutRegret => 'Rückmeldung: E-Mail-Einwilligung widerrufen',
         };
     }
 
@@ -45,6 +49,8 @@ enum MailTemplateKey: string
             self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
             self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
             self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
+            self::MemberEmailConsentRequest => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald die Redaktion unter „Mitgliederverwaltung“ → Mitglied → Kontaktdaten die E-Mail-Einwilligung anfordert — der Erhalt von Vereinsinformationen per E-Mail gilt erst als zugestimmt, wenn der enthaltene Link angeklickt wird.',
+            self::MemberEmailConsentOptOutRegret => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald es unter „Meine Mitgliedschaft“ die E-Mail-Einwilligung selbst abbestellt — enthält einen Link, um das rückgängig zu machen, falls es ein Versehen war.',
         };
     }
 
@@ -60,6 +66,8 @@ enum MailTemplateKey: string
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
             self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
+            self::MemberEmailConsentRequest => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
+            self::MemberEmailConsentOptOutRegret => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
         };
     }
 
@@ -72,6 +80,8 @@ enum MailTemplateKey: string
             self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
             self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
             self::EventHelpRequestConfirmation => 'Danke für deine Helferanmeldung – {{veranstaltung}}',
+            self::MemberEmailConsentRequest => 'Möchtest du per E-Mail auf dem Laufenden bleiben?',
+            self::MemberEmailConsentOptOutRegret => 'Schade, dass du keine Neuigkeiten mehr erhalten möchtest',
         };
     }
 
@@ -149,6 +159,34 @@ enum MailTemplateKey: string
                 Viele Grüße
                 Dein {{vereinsname}}
                 TEXT,
+            self::MemberEmailConsentRequest => <<<'TEXT'
+                Hallo {{vorname}},
+
+                du möchtest über Neuigkeiten und Informationen rund um den {{vereinsname}} per E-Mail auf dem Laufenden bleiben? Dann bestätige das bitte über den folgenden Link:
+
+                {{link}}
+
+                Der Link ist {{gueltig_tage}} Tage gültig. Erst nach der Bestätigung schicken wir dir Vereinsinformationen per E-Mail.
+
+                Hast du das nicht angefordert, kannst du diese E-Mail einfach ignorieren — es ändert sich dann nichts.
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
+            self::MemberEmailConsentOptOutRegret => <<<'TEXT'
+                Hallo {{vorname}},
+
+                schade, dass du keine Neuigkeiten und Informationen des {{vereinsname}} per E-Mail mehr erhalten möchtest — wir haben das soeben umgesetzt.
+
+                War das ein Versehen? Dann klicke einfach hier, um es rückgängig zu machen:
+
+                {{link}}
+
+                Der Link ist {{gueltig_tage}} Tage gültig.
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
         };
     }
 
@@ -210,6 +248,18 @@ enum MailTemplateKey: string
                 'datum' => '13.06.2026',
                 'vereinsname' => AssociationName::CURRENT,
             ],
+            self::MemberEmailConsentRequest => [
+                'vorname' => 'Erika',
+                'link' => 'https://waldbad-borkheide.de/e-mail-einwilligung?token=beispiel-token',
+                'gueltig_tage' => '7',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
+            self::MemberEmailConsentOptOutRegret => [
+                'vorname' => 'Erika',
+                'link' => 'https://waldbad-borkheide.de/e-mail-einwilligung?token=beispiel-token',
+                'gueltig_tage' => '7',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
         };
     }
 
@@ -228,7 +278,9 @@ enum MailTemplateKey: string
             self::AdminLoginMagicLink,
             self::MemberAccessMagicLink,
             self::MemberMessageSubmittedNotification,
-            self::EventHelpRequestConfirmation => [],
+            self::EventHelpRequestConfirmation,
+            self::MemberEmailConsentRequest,
+            self::MemberEmailConsentOptOutRegret => [],
             self::MembershipApplicationApproved => [
                 'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
                     .'<li style="margin-bottom:8px;font-weight:bold;">Erika Musterfrau: 50,00 € pro Jahr'

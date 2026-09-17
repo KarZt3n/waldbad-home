@@ -26,6 +26,8 @@ services:
             $memberAccessRequestLimiter: '@limiter.member_access_request'
             $memberAccessSessionLimiter: '@limiter.member_access_session'
             $memberMessageLimiter: '@limiter.member_message'
+            $emailConsentConfirmLimiter: '@limiter.email_consent_confirm'
+            $memberSelfServiceUpdateLimiter: '@limiter.member_self_service_update'
             $mediaUploadDirectory: '%media_upload_directory%'
             $logoPath: '%email_logo_path%'
             $fromAddress: '%env(MAILER_FROM_ADDRESS)%'

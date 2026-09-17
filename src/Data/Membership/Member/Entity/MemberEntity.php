@@ -57,6 +57,8 @@ class MemberEntity
         private ?string $email,
         #[ORM\Column(type: Types::STRING, length: 60, nullable: true)]
         private ?string $phone,
+        #[ORM\Column(type: Types::BOOLEAN)]
+        private bool $emailConsent,
         #[ORM\Column(type: Types::STRING, length: 20)]
         private string $familyRole,
         #[ORM\Column(type: Types::DATE_IMMUTABLE)]
@@ -146,6 +148,7 @@ class MemberEntity
     public function getCity(): string { return $this->city; }
     public function getEmail(): ?string { return $this->email; }
     public function getPhone(): ?string { return $this->phone; }
+    public function isEmailConsent(): bool { return $this->emailConsent; }
     public function getFamilyRole(): string { return $this->familyRole; }
     public function getJoinedAt(): \DateTimeImmutable { return $this->joinedAt; }
     public function getLeftAt(): ?\DateTimeImmutable { return $this->leftAt; }
@@ -183,6 +186,7 @@ class MemberEntity
         string $city,
         ?string $email,
         ?string $phone,
+        bool $emailConsent,
         string $familyRole,
         \DateTimeImmutable $joinedAt,
         ?\DateTimeImmutable $leftAt,
@@ -217,6 +221,7 @@ class MemberEntity
         $this->city = $city;
         $this->email = $email;
         $this->phone = $phone;
+        $this->emailConsent = $emailConsent;
         $this->familyRole = $familyRole;
         $this->joinedAt = $joinedAt;
         $this->leftAt = $leftAt;

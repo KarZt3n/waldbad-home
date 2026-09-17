@@ -45,14 +45,28 @@ const renderMembershipApplicationForm = (preview = false) => {
         const isFirstPerson = applicants.children.length === 0;
         const remove = element('button', {className: 'text-button danger membership-remove-person', text: 'Person entfernen', attributes: {type: 'button'}});
         const emailField = applicantField('E-Mail-Adresse (optional)', 'email', 'email', false);
-        // Für jede weitere Person ist die E-Mail-Adresse optional (nur Person 1 braucht zwingend
-        // eine, siehe refreshApplicantCards) — als Vorschlag wird die von Person 1 übernommen,
-        // damit nicht jede Familienangehörige einzeln dieselbe Adresse eintragen muss. Bleibt
-        // änderbar, falls jemand eine eigene Adresse hat.
         if (!isFirstPerson) {
-            const firstEmailInput = applicants.children[0]?.querySelector('[data-applicant-field="email"]');
-            const firstEmail = firstEmailInput?.value.trim();
-            if (firstEmail) emailField.querySelector('input').value = firstEmail;
+            emailField.append(element('small', {className: 'field-hint', text: 'Wenn auch diese Person künftig über Neuigkeiten und Informationen rund um den Verein auf dem Laufenden bleiben möchte, trag hier gerne die E-Mail-Adresse ein.'}));
+        }
+        const streetField = applicantField('Straße', 'street');
+        const houseNumberField = applicantField('Hausnummer', 'houseNumber');
+        const postalCodeField = applicantField('Postleitzahl', 'postalCode');
+        const cityField = applicantField('Wohnort', 'city');
+        // Für jede weitere Person wird die Anschrift als Vorschlag von Person 1 übernommen — bei
+        // einer Familie im selben Haushalt muss so nicht jede Person dieselben Angaben erneut
+        // eintippen. Bleibt änderbar, falls jemand eine eigene Adresse hat. Die E-Mail-Adresse wird
+        // bewusst nicht übernommen (siehe Hinweistext oben): sie ist je Person optional und eigen.
+        if (!isFirstPerson) {
+            const firstPerson = applicants.children[0];
+            const copyFromFirstPerson = (field, key) => {
+                const firstInput = firstPerson?.querySelector(`[data-applicant-field="${key}"]`);
+                const value = firstInput?.value.trim();
+                if (value) field.querySelector('input').value = value;
+            };
+            copyFromFirstPerson(streetField, 'street');
+            copyFromFirstPerson(houseNumberField, 'houseNumber');
+            copyFromFirstPerson(postalCodeField, 'postalCode');
+            copyFromFirstPerson(cityField, 'city');
         }
         const card = element('fieldset', {className: 'membership-person', children: [
             element('div', {className: 'membership-person-heading', children: [
@@ -65,10 +79,10 @@ const renderMembershipApplicationForm = (preview = false) => {
                 applicantField('Nachname', 'lastName'),
                 applicantField('Geburtsdatum', 'birthDate', 'date'),
                 applicantField('Telefon (optional)', 'phone', 'tel', false),
-                applicantField('Straße', 'street'),
-                applicantField('Hausnummer', 'houseNumber'),
-                applicantField('Postleitzahl', 'postalCode'),
-                applicantField('Wohnort', 'city'),
+                streetField,
+                houseNumberField,
+                postalCodeField,
+                cityField,
                 emailField,
             ]}),
         ]});
@@ -103,7 +117,6 @@ const renderMembershipApplicationForm = (preview = false) => {
             element('div', {className: 'form-grid', children: [
                 field('Kontoinhaber', 'accountHolder'),
                 field('IBAN', 'iban'),
-                field('Bank / Ort (optional)', 'bankName'),
             ]}),
         ]}),
         element('section', {className: 'membership-section membership-consents', children: [
@@ -138,7 +151,7 @@ const renderMembershipApplicationForm = (preview = false) => {
                 applicants: applicantPayload,
                 accountHolder: data.get('accountHolder'),
                 iban: data.get('iban'),
-                bankName: data.get('bankName'),
+                bankName: null,
                 signerName: data.get('signerName'),
                 termsAccepted: data.get('termsAccepted') === 'on',
                 privacyAccepted: data.get('privacyAccepted') === 'on',

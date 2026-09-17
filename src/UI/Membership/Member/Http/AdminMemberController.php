@@ -8,6 +8,7 @@ use App\Logic\Membership\Member\Dto\MemberRecalculationError;
 use App\Logic\Membership\Member\Query\GetMemberHouseholdQuery;
 use App\Logic\Membership\Member\Query\GetMemberQuery;
 use App\Logic\Membership\Member\Query\ListMembersQuery;
+use App\Logic\Membership\Member\EmailConsent\UseCase\SendMemberEmailConsentRequestUseCase;
 use App\Logic\Membership\Member\UseCase\AddMemberRemarkUseCase;
 use App\Logic\Membership\Member\UseCase\CreateMemberUseCase;
 use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
@@ -201,6 +202,19 @@ class AdminMemberController extends AbstractController
 
     #[Route('/{id}/recalculate-contribution', name: 'api_admin_member_recalculate_contribution', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
     public function recalculateContribution(string $id, RecalculateMemberContributionUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+
+        return new JsonResponse($this->responseFactory->member($useCase->execute($id)));
+    }
+
+    /**
+     * Verschickt den Doppel-Opt-in-Bestätigungslink für die E-Mail-Einwilligung an die hinterlegte
+     * E-Mail-Adresse des Mitglieds (siehe `SendMemberEmailConsentRequestUseCase`) — die Einwilligung
+     * selbst gilt erst als erteilt, wenn das Mitglied den Link anklickt.
+     */
+    #[Route('/{id}/email-consent-requests', name: 'api_admin_member_send_email_consent_request', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function sendEmailConsentRequest(string $id, SendMemberEmailConsentRequestUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
 

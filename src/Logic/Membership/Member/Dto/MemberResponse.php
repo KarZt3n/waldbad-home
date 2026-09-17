@@ -58,6 +58,7 @@ readonly class MemberResponse
         public bool $contributionLiable = true,
         public ?\DateTimeImmutable $mandateValidFrom = null,
         public ?\DateTimeImmutable $mandateValidUntil = null,
+        public bool $emailConsent = false,
     ) {
     }
 
@@ -105,6 +106,7 @@ readonly class MemberResponse
             contributionLiable: $member->contributionLiable,
             mandateValidFrom: $member->mandateValidFrom,
             mandateValidUntil: $member->mandateValidUntil,
+            emailConsent: $member->emailConsent,
         );
     }
 }

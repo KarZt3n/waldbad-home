@@ -4,7 +4,7 @@
 // (`renderMemberSelfServiceData`).
 
 import {
-    app, element, field, FAMILY_ROLE_LABELS, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS,
+    app, element, field, fieldRow, FAMILY_ROLE_LABELS, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS,
     PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, request, SALUTATION_LABELS, toast,
 } from '../core.js';
 import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './site-chrome.js';
@@ -46,10 +46,10 @@ const groupMembersByAmount = (members, labelFn, amountFn) => {
 
     return [...groups.values()];
 };
-const formatHoursMinutes = (totalMinutes) => {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return minutes > 0 ? `${hours} Std ${minutes} Min` : `${hours} Std`;
+const formatDecimalHours = (totalMinutes) => {
+    return (totalMinutes / 60).toLocaleString('de-DE', {
+        maximumFractionDigits: 1,
+    });
 };
 /**
  * Arbeitseinsatz-Gutschrift der ganzen Familie (siehe `WorkAssignmentCreditCalculator`, geleistete
@@ -57,17 +57,28 @@ const formatHoursMinutes = (totalMinutes) => {
  * getrennt vom „Gesamtbeitrag" oben dargestellt: die Gutschrift wird dort **nicht** abgezogen,
  * sondern ist eine gesonderte Rückzahlung.
  */
-const renderWorkAssignmentCredit = (credit) => element('div', {className: 'member-self-service-work-assignment', children: [
+const renderWorkAssignmentCredit = (credit) => {
+    // Über den ganzen Haushalt benötigte Gesamtstunden (je zuschlagspflichtigem Mitglied die
+    // konfigurierten Stunden je Arbeitseinsatz, siehe `WorkAssignmentCreditConfig`) — Zielwert für
+    // die „geleistet / benötigt“-Anzeige unten.
+    const totalRequiredHours = credit.liableMemberCount * credit.requiredHoursPerAssignment;
+    // Wie bei der Gutschrift selbst (`WorkAssignmentCreditCalculator::creditCents`, gedeckelt auf
+    // `totalSurchargeCents`) werden auch die angezeigten Stunden auf das Maximum gedeckelt — mehr
+    // geleistete Stunden bringen keine höhere Anzeige/Rückzahlung.
+    const cappedWorkedMinutes = Math.min(credit.workedMinutes, totalRequiredHours * 60);
+
+    return element('div', {className: 'member-self-service-work-assignment', children: [
     element('h4', {text: 'Geleistete Arbeitsstunden'}),
     memberDataRow('Zeitraum', `${formatDateDE(credit.periodFrom)} – ${formatDateDE(credit.periodTo)}`),
-    memberDataRow('Arbeitseinsätze der Familie', `${credit.liableMemberCount}x (${formatEuro(credit.totalSurchargeCents)})`),
-    memberDataRow('Benötigte Stunden je Arbeitseinsatz', `${credit.requiredHoursPerAssignment} Std (${formatEuro(credit.creditPerHourCents)}/Std)`),
-    memberDataRow('Geleistete Stunden der ganzen Familie', formatHoursMinutes(credit.workedMinutes)),
+    memberDataRow('Arbeitseinsätze der Familie', `${credit.liableMemberCount}x mit je ${credit.requiredHoursPerAssignment} Stunden (${formatEuro(credit.creditPerHourCents)} pro Stunde)`),
+    memberDataRow('Benötigte Stunden gesamt', `${totalRequiredHours} Stunden`),
+    memberDataRow('Geleistete Stunden der ganzen Familie', `${formatDecimalHours(cappedWorkedMinutes)} von ${totalRequiredHours} Stunden`),
     element('div', {className: 'member-payer-total', children: [
         element('span', {text: 'Gutschrift (gesonderte Rückzahlung)'}),
         element('span', {text: formatEuro(credit.creditCents)}),
     ]}),
-]});
+    ]});
+};
 const renderMemberSelfServiceTotal = (members, validFrom, workAssignmentCredit) => {
     const liableMembers = members.filter((member) => member.contributionLiable);
     const totalsByInterval = new Map();
@@ -84,7 +95,10 @@ const renderMemberSelfServiceTotal = (members, validFrom, workAssignmentCredit) 
         element('h3', {text: 'Gesamtbeitrag'}),
         liableMembers.length
             ? [
-                ...breakdownGroups.map((group) => memberDataRow(`${group.count}x ${group.label}`, `${formatEuro(group.cents)} (${PAYMENT_INTERVAL_LABELS[group.interval] || group.interval})`)),
+                ...breakdownGroups.map((group) => memberDataRow(
+                    `${group.count}x ${group.label}`,
+                    `${formatEuro(group.cents * group.count)} (${PAYMENT_INTERVAL_LABELS[group.interval] || group.interval})`,
+                )),
                 ...[...totalsByInterval].map(([interval, cents]) => element('div', {className: 'member-payer-total', children: [
                     element('span', {text: 'Gesamtbeitrag'}),
                     element('span', {text: `${formatEuro(cents)} (${PAYMENT_INTERVAL_LABELS[interval] || interval})`}),
@@ -96,21 +110,142 @@ const renderMemberSelfServiceTotal = (members, validFrom, workAssignmentCredit) 
     ].flat()});
 };
 /**
+ * Aktuell bewusst ohne Aufrufstelle: Backend + Overlay stehen fertig für später, aber es gibt
+ * (auf Nutzer-Wunsch) noch keinen „Bearbeiten"-Button in `renderMemberSelfServiceData`, der hierhin
+ * verzweigt — die Funktion also vorerst nicht entfernen, nur nicht verdrahten.
+ *
+ * Overlay, um Vor-/Nachname, Anschrift und Kontaktdaten eines Haushaltsmitglieds selbst zu pflegen
+ * (siehe `UpdateMemberSelfServiceContactUseCase`) sowie die E-Mail-Einwilligung direkt zu setzen
+ * (siehe `SetMemberEmailConsentSelfServiceUseCase`) — anders als bei der Redaktion (Doppel-Opt-in
+ * per Mail) braucht es hier keine zusätzliche Bestätigung, da der Zugriff über Token+Passwort schon
+ * beweist, dass die Person die E-Mail-Adresse kontrolliert. Beim Abbestellen geht trotzdem eine
+ * „Schade..."-Mail mit Rückgängig-Link raus (siehe Backend), falls es ein Versehen war.
+ *
+ * `onSaved(session)` wird sowohl nach dem Speichern der Kontaktdaten (Dialog schließt danach) als
+ * auch nach jedem Umschalten der E-Mail-Einwilligung (Dialog bleibt offen, nur Status/Button-Text
+ * werden aktualisiert) aufgerufen, damit die dahinterliegende Ansicht immer den aktuellen Stand
+ * zeigt.
+ */
+const openMemberSelfServiceEditDialog = (token, password, member, householdSize, onSaved) => {
+    const dialog = element('dialog', {className: 'confirm-dialog member-self-service-edit-dialog'});
+    const message = formMessage();
+
+    const firstName = field('Vorname', `edit-first-name-${member.id}`, member.firstName);
+    const lastName = field('Nachname', `edit-last-name-${member.id}`, member.lastName);
+    const street = field('Straße', `edit-street-${member.id}`, member.street);
+    const postalCode = field('PLZ', `edit-postal-code-${member.id}`, member.postalCode);
+    const city = field('Ort', `edit-city-${member.id}`, member.city);
+    const phone = field('Telefon (optional)', `edit-phone-${member.id}`, member.phone || '', 'tel');
+    const email = field('E-Mail (optional)', `edit-email-${member.id}`, member.email || '', 'email');
+    [firstName, lastName, street, postalCode, city].forEach((wrapper) => { wrapper.querySelector('input').required = true; });
+
+    const applyToHousehold = element('input', {attributes: {type: 'checkbox'}});
+    const applyToHouseholdField = householdSize > 1
+        ? element('label', {className: 'check-field', children: [applyToHousehold, element('span', {text: 'Für die ganze Familie übernehmen'})]})
+        : null;
+
+    // E-Mail-Einwilligung: eigener, sofort wirkender Umschalter statt Teil des obigen Formulars —
+    // an/abmelden ist ein eigenständiger Vorgang, kein Formularfeld, das erst mit „Speichern“ greift
+    // (Button daher `type="button"`, auch wenn er innerhalb des <form> steht).
+    let emailConsentGranted = member.emailConsent;
+    const emailConsentStatus = element('p', {className: 'field-hint'});
+    const emailConsentToggle = element('button', {className: 'secondary-button', attributes: {type: 'button'}});
+    const updateEmailConsentDisplay = () => {
+        emailConsentStatus.textContent = `E-Mail-Einwilligung erteilt: ${emailConsentGranted ? 'Ja' : 'Nein'}`;
+        emailConsentToggle.textContent = emailConsentGranted ? 'Abmelden' : 'Anmelden';
+    };
+    updateEmailConsentDisplay();
+    emailConsentToggle.addEventListener('click', async () => {
+        emailConsentToggle.disabled = true;
+        try {
+            const granted = !emailConsentGranted;
+            const session = await request('/api/public/v1/member-access/email-consent', {method: 'POST', body: JSON.stringify({
+                token, password, memberId: member.id, granted,
+            })});
+            emailConsentGranted = granted;
+            updateEmailConsentDisplay();
+            toast(granted
+                ? 'Die E-Mail-Einwilligung wurde erteilt.'
+                : 'Die E-Mail-Einwilligung wurde widerrufen. Falls das ein Versehen war, kannst du es über den Link in der Mail dazu rückgängig machen.');
+            onSaved(session);
+        } catch (error) {
+            toast(error.message, 'error');
+        } finally {
+            emailConsentToggle.disabled = false;
+        }
+    });
+    const emailConsentSection = element('div', {className: 'member-self-service-consent-section', children: [
+        element('h3', {text: 'E-Mail-Einwilligung'}),
+        emailConsentStatus,
+        emailConsentToggle,
+    ]});
+
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'member-self-service-edit-form', children: [
+        element('h2', {text: 'Angaben bearbeiten'}),
+        fieldRow([firstName, lastName]),
+        street,
+        fieldRow([postalCode, city]),
+        ...(applyToHouseholdField ? [applyToHouseholdField] : []),
+        phone,
+        email,
+        emailConsentSection,
+        message,
+        element('div', {className: 'confirm-dialog-actions member-self-service-edit-actions', children: [cancel, save]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        save.disabled = true;
+        try {
+            const session = await request('/api/public/v1/member-access/member-updates', {method: 'POST', body: JSON.stringify({
+                token, password, memberId: member.id,
+                firstName: firstName.querySelector('input').value,
+                lastName: lastName.querySelector('input').value,
+                street: street.querySelector('input').value,
+                postalCode: postalCode.querySelector('input').value,
+                city: city.querySelector('input').value,
+                phone: phone.querySelector('input').value,
+                email: email.querySelector('input').value,
+                applyAddressToHousehold: applyToHousehold.checked,
+            })});
+            toast('Deine Angaben wurden gespeichert.');
+            dialog.close();
+            onSaved(session);
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            save.disabled = false;
+        }
+    });
+
+    dialog.append(element('div', {className: 'confirm-dialog-content', children: [form]}));
+    document.body.append(dialog);
+    dialog.showModal();
+};
+/**
  * Nur lesende Ansicht der eigenen Mitgliedsdaten (Stammdaten/Kontaktdaten/Vereinsdaten/
  * Beitragsdaten, siehe `MemberSelfServiceResponse`) für jede über den Token erreichbare Person
  * (i. d. R. der ganze Haushalt, siehe `RequestMemberAccessUseCase`) als aufklappbares Akkordeon
  * (nur bei genau einer Person direkt geöffnet) — Kopfzeile links Mitgliedsnummer/Name, rechts die
  * Gesamtkosten dieses Mitglieds —, sowie ein Formular, um dem Verein eine Nachricht zu schicken
- * (siehe `SendMemberMessageUseCase`).
+ * (siehe `SendMemberMessageUseCase`). Jede Karte hat zusätzlich einen „Bearbeiten"-Button (siehe
+ * `openMemberSelfServiceEditDialog`).
  */
-const renderMemberSelfServiceData = (token, password, session) => {
-    // Ältestes Haushaltsmitglied zuerst (Nutzer-Vorgabe) — bestimmt sowohl die Akkordeon- als auch
-    // die Pulldown-Reihenfolge; `birthDate` ist ein ISO-Datum ("YYYY-MM-DD"), daher reicht ein
-    // aufsteigender String-Vergleich.
-    const sortedMembers = [...session.members].sort((a, b) => a.birthDate.localeCompare(b.birthDate));
+const renderMemberSelfServiceData = (token, password, initialSession) => {
+    const root = element('div', {className: 'member-self-service'});
 
-    const memberCards = sortedMembers.map((member, index) => {
-        const card = element('details', {className: 'member-self-service-card', children: [
+    const build = (session) => {
+        // Ältestes Haushaltsmitglied zuerst (Nutzer-Vorgabe) — bestimmt sowohl die Akkordeon- als
+        // auch die Pulldown-Reihenfolge; `birthDate` ist ein ISO-Datum ("YYYY-MM-DD"), daher reicht
+        // ein aufsteigender String-Vergleich.
+        const sortedMembers = [...session.members].sort((a, b) => a.birthDate.localeCompare(b.birthDate));
+
+        const memberCards = sortedMembers.map((member, index) => {
+            const card = element('details', {className: 'member-self-service-card', children: [
             element('summary', {children: [
                 element('span', {className: 'member-self-service-summary-identity', children: [
                     element('span', {className: 'member-self-service-summary-number', text: member.memberNumber}),
@@ -128,8 +263,9 @@ const renderMemberSelfServiceData = (token, password, session) => {
                 memberDataRow('Rolle in der Familie', FAMILY_ROLE_LABELS[member.familyRole] || member.familyRole),
                 element('h4', {text: 'Kontaktdaten'}),
                 memberDataRow('Adresse', `${member.street}, ${member.postalCode} ${member.city}`),
-                memberDataRow('E-Mail', member.email),
                 memberDataRow('Telefon', member.phone),
+                memberDataRow('E-Mail', member.email),
+                memberDataRow('E-Mail-Einwilligung', member.emailConsent ? 'Ja' : 'Nein'),
                 element('h4', {text: 'Vereinsdaten'}),
                 memberDataRow('Funktion', MEMBER_FUNCTION_LABELS[member.function] || member.function),
                 memberDataRow('Status', member.active ? 'Aktives Mitglied' : 'Nicht mehr aktiv'),
@@ -191,12 +327,17 @@ const renderMemberSelfServiceData = (token, password, session) => {
         }
     });
 
-    return element('div', {className: 'member-self-service', children: [
-        element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
-        renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom, session.workAssignmentCredit),
-        ...memberCards,
-        messageForm,
-    ]});
+        root.replaceChildren(
+            element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
+            renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom, session.workAssignmentCredit),
+            ...memberCards,
+            messageForm,
+        );
+    };
+
+    build(initialSession);
+
+    return root;
 };
 /**
  * Fragt vor dem Anzeigen der Mitgliedsdaten das aus der Mail bekannte Passwort ab (zweiter Faktor
