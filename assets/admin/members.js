@@ -186,6 +186,26 @@ const memberSearchField = (label, name, members, currentId, selectedId) => {
     return element('label', {className: 'field', children: [element('span', {text: label}), search, datalist, hidden]});
 };
 
+// Alter in vollen Jahren zu einem "YYYY-MM-DD"-Geburtsdatum, bezogen auf heute — gemeinsamer
+// Helfer für das Geburtsdatum-Feld im Bearbeitungsformular (`updateBirthDateLabel` unten) und die
+// Familienzugehörigkeit/Zahler-Liste.
+const ageInYears = (birthDate) => {
+    const born = new Date(`${birthDate}T00:00:00`);
+    if (Number.isNaN(born.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - born.getFullYear();
+    const hadBirthdayThisYear = today.getMonth() > born.getMonth()
+        || (today.getMonth() === born.getMonth() && today.getDate() >= born.getDate());
+    if (!hadBirthdayThisYear) age -= 1;
+
+    return age;
+};
+const ageLabel = (birthDate) => {
+    const age = ageInYears(birthDate);
+
+    return age === null ? '' : `${age} ${age === 1 ? 'Jahr' : 'Jahre'}`;
+};
+
 const memberOpenButton = (entry, currentId, openOther) => entry.id === currentId
     ? null
     : (() => {
@@ -216,7 +236,7 @@ const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCe
         element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}`, children: [
             element('span', {className: 'member-list-card-label', children: [
                 element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
             ]}),
             // Nur bei Zahlern gesetzt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
             // ganzen von ihnen bezahlten Personenkreis, rechtsbündig neben Name/Rolle/Nummer.
@@ -319,7 +339,7 @@ const payerListItem = (entry, currentId, openOther) => {
             element('div', {className: 'member-payer-info', children: [
                 element('div', {className: 'member-payer-entry-header', children: [
                     element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-                    element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+                    element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
                 ]}),
                 element('ul', {className: 'member-payer-positions', children: positions.length
                     ? positions.map(([label, cents]) => element('li', {children: [
@@ -377,17 +397,8 @@ const openMemberDialog = async (member, onSaved) => {
     const birthDateLabel = birthDate.querySelector('span');
     const birthDateInput = birthDate.querySelector('input');
     const updateBirthDateLabel = () => {
-        const born = birthDateInput.value ? new Date(`${birthDateInput.value}T00:00:00`) : null;
-        if (!born || Number.isNaN(born.getTime())) {
-            birthDateLabel.textContent = 'Geburtsdatum';
-            return;
-        }
-        const today = new Date();
-        let age = today.getFullYear() - born.getFullYear();
-        const hadBirthdayThisYear = today.getMonth() > born.getMonth()
-            || (today.getMonth() === born.getMonth() && today.getDate() >= born.getDate());
-        if (!hadBirthdayThisYear) age -= 1;
-        birthDateLabel.textContent = `Geburtsdatum (${age} ${age === 1 ? 'Jahr' : 'Jahre'})`;
+        const age = birthDateInput.value ? ageInYears(birthDateInput.value) : null;
+        birthDateLabel.textContent = age === null ? 'Geburtsdatum' : `Geburtsdatum (${ageLabel(birthDateInput.value)})`;
     };
     birthDateInput.addEventListener('input', updateBirthDateLabel);
     updateBirthDateLabel();
@@ -608,13 +619,23 @@ const openMemberDialog = async (member, onSaved) => {
             : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})]}),
     ]}) : null;
 
+    // Zahler immer zuoberst, danach nach Alter (älteste zuerst — dieselbe Reihenfolge wie sonst im
+    // Haushalt üblich, siehe `childOrdinal`), statt in der vom Server gelieferten, unbestimmten
+    // Reihenfolge.
+    const sortedPayerEntries = (currentHousehold) => [...currentHousehold.payerEntries].sort((a, b) => {
+        if (a.id === currentHousehold.payer.id) return -1;
+        if (b.id === currentHousehold.payer.id) return 1;
+
+        return a.birthDate.localeCompare(b.birthDate);
+    });
+
     // Ebenfalls ausgelagert, damit „Beitrag neu berechnen“ diesen Ausschnitt austauschen kann,
     // ohne den Dialog zu schließen (siehe Klick-Handler oben bei `recalculate`).
     const payerContent = (currentHousehold, currentMember) => [
         element('p', {className: 'field-hint', text: currentHousehold.payer.id === currentMember.id
             ? 'Dieses Mitglied zahlt selbst, zusammen für:'
             : `Der Beitrag wird gezahlt von ${currentHousehold.payer.firstName} ${currentHousehold.payer.lastName} (${currentHousehold.payer.memberNumber}), zusammen für:`}),
-        element('ul', {className: 'member-payer-list', children: currentHousehold.payerEntries.map((entry) => payerListItem(entry, currentMember.id, openOther))}),
+        element('ul', {className: 'member-payer-list', children: sortedPayerEntries(currentHousehold).map((entry) => payerListItem(entry, currentMember.id, openOther))}),
         element('div', {className: 'member-payer-total', children: [
             element('span', {text: 'Gesamtbeitrag pro Jahr'}),
             // Aus denselben Positionen wie die Liste darüber berechnet (statt aus dem vom

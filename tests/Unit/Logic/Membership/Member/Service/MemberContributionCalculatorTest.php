@@ -115,22 +115,61 @@ final class MemberContributionCalculatorTest extends TestCase
     public function testChildUnderFourIsExemptRegardlessOfOrdinal(): void
     {
         $calculator = $this->calculator();
+        $parent = $this->member(birthDate: '1985-01-01', familyRole: FamilyRole::Head, id: 'parent');
         $child = $this->member(birthDate: '2023-01-01', familyRole: FamilyRole::Child, id: 'first-child');
 
-        $outcome = $calculator->calculate($child, [], new \DateTimeImmutable('2026-06-01'));
+        $outcome = $calculator->calculate($child, [$parent], new \DateTimeImmutable('2026-06-01'));
 
         self::assertSame(ContributionCategory::FamilyChildExempt, $outcome->category);
         self::assertSame(0, $outcome->amountCents);
     }
 
+    /**
+     * Symmetrisch zu `testFamilyHeadWithoutQualifyingChildFallsBackToIndividualRate()`: ohne einen
+     * eigenen, bereits erwachsenen Elternteil (Head/Partner) im Haushalt ist es keine „Familie" im
+     * Sinne der Beitragsordnung — z. B. mehrere unter derselben Hauptnummer geführte Geschwister
+     * ohne im System hinterlegten Elternteil zahlen den regulären Einzelpersonen-Satz statt des
+     * Familienrabatts.
+     */
+    public function testChildWithoutQualifyingParentInHouseholdGetsIndividualRateInstead(): void
+    {
+        $calculator = $this->calculator();
+        $sibling = $this->member(birthDate: '2013-01-01', familyRole: FamilyRole::Child, id: 'sibling');
+        $child = $this->member(birthDate: '2011-01-01', familyRole: FamilyRole::Child, id: 'child');
+
+        $outcome = $calculator->calculate($child, [$sibling], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::IndividualJunior, $outcome->category);
+        self::assertSame(3000, $outcome->amountCents);
+    }
+
+    /**
+     * Ein selbst noch minderjähriges „Hauptmitglied" (z. B. weil kein echter Elternteil im System
+     * hinterlegt ist) darf nicht allein deshalb den Erwachsenen-Familienrabatt erhalten, weil der
+     * Familienbeitragssatz keine eigene Altersuntergrenze konfiguriert hat (`family_adult` hat in
+     * `DEFAULT_RATES` bewusst `minAge: null`).
+     */
+    public function testMinorFamilyHeadDoesNotGetFamilyAdultRateEvenWithoutConfiguredMinimumAge(): void
+    {
+        $calculator = $this->calculator();
+        $minorHead = $this->member(birthDate: '2010-10-20', familyRole: FamilyRole::Head, id: 'minor-head');
+        $sibling = $this->member(birthDate: '2013-01-01', familyRole: FamilyRole::Child, id: 'sibling');
+
+        $outcome = $calculator->calculate($minorHead, [$sibling], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::IndividualJunior, $outcome->category);
+        self::assertSame(3000, $outcome->amountCents);
+    }
+
     public function testFirstAndSecondChildPayTheChildRate(): void
     {
         $calculator = $this->calculator();
+        $parent = $this->member(birthDate: '1985-01-01', familyRole: FamilyRole::Head, id: 'parent');
         $firstChild = $this->member(birthDate: '2012-01-01', familyRole: FamilyRole::Child, id: 'first');
         $secondChild = $this->member(birthDate: '2014-01-01', familyRole: FamilyRole::Child, id: 'second');
 
-        $outcomeFirst = $calculator->calculate($firstChild, [$secondChild], new \DateTimeImmutable('2026-06-01'));
-        $outcomeSecond = $calculator->calculate($secondChild, [$firstChild], new \DateTimeImmutable('2026-06-01'));
+        $outcomeFirst = $calculator->calculate($firstChild, [$parent, $secondChild], new \DateTimeImmutable('2026-06-01'));
+        $outcomeSecond = $calculator->calculate($secondChild, [$parent, $firstChild], new \DateTimeImmutable('2026-06-01'));
 
         self::assertSame(ContributionCategory::FamilyChildPaying, $outcomeFirst->category);
         self::assertSame(ContributionCategory::FamilyChildPaying, $outcomeSecond->category);
@@ -173,13 +212,62 @@ final class MemberContributionCalculatorTest extends TestCase
     public function testThirdChildIsExemptRegardlessOfAge(): void
     {
         $calculator = $this->calculator();
+        $parent = $this->member(birthDate: '1985-01-01', familyRole: FamilyRole::Head, id: 'parent');
         $first = $this->member(birthDate: '2010-01-01', familyRole: FamilyRole::Child, id: 'first');
         $second = $this->member(birthDate: '2012-01-01', familyRole: FamilyRole::Child, id: 'second');
         $third = $this->member(birthDate: '2014-01-01', familyRole: FamilyRole::Child, id: 'third');
 
-        $outcome = $calculator->calculate($third, [$first, $second], new \DateTimeImmutable('2026-06-01'));
+        $outcome = $calculator->calculate($third, [$parent, $first, $second], new \DateTimeImmutable('2026-06-01'));
 
         self::assertSame(ContributionCategory::FamilyChildExempt, $outcome->category);
+    }
+
+    /**
+     * Bei zwei Kindern mit identischem Geburtsdatum (z. B. Zwillingen) muss die Geburtsreihenfolge
+     * trotzdem eindeutig sein: genau eines der beiden zahlt (Rang 2), das andere ist als drittes
+     * Kind beitragsfrei (Rang 3) — nicht etwa beide beitragsfrei, weil jedes für sich genommen
+     * (als jeweils zuletzt an die Liste angehängter Kandidat) den höheren Rang berechnet.
+     */
+    public function testTwinsWithIdenticalBirthDateGetComplementaryOrdinalsNotBothExempt(): void
+    {
+        $calculator = $this->calculator();
+        $parent = $this->member(birthDate: '1981-08-01', familyRole: FamilyRole::Head, id: 'parent');
+        $oldest = $this->member(birthDate: '2013-11-25', familyRole: FamilyRole::Child, id: 'oldest');
+        $twinOne = $this->member(birthDate: '2017-02-22', familyRole: FamilyRole::Child, id: 'twin-one');
+        $twinTwo = $this->member(birthDate: '2017-02-22', familyRole: FamilyRole::Child, id: 'twin-two');
+
+        $outcomeOldest = $calculator->calculate($oldest, [$parent, $twinOne, $twinTwo], new \DateTimeImmutable('2026-06-01'));
+        $outcomeTwinOne = $calculator->calculate($twinOne, [$parent, $oldest, $twinTwo], new \DateTimeImmutable('2026-06-01'));
+        $outcomeTwinTwo = $calculator->calculate($twinTwo, [$parent, $oldest, $twinOne], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::FamilyChildPaying, $outcomeOldest->category);
+        self::assertEqualsCanonicalizing(
+            [ContributionCategory::FamilyChildExempt, ContributionCategory::FamilyChildPaying],
+            [$outcomeTwinOne->category, $outcomeTwinTwo->category],
+            'Genau ein Zwilling zahlt, der andere ist beitragsfrei - nicht beide dasselbe.',
+        );
+    }
+
+    /**
+     * Ein über 21-jähriges Geschwisterkind bleibt zwar `familyRole: Child` (siehe Beitragsordnung),
+     * zählt aber nicht mehr zu den „ersten drei Kindern" der Familie — sonst würde ein jüngeres,
+     * tatsächlich erst zweites aktives Kind fälschlich als drittes (und damit beitragsfrei) gelten.
+     */
+    public function testAgedOutSiblingDoesNotCountTowardsTheThirdChildOrdinal(): void
+    {
+        $calculator = $this->calculator();
+        $parent = $this->member(birthDate: '1975-01-01', familyRole: FamilyRole::Head, id: 'parent');
+        $agedOutSibling = $this->member(birthDate: '2000-01-01', familyRole: FamilyRole::Child, id: 'aged-out'); // 26 Jahre
+        $youngChildOne = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Child, id: 'young-one');
+        $youngChildTwo = $this->member(birthDate: '2017-01-01', familyRole: FamilyRole::Child, id: 'young-two');
+
+        $outcomeYoungTwo = $calculator->calculate(
+            $youngChildTwo,
+            [$parent, $agedOutSibling, $youngChildOne],
+            new \DateTimeImmutable('2026-06-01'),
+        );
+
+        self::assertSame(ContributionCategory::FamilyChildPaying, $outcomeYoungTwo->category);
     }
 
     public function testWorkAssignmentSurchargeAppliesWithinConfiguredAgeRange(): void

@@ -13,10 +13,15 @@ use App\Logic\Membership\Member\Model\Member;
  * Ermittelt den Jahresbeitrag eines Mitglieds nach der Beitrags- und Kassenordnung (Anlage 1):
  * Einzelpersonen zahlen altersabhängig, Familienmitgliedschaften erhalten für Elternteile einen
  * Rabatt, aber nur, solange mindestens ein eigenes Kind im Haushalt noch nicht aus der
- * Familien-Kinderpreisung „herausgewachsen“ ist. Kinder außerhalb der beitragsfreien Altersspanne
- * sowie das dritte und jedes weitere Kind der Familie sind beitragsfrei. Zusätzlich zahlen
- * Mitglieder innerhalb der Arbeitseinsatz-Altersspanne einen Zuschlag zzgl. zum eigentlichen
- * Beitrag, der nach Ableistung der Gemeinschaftsstunden separat erstattet wird.
+ * Familien-Kinderpreisung „herausgewachsen“ ist. Umgekehrt gilt derselbe Familienrabatt für Kinder
+ * nur, wenn im Haushalt auch ein eigener, bereits erwachsener Elternteil (Head/Partner) geführt
+ * wird (`hasQualifyingChild()`/`hasQualifyingParent()`) — bloße Geschwister unter derselben
+ * Hauptnummer ohne im System hinterlegten Elternteil sind keine „Familie" im Sinne der
+ * Beitragsordnung und zahlen den regulären Einzelpersonen-Satz. Kinder außerhalb der
+ * beitragsfreien Altersspanne sowie das dritte und jedes weitere Kind der Familie sind
+ * beitragsfrei. Zusätzlich zahlen Mitglieder innerhalb der Arbeitseinsatz-Altersspanne einen
+ * Zuschlag zzgl. zum eigentlichen Beitrag, der nach Ableistung der Gemeinschaftsstunden separat
+ * erstattet wird.
  *
  * Laut Beitrags- und Kassenordnung werden Familienmitglieder nach Vollendung des 21. Lebensjahres
  * ohne fristgemäße Kündigung automatisch Einzelmitglieder: Wächst ein Kind über die für die beiden
@@ -91,12 +96,23 @@ readonly class MemberContributionCalculator
 
         if ($candidate->familyRole === FamilyRole::Head || $candidate->familyRole === FamilyRole::Partner) {
             $familyAdultRate = $this->rates->findByCategory(ContributionCategory::FamilyAdult);
-            if ($familyAdultRate !== null && $familyAdultRate->appliesToAge($age) && $this->hasQualifyingChild($householdMembers, $at)) {
+            // Der Familienrabatt für Elternteile setzt voraus, dass $candidate selbst bereits aus
+            // der Kinderpreisung „herausgewachsen“ ist — sonst würde z. B. ein selbst noch
+            // minderjähriges, nur als „Hauptmitglied“ geführtes Geschwisterkind (ohne echten
+            // Elternteil im Haushalt) fälschlich den Erwachsenen-Familienrabatt erhalten, sobald der
+            // Familienbeitragssatz keine eigene Altersuntergrenze konfiguriert hat.
+            $isGrownUp = $this->hasAgedOutOfChildPricing(
+                $age,
+                $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge,
+                $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge,
+            );
+            if ($familyAdultRate !== null && $familyAdultRate->appliesToAge($age) && $isGrownUp && $this->hasQualifyingChild($householdMembers, $at)) {
                 return ContributionCategory::FamilyAdult;
             }
 
-            // Ohne ein eigenes, beitragsberechtigendes Kind (oder ohne passenden Familien-Satz)
-            // entfällt der Familienrabatt und es gilt der normale Einzelpersonen-Satz.
+            // Ohne ein eigenes, beitragsberechtigendes Kind (oder ohne passenden Familien-Satz,
+            // oder weil $candidate selbst noch kein Elternteil im obigen Sinne ist) entfällt der
+            // Familienrabatt und es gilt der normale Einzelpersonen-Satz.
             return $this->matchIndividualCategory($age)
                 ?? throw new BusinessRuleViolationException('Für das Alter dieses Mitglieds ist kein passender Beitragssatz (Einzelperson/Familie) hinterlegt.');
         }
@@ -108,9 +124,18 @@ readonly class MemberContributionCalculator
             || ($childPayingRate !== null && $childPayingRate->appliesToAge($age));
 
         if ($appliesAsChild) {
+            // Familienrabatt für Kinder setzt einen eigenen, bereits aus der Kinderpreisung
+            // „herausgewachsenen" Elternteil (Head/Partner) im Haushalt voraus — sonst handelt es
+            // sich um keine „Familie" im Sinne der Beitragsordnung, sondern z. B. um mehrere unter
+            // derselben Hauptnummer geführte Geschwister ohne im System hinterlegten Elternteil.
+            if (!$this->hasQualifyingParent($householdMembers, $at)) {
+                return $this->matchIndividualCategory($age)
+                    ?? throw new BusinessRuleViolationException('Für das Alter dieses Mitglieds ist kein passender Beitragssatz (Einzelperson) hinterlegt.');
+            }
+
             // Das 3. und jedes weitere Kind ist unabhängig von der Alterstabelle beitragsfrei —
             // aber nur, solange die Person laut Altersspanne überhaupt noch als „Kind" gilt (s. u.).
-            if ($this->childOrdinal($candidate, $householdMembers) >= 3) {
+            if ($this->childOrdinal($candidate, $householdMembers, $at) >= 3) {
                 return ContributionCategory::FamilyChildExempt;
             }
             if ($childExemptRate !== null && $childExemptRate->appliesToAge($age)) {
@@ -192,17 +217,61 @@ readonly class MemberContributionCalculator
     }
 
     /**
-     * Geburtsreihenfolge des Kandidaten unter allen Kindern desselben Haushalts (1-basiert).
+     * Symmetrisch zu `hasQualifyingChild()`: der Familienrabatt für Kinder setzt einen eigenen
+     * Elternteil (Head/Partner) im Haushalt voraus, der selbst bereits aus der Kinderpreisung
+     * „herausgewachsen" ist — sonst handelt es sich um keine „Familie" im Sinne der
+     * Beitragsordnung (z. B. mehrere unter derselben Hauptnummer geführte, noch minderjährige
+     * Geschwister ohne im System hinterlegten Elternteil).
      *
      * @param list<Member> $householdMembers
      */
-    private function childOrdinal(Member $candidate, array $householdMembers): int
+    private function hasQualifyingParent(array $householdMembers, \DateTimeImmutable $at): bool
     {
+        $childExemptMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge;
+        $childPayingMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge;
+
+        foreach ($householdMembers as $member) {
+            if (($member->familyRole === FamilyRole::Head || $member->familyRole === FamilyRole::Partner)
+                && $this->hasAgedOutOfChildPricing($member->age($at), $childExemptMaxAge, $childPayingMaxAge)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Geburtsreihenfolge des Kandidaten unter allen Kindern desselben Haushalts (1-basiert), die
+     * selbst noch nicht aus der Kinderpreisung „herausgewachsen" sind (`hasAgedOutOfChildPricing`).
+     * Ein über 21-jähriges Geschwisterkind bleibt zwar `familyRole: Child` (siehe oben), zählt aber
+     * nicht mehr als eines der „ersten drei Kinder" der Familie mit — sonst würde es z. B. ein
+     * jüngeres, tatsächlich drittes Kind fälschlich zum vierten (und damit ebenfalls
+     * beitragsfreien) Kind machen, obwohl es unter den noch aktiven Kindern erst das dritte ist.
+     *
+     * Bei gleichem Geburtsdatum (z. B. Zwillingen) reicht `birthDate` allein als Sortierschlüssel
+     * nicht aus: `$candidate` wird der Liste stets hinten angehängt, bevor sortiert wird — ein
+     * stabiler Sort (seit PHP 8) belässt bei Gleichstand also `$candidate` hinter jedem
+     * gleichaltrigen Geschwister, das schon in `$householdMembers` stand. Da diese Methode für
+     * jedes Kind einzeln als eigener `$candidate` aufgerufen wird, kämen beide Zwillinge so
+     * unabhängig voneinander auf denselben (zu hohen) Rang — z. B. beide auf Platz 3 und damit
+     * fälschlich beide beitragsfrei, statt nur einer. `id` als zweites, candidate-unabhängiges
+     * Sortierkriterium macht den Rang deterministisch und für beide Zwillinge konsistent
+     * komplementär (genau einer bekommt den niedrigeren, zahlenden Rang).
+     *
+     * @param list<Member> $householdMembers
+     */
+    private function childOrdinal(Member $candidate, array $householdMembers, \DateTimeImmutable $at): int
+    {
+        $childExemptMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge;
+        $childPayingMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge;
+
         $children = array_filter(
             [...$householdMembers, $candidate],
-            static fn (Member $member): bool => $member->familyRole === FamilyRole::Child,
+            fn (Member $member): bool => $member->familyRole === FamilyRole::Child
+                && !$this->hasAgedOutOfChildPricing($member->age($at), $childExemptMaxAge, $childPayingMaxAge),
         );
-        usort($children, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate);
+        usort($children, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate ?: $left->id <=> $right->id);
 
         foreach ($children as $index => $child) {
             if ($child->id === $candidate->id) {

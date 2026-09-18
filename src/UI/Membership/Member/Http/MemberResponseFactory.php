@@ -104,6 +104,7 @@ readonly class MemberResponseFactory
             'lastName' => $member->lastName,
             'familyRole' => $member->familyRole->value,
             'function' => $member->function->value,
+            'birthDate' => $member->birthDate->format('Y-m-d'),
             'contributionCategory' => $member->contributionCategory?->value,
             'contributionAmountCents' => $member->contributionAmountCents,
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
