@@ -3,8 +3,8 @@
 // (`/admin/mitglieder/...`).
 
 import {
-    CONTRIBUTION_CATEGORY_LABELS, confirmAction, element, FAMILY_ROLE_LABELS, field, fieldRow,
-    formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS, PAYER_TYPE_LABELS,
+    CONTRIBUTION_CATEGORY_LABELS, confirmAction, csrfToken, element, FAMILY_ROLE_LABELS, field,
+    fieldRow, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS, PAYER_TYPE_LABELS,
     PAYMENT_DAY_LABELS, PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, PERSON_GROUP_LABELS,
     radioGroup, request, SALUTATION_LABELS, selectField, toast,
 } from '../core.js';
@@ -195,16 +195,84 @@ const memberOpenButton = (entry, currentId, openOther) => entry.id === currentId
         return button;
     })();
 
-const memberListItem = (entry, currentId, openOther) => {
-    const openButton = memberOpenButton(entry, currentId, openOther);
+const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCents = null) => {
+    const isCurrent = entry.id === currentId;
+    // Bewusst immer denselben Button rendern (nur beim bereits geöffneten Datensatz unsichtbar
+    // geschaltet statt weggelassen) — sonst nimmt die Karte per `flex: 1` die dadurch frei
+    // werdende Breite ein und die Zeilen enden rechts nicht mehr auf gleicher Höhe.
+    const openButton = element('button', {
+        className: 'secondary-button',
+        text: 'Öffnen →',
+        attributes: {type: 'button', ...(isCurrent ? {'aria-hidden': 'true', tabindex: '-1'} : {})},
+    });
+    if (isCurrent) {
+        openButton.disabled = true;
+        openButton.style.visibility = 'hidden';
+    } else {
+        openButton.addEventListener('click', () => openOther(entry.id));
+    }
 
     return element('li', {children: [
-        element('div', {className: `member-list-card${entry.id === currentId ? ' is-current' : ''}`, children: [
-            element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-            element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+        element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}`, children: [
+            element('span', {className: 'member-list-card-label', children: [
+                element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
+                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} · ${entry.memberNumber}`}),
+            ]}),
+            // Nur bei Zahlern gesetzt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
+            // ganzen von ihnen bezahlten Personenkreis, rechtsbündig neben Name/Rolle/Nummer.
+            ...(totalCents !== null ? [element('span', {className: 'member-list-card-total', text: formatEuro(totalCents)})] : []),
         ]}),
-        ...(openButton ? [openButton] : []),
+        openButton,
+        ...extraChildren,
     ]});
+};
+
+// Gruppiert die Familienzugehörigkeit nach tatsächlichem Zahler statt als flache Liste: jeder
+// Selbstzahler (`payerType === 'self_payer'`) ist eine eigene Wurzel, alle Mitglieder, deren
+// Beitrag dieser Zahler trägt (`payerMemberId`), erscheinen darunter eingerückt als seine
+// „Kinder“ — so ist auf einen Blick sichtbar, ob ein Haushalt einen oder mehrere Zahler hat (z. B.
+// weil ein Familienmitglied Selbstzahler ist, siehe `GetMemberHouseholdQuery`).
+const groupHouseholdByPayer = (householdMembers) => {
+    const selfPayerIds = new Set(householdMembers.filter((entry) => entry.payerType === 'self_payer').map((entry) => entry.id));
+    const groups = [];
+    const groupByRootId = new Map();
+    householdMembers.forEach((entry) => {
+        if (!selfPayerIds.has(entry.id)) return;
+        const group = {root: entry, children: []};
+        groups.push(group);
+        groupByRootId.set(entry.id, group);
+    });
+    const orphanGroups = [];
+    householdMembers.forEach((entry) => {
+        if (selfPayerIds.has(entry.id)) return;
+        const group = entry.payerMemberId ? groupByRootId.get(entry.payerMemberId) : null;
+        if (group) {
+            group.children.push(entry);
+        } else {
+            // Zahler ist nicht Teil dieses Haushalts (oder unvollständige Daten) — eigene Zeile
+            // auf oberster Ebene, damit niemand aus der Liste verschwindet.
+            orphanGroups.push({root: entry, children: []});
+        }
+    });
+
+    return [...groups, ...orphanGroups];
+};
+
+// Gesamtbetrag des Zahlers: dieselbe Definition wie im „Beiträge gesamt"-Feld der Zahler-Liste
+// unten (`payerContent`) — Wurzel plus alle Kinder, je über `contributionPositions` (berücksichtigt
+// Austritt/Beitragsbefreiung), damit beide Stellen denselben Betrag zeigen.
+const householdPayerTotalCents = (group) => [group.root, ...group.children].reduce(
+    (sum, entry) => sum + contributionPositions(entry).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
+    0,
+);
+
+const householdTreeItem = (group, currentId, openOther) => {
+    const childrenList = group.children.length ? [element('ul', {
+        className: 'member-household-children',
+        children: group.children.map((entry) => memberListItem(entry, currentId, openOther)),
+    })] : [];
+
+    return memberListItem(group.root, currentId, openOther, childrenList, householdPayerTotalCents(group));
 };
 
 // Ist das Austrittsdatum erreicht (heute oder in der Vergangenheit), gilt das Mitglied als
@@ -536,7 +604,7 @@ const openMemberDialog = async (member, onSaved) => {
     const householdSection = member ? element('fieldset', {children: [
         element('legend', {text: 'Familienzugehörigkeit'}),
         element('ul', {className: 'member-household-list', children: household.householdMembers.length
-            ? household.householdMembers.map((entry) => memberListItem(entry, member.id, openOther))
+            ? groupHouseholdByPayer(household.householdMembers).map((group) => householdTreeItem(group, member.id, openOther))
             : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})]}),
     ]}) : null;
 
@@ -742,11 +810,43 @@ const openMemberDialog = async (member, onSaved) => {
     dialog.showModal();
 };
 
+// Das Dateiformat steckt nicht mehr in einem eigenen Feld, sondern wird beim Import serverseitig
+// aus dem Namen des einzigen Eintrags im ZIP-Archiv erkannt (siehe `MemberExportZipArchive`) —
+// das Archiv beschreibt sich damit selbst, ein Format/Inhalt-Mismatch ist so ausgeschlossen.
+//
+// Ist "Mitgliederexport/-import" (ProtectedAction::MembersExport) gerade per PIN geschützt, dient
+// derselbe PIN als ZIP-Passwort in beide Richtungen: Export/Import versuchen deshalb zunächst ohne
+// PIN, fragen ihn per promptForPin erst nach - und nur - wenn der Server mit
+// error.code === 'pinrequiredexception' antwortet (analog deleteMemberWithOptionalPin). Liefert
+// null bei "Abbrechen" im PIN-Dialog.
+const importMembersWithOptionalPin = async (file) => {
+    const buildFormData = (pin) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (pin) formData.append('pin', pin);
+
+        return formData;
+    };
+    try {
+        return await request('/api/admin/v1/members/import', {method: 'POST', body: buildFormData()});
+    } catch (error) {
+        if (error.code !== 'pinrequiredexception') throw error;
+    }
+    let result = null;
+    const unlocked = await promptForPin(
+        'Mitglieder importieren',
+        'Für diese Funktion ist zusätzlich der PIN erforderlich, mit dem das Archiv verschlüsselt wurde.',
+        async (pin) => { result = await request('/api/admin/v1/members/import', {method: 'POST', body: buildFormData(pin)}); },
+    );
+
+    return unlocked ? result : null;
+};
+
 const openMemberImportDialog = (onImported) => {
     const dialog = element('dialog', {className: 'activity-dialog'});
-    const fileInput = element('input', {attributes: {type: 'file', accept: '.csv,.json,.xml'}});
-    const fileField = element('label', {className: 'field', children: [element('span', {text: 'Datei'}), fileInput]});
-    const format = selectField('Dateiformat', 'member-import-format', [['csv', 'CSV'], ['json', 'JSON'], ['xml', 'XML']], 'csv');
+    const fileInput = element('input', {attributes: {type: 'file', accept: '.zip'}});
+    const fileField = element('label', {className: 'field', children: [element('span', {text: 'ZIP-Archiv'}), fileInput]});
+    const hint = element('small', {text: 'Ein mit "Mitglieder exportieren" erzeugtes Archiv (CSV, JSON oder XML).'});
     const message = formMessage();
     const submit = element('button', {className: 'button', text: 'Importieren', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -758,7 +858,7 @@ const openMemberImportDialog = (onImported) => {
                 element('h2', {text: 'Mitglieder importieren'}),
             ]}),
         ]}),
-        fileField, format,
+        fileField, hint,
         message,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]});
@@ -771,12 +871,10 @@ const openMemberImportDialog = (onImported) => {
             message.textContent = 'Bitte zuerst eine Datei auswählen.';
             return;
         }
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('format', format.querySelector('select').value);
         submit.disabled = true;
         try {
-            const result = await request('/api/admin/v1/members/import', {method: 'POST', body: formData});
+            const result = await importMembersWithOptionalPin(file);
+            if (!result) { submit.disabled = false; return; }
             const errorSuffix = result.errors.length ? `, ${result.errors.length} Zeile(n) mit Fehlern` : '';
             toast(`${result.created} Mitglied(er) angelegt, ${result.updated} aktualisiert${errorSuffix}.`, result.errors.length ? 'info' : 'success');
             dialog.close();
@@ -793,9 +891,59 @@ const openMemberImportDialog = (onImported) => {
     dialog.showModal();
 };
 
+// Entspricht PHP's `DateTimeImmutable::format('dmY_His')` (siehe
+// `AdminMemberController::export`), damit Backend-`Content-Disposition` und der hier per
+// `download`-Attribut erzwungene Dateiname übereinstimmen.
+const exportTimestamp = () => {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+
+    return `${pad(now.getDate())}${pad(now.getMonth() + 1)}${now.getFullYear()}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+};
+
+// Bewusst per fetch() statt des gemeinsamen request()-Helpers: Bei Erfolg ist die Antwort ein
+// ZIP-Binärstrom (kein JSON), den request() nicht durchreicht (siehe dort - es liefert bei
+// nicht-JSON-Antworten immer null). CSRF-Header und Fehler-code-Extraktion (für die PIN-Abfrage
+// unten) werden deshalb hier dieselbe Bedeutung wie in request() nachgebildet.
+const postMemberExport = async (body) => {
+    const response = await fetch('/api/admin/v1/members/export', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...(csrfToken ? {'X-CSRF-Token': csrfToken} : {}),
+        },
+        body: JSON.stringify(body),
+    });
+    if (response.ok) return response.blob();
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json() : null;
+    const error = new Error(data?.error?.message || data?.detail || data?.message || 'Der Export ist fehlgeschlagen.');
+    error.code = data?.error?.code || null;
+    throw error;
+};
+
+const exportMembersZipWithOptionalPin = async (format) => {
+    try {
+        return await postMemberExport({format});
+    } catch (error) {
+        if (error.code !== 'pinrequiredexception') throw error;
+    }
+    let blob = null;
+    const unlocked = await promptForPin(
+        'Mitglieder exportieren',
+        'Für diese Funktion ist zusätzlich ein PIN erforderlich - er wird zugleich als Passwort für das Export-Archiv verwendet.',
+        async (pin) => { blob = await postMemberExport({format, pin}); },
+    );
+
+    return unlocked ? blob : null;
+};
+
 const openMemberExportDialog = () => {
     const dialog = element('dialog', {className: 'activity-dialog'});
-    const format = selectField('Dateiformat', 'member-export-format', [['csv', 'CSV'], ['json', 'JSON'], ['xml', 'XML']], 'csv');
+    const format = selectField('Dateiformat', 'member-export-format', [['csv', 'CSV'], ['json', 'JSON'], ['xml', 'XML']], 'json');
+    const hint = element('small', {text: 'Der Export wird als ZIP-Archiv heruntergeladen, bei aktiviertem PIN-Schutz zusätzlich passwortgeschützt.'});
     const message = formMessage();
     const submit = element('button', {className: 'button', text: 'Exportieren', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -807,7 +955,7 @@ const openMemberExportDialog = () => {
                 element('h2', {text: 'Mitglieder exportieren'}),
             ]}),
         ]}),
-        format,
+        format, hint,
         message,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]});
@@ -818,11 +966,10 @@ const openMemberExportDialog = () => {
         submit.disabled = true;
         const selectedFormat = format.querySelector('select').value;
         try {
-            const response = await fetch(`/api/admin/v1/members/export?format=${selectedFormat}`, {credentials: 'same-origin'});
-            if (!response.ok) throw new Error('Der Export ist fehlgeschlagen.');
-            const blob = await response.blob();
+            const blob = await exportMembersZipWithOptionalPin(selectedFormat);
+            if (!blob) { submit.disabled = false; return; }
             const url = URL.createObjectURL(blob);
-            const link = element('a', {attributes: {href: url, download: `mitglieder.${selectedFormat}`}});
+            const link = element('a', {attributes: {href: url, download: `mitglieder-${exportTimestamp()}.zip`}});
             document.body.append(link);
             link.click();
             link.remove();
@@ -831,7 +978,6 @@ const openMemberExportDialog = () => {
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
-        } finally {
             submit.disabled = false;
         }
     });
@@ -871,6 +1017,55 @@ const openRecalculationErrorsDialog = (errors) => {
     dialog.showModal();
 };
 
+// Fragt vor der Sammel-Neuberechnung einen Stichtag ab (Default: 1. März des laufenden Jahres) —
+// Alter und Kategorie (siehe `MemberContributionCalculator`) werden zu diesem Datum ermittelt statt
+// zum tatsächlichen „jetzt“, z. B. um einen erst gestern stattgefundenen Geburtstag bewusst noch
+// nicht zu berücksichtigen. Liefert das gewählte Datum (`YYYY-MM-DD`) oder `null` bei „Abbrechen“.
+const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const message = formMessage();
+    const dateField = field('Stichtag', 'recalculate-contributions-at', `${new Date().getFullYear()}-03-01`, 'date');
+    const dateInput = dateField.querySelector('input');
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'Neu berechnen', attributes: {type: 'submit'}});
+    let answered = false;
+    const finish = (result) => {
+        answered = true;
+        resolve(result);
+        dialog.close();
+    };
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Mitglieder'}),
+        element('h2', {text: 'Beiträge neu berechnen'}),
+        element('p', {text: 'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.'}),
+        dateField,
+        element('small', {text: 'Alter und Kategorie werden zu diesem Stichtag ermittelt, nicht zum heutigen Datum.'}),
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => finish(null));
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        finish(null);
+    });
+    dialog.addEventListener('close', () => {
+        if (!answered) resolve(null);
+        dialog.remove();
+    });
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!dateInput.value) {
+            message.textContent = 'Bitte einen Stichtag wählen.';
+            return;
+        }
+        finish(dateInput.value);
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    dateInput.focus();
+});
+
 let memberSearchTerm = '';
 let memberSortField = 'primaryMemberNumber';
 let memberSortDirection = 'asc';
@@ -901,15 +1096,11 @@ const showMembers = () => {
         // gemacht werden, statt wie bei `actionButton` ungelesen zu verfallen.
         const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge für alle Mitglieder neu berechnen', attributes: {type: 'button'}});
         recalculateAll.addEventListener('click', async () => {
-            const confirmed = await confirmAction(
-                'Beiträge neu berechnen',
-                'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.',
-                'Neu berechnen',
-            );
-            if (!confirmed) return;
+            const at = await openRecalculateAllContributionsDialog();
+            if (!at) return;
             recalculateAll.disabled = true;
             try {
-                const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST'});
+                const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST', body: JSON.stringify({at})});
                 if (result.errors.length) {
                     toast(`${result.updated} Mitglied(er) aktualisiert, ${result.errors.length} übersprungen — siehe Liste.`, 'info');
                     openRecalculationErrorsDialog(result.errors);

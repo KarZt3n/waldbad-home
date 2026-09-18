@@ -276,34 +276,62 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
 
-        $this->client->request('GET', '/api/admin/v1/members/export?format=json', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        // Export liefert immer ein ZIP-Archiv (siehe `MemberExportZipArchive`) — ohne aktivierten
+        // PIN-Schutz für `members.export` unverschlüsselt.
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => 'json'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
-        self::assertStringContainsString('application/json', (string) $this->client->getResponse()->headers->get('Content-Type'));
-        $content = $this->client->getResponse()->getContent();
-        self::assertIsString($content);
-        $exported = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+        self::assertStringContainsString('application/zip', (string) $this->client->getResponse()->headers->get('Content-Type'));
+        $zipContent = $this->client->getResponse()->getContent();
+        self::assertIsString($zipContent);
+        $exported = json_decode($this->readZipEntry($zipContent, 'json'), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($exported);
         self::assertIsArray($exported['members']);
         self::assertCount(1, $exported['members']);
 
         $csv = "memberNumber;primaryMemberNumber;salutation;lastName;firstName;birthDate;street;postalCode;city;email;phone;familyRole;joinedAt;leftAt;function;accountHolder;iban;bankName;mandateReference;paymentMethod;paymentInterval;paymentDay;payerType;payerMemberId;nextBookingMonth;nextBookingYear\n"
             ."M-9001;M-9001;mr;Import;Ida;1980-05-01;Waldweg 1;14822;Borkheide;;;none;2026-01-01;;member;Ida Import;DE89370400440532013000;;M-9001;sepa_direct_debit;yearly;first;self_payer;;3;2027\n";
-        $tmpFile = tempnam(sys_get_temp_dir(), 'members-import');
-        self::assertIsString($tmpFile);
-        file_put_contents($tmpFile, $csv);
+        // Das Dateiformat wird beim Import aus dem Namen des ZIP-Eintrags erkannt, nicht mehr
+        // separat übermittelt (siehe `MemberExportZipArchive::extract`).
+        $zipFile = $this->buildMemberZip($csv, 'csv');
 
-        $this->client->request('POST', '/api/admin/v1/members/import', ['format' => 'csv'], ['file' => new UploadedFile($tmpFile, 'members.csv', 'text/csv', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($zipFile, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $importResult = $this->responseData();
         self::assertSame(1, $importResult['created']);
         self::assertSame(0, $importResult['updated']);
         self::assertSame([], $importResult['errors']);
 
-        $this->client->request('POST', '/api/admin/v1/members/import', ['format' => 'csv'], ['file' => new UploadedFile($tmpFile, 'members.csv', 'text/csv', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($zipFile, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $secondImport = $this->responseData();
         self::assertSame(0, $secondImport['created']);
         self::assertSame(1, $secondImport['updated']);
+    }
+
+    private function buildMemberZip(string $content, string $format): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'members-import-zip');
+        self::assertIsString($path);
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($path, \ZipArchive::OVERWRITE) === true);
+        $zip->addFromString("mitglieder.{$format}", $content);
+        $zip->close();
+
+        return $path;
+    }
+
+    private function readZipEntry(string $zipContent, string $format): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'members-export-zip');
+        self::assertIsString($path);
+        file_put_contents($path, $zipContent);
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($path) === true);
+        $entry = $zip->getFromName("mitglieder.{$format}");
+        $zip->close();
+        self::assertIsString($entry);
+
+        return $entry;
     }
 
     public function testSearchMatchesMultipleWordsAcrossDifferentFieldsRegardlessOfOrder(): void
@@ -619,6 +647,39 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->request('GET', '/api/admin/v1/members/'.$standaloneId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
+    }
+
+    public function testRecalculateAllUsesTheGivenReferenceDateForAgeBasedCategories(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        // Wird am 01.03.2026 21 Jahre alt — ein Stichtag davor bzw. am/nach dem Geburtstag muss die
+        // Kategorie individual_junior/individual_senior entsprechend unterscheiden, statt immer vom
+        // tatsächlichen „jetzt“ auszugehen.
+        $member = array_replace($this->validMember(), ['birthDate' => '2005-03-01']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $member, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $memberId = $this->string($this->responseData(), 'id');
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => '2026-02-28'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertSame('individual_junior', $this->responseData()['contributionCategory']);
+        self::assertSame(3000, $this->responseData()['contributionAmountCents']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => '2026-03-01'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
+        self::assertSame(5000, $this->responseData()['contributionAmountCents']);
+    }
+
+    public function testRecalculateAllRejectsAnInvalidReferenceDate(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => 'not-a-date'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(400);
     }
 
     /**

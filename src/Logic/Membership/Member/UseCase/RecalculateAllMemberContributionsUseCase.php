@@ -40,9 +40,14 @@ readonly class RecalculateAllMemberContributionsUseCase
     ) {
     }
 
-    public function execute(): RecalculateAllContributionsResponse
+    /**
+     * $at: Stichtag für die Alters-/Kategorieermittlung (siehe `MemberContributionCalculator`) —
+     * ohne Angabe der reale „jetzt“. Damit lässt sich z. B. ein gestern stattgefundener Geburtstag
+     * bewusst noch nicht berücksichtigen (Stichtag auf vorgestern setzen).
+     */
+    public function execute(?\DateTimeImmutable $at = null): RecalculateAllContributionsResponse
     {
-        $now = $this->clock->now();
+        $now = $at ?? $this->clock->now();
 
         /** @var array<string, list<Member>> $households */
         $households = [];

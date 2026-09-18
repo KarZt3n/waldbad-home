@@ -14,6 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use App\Tests\Support\FixedSecureTokenGenerator;
 
 final class SettingsPinManagementWorkflowTest extends WebTestCase
@@ -160,6 +161,58 @@ final class SettingsPinManagementWorkflowTest extends WebTestCase
 
         $this->client->request('DELETE', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(204);
+    }
+
+    /**
+     * Derselbe PIN dient in beide Richtungen als ZIP-Passwort (`ProtectedAction::MembersExport`,
+     * siehe `MemberExportZipArchive`/`AdminMemberController`): ist der Schutz aktiv, verschlüsselt
+     * er den Export und wird beim Import zum Entpacken benötigt.
+     */
+    public function testMemberExportEncryptsTheZipWhenProtectedAndImportRequiresTheSamePin(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/pin-settings/pin', ['pin' => '4321'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('PUT', '/api/admin/v1/pin-settings/protected-actions', ['protectedActions' => ['members.export']], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+
+        // Ohne PIN: abgelehnt.
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => 'json'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Mit korrektem PIN: erfolgreich, das ZIP ist AES-verschlüsselt.
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => 'json', 'pin' => '4321'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $zipContent = $this->client->getResponse()->getContent();
+        self::assertIsString($zipContent);
+        $zipPath = tempnam(sys_get_temp_dir(), 'pin-export-zip');
+        self::assertIsString($zipPath);
+        file_put_contents($zipPath, $zipContent);
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($zipPath) === true);
+        self::assertFalse($zip->getFromIndex(0), 'Ohne Passwort darf der Inhalt nicht lesbar sein.');
+        $zip->setPassword('4321');
+        self::assertIsString($zip->getFromIndex(0));
+        $zip->close();
+
+        // Import ohne PIN: abgelehnt, das Archiv wird gar nicht erst geöffnet.
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($zipPath, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Import mit falschem PIN: ebenfalls abgelehnt.
+        $this->client->request('POST', '/api/admin/v1/members/import', ['pin' => '0000'], ['file' => new UploadedFile($zipPath, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Import mit korrektem PIN: erfolgreich, entschlüsselt und importiert den zuvor exportierten Datensatz.
+        $this->client->request('POST', '/api/admin/v1/members/import', ['pin' => '4321'], ['file' => new UploadedFile($zipPath, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $importResult = $this->responseData();
+        self::assertSame(0, $importResult['created']);
+        self::assertSame(1, $importResult['updated']);
     }
 
     /**

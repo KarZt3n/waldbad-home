@@ -13,12 +13,16 @@ enum ProtectedAction: string
 {
     case MembersModuleAccess = 'members.module_access';
     case MembersDelete = 'members.delete';
+    case MembersExport = 'members.export';
 
     public function label(): string
     {
         return match ($this) {
             self::MembersModuleAccess => 'Mitgliederverwaltung öffnen',
             self::MembersDelete => 'Mitglied löschen',
+            // Ein PIN für beide Richtungen: das Export-ZIP wird damit verschlüsselt, derselbe PIN
+            // wird beim Import zum Entschlüsseln gebraucht (siehe `AdminMemberController`).
+            self::MembersExport => 'Mitgliederexport/-import (ZIP-Passwort)',
         };
     }
 
@@ -30,7 +34,7 @@ enum ProtectedAction: string
     {
         return match ($this) {
             self::MembersModuleAccess => 'Modul',
-            self::MembersDelete => 'Funktion',
+            self::MembersDelete, self::MembersExport => 'Funktion',
         };
     }
 }

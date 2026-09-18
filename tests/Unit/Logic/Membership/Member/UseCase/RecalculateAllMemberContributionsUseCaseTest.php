@@ -53,6 +53,28 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         self::assertSame('Kein passender Beitragssatz.', $result->errors[0]->message);
     }
 
+    public function testUsesTheGivenReferenceDateInsteadOfTheRealNowWhenProvided(): void
+    {
+        // Ein übergebener Stichtag geht direkt an den Beitragsrechner statt der echten Uhrzeit —
+        // z. B. um einen erst gestern stattgefundenen Geburtstag bewusst noch nicht zu
+        // berücksichtigen (siehe `AdminMemberController::recalculateAllContributions`).
+        $member = $this->member('member-a', 'M-0001');
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$member]);
+        $members->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
+
+        $at = new \DateTimeImmutable('2026-02-27');
+        $calculator = $this->createMock(MemberContributionCalculator::class);
+        $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), $at)
+            ->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+
+        $clock = $this->createMock(ClockInterface::class);
+        $clock->expects(self::never())->method('now');
+
+        (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute($at);
+    }
+
     public function testHouseholdWithBoardMemberIsExemptFromContributionRegardlessOfStoredValue(): void
     {
         // Vorstandsmitglied (Kopf) war noch als beitragspflichtig gespeichert (z. B. weil die

@@ -17,6 +17,7 @@ use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
 use App\Logic\Settings\Pin\Model\ProtectedAction;
+use App\Logic\Settings\Pin\Query\GetPinSettingsQuery;
 use App\Logic\Settings\Pin\UseCase\VerifyPinUseCase;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
 use App\UI\IdentityAccess\Security\Permission;
@@ -39,7 +40,17 @@ class AdminMemberController extends AbstractController
         private readonly MemberRequestMapper $requestMapper,
         private readonly MemberExportFormatter $exportFormatter,
         private readonly MemberImportFileParser $importFileParser,
+        private readonly MemberExportZipArchive $zipArchive,
     ) {
+    }
+
+    /**
+     * Ob „Mitgliederexport/-import" gerade per PIN geschützt ist — bestimmt, ob das Export-ZIP
+     * verschlüsselt wird bzw. beim Import ein Passwort zum Entpacken nötig ist.
+     */
+    private function memberExportIsPinProtected(GetPinSettingsQuery $pinSettingsQuery): bool
+    {
+        return in_array(ProtectedAction::MembersExport->value, $pinSettingsQuery->execute()->protectedActions, true);
     }
 
     #[Route('', name: 'api_admin_member_list', methods: ['GET'])]
@@ -51,25 +62,40 @@ class AdminMemberController extends AbstractController
         return new JsonResponse($this->responseFactory->collection($query->execute($search === '' ? null : $search)));
     }
 
-    #[Route('/export', name: 'api_admin_member_export', methods: ['GET'])]
-    public function export(Request $request, ListMembersQuery $query): Response
+    // POST statt GET: der PIN (siehe unten) landet damit im JSON-Body statt in der Query-String
+    // (Logs/Browser-Verlauf).
+    #[Route('/export', name: 'api_admin_member_export', methods: ['POST'])]
+    public function export(Request $request, ListMembersQuery $query, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): Response
     {
         $this->denyAccessUnlessGranted(Permission::MembersView->value);
-        $format = (string) $request->query->get('format', 'csv');
+        $payload = $request->getPayload();
+        $format = (string) $payload->getString('format', 'json');
         if (!in_array($format, self::EXPORT_FORMATS, true)) {
             throw new BadRequestHttpException('Das Export-Format wird nicht unterstützt.');
         }
 
-        $rows = $this->responseFactory->collection($query->execute(null))['items'];
-        [$content, $contentType] = match ($format) {
-            'csv' => [$this->exportFormatter->toCsv($rows), 'text/csv; charset=UTF-8'],
-            'json' => [$this->exportFormatter->toJson($rows), 'application/json; charset=UTF-8'],
-            'xml' => [$this->exportFormatter->toXml($rows), 'application/xml; charset=UTF-8'],
-        };
+        // Zusätzlich zur regulären Berechtigung optional per PIN geschützt (siehe Modul
+        // „Einstellungen" → PIN-Schutz). Ist der Schutz für „Mitgliederexport/-import" aktiviert,
+        // wird der eingegebene (und hier verifizierte) PIN direkt als ZIP-Passwort verwendet —
+        // derselbe PIN entsperrt das Archiv beim Import wieder (siehe `import()` unten). Ist der
+        // Schutz nicht aktiviert, ist die Prüfung ein No-op und das ZIP bleibt unverschlüsselt.
+        $submittedPin = $payload->getString('pin', '');
+        $submittedPin = $submittedPin === '' ? null : $submittedPin;
+        $verifyPin->execute(ProtectedAction::MembersExport, $submittedPin);
+        $isProtected = $this->memberExportIsPinProtected($pinSettingsQuery);
 
-        $response = new Response($content);
-        $response->headers->set('Content-Type', $contentType);
-        $response->headers->set('Content-Disposition', sprintf('attachment; filename="mitglieder.%s"', $format));
+        $rows = $this->responseFactory->collection($query->execute(null))['items'];
+        $content = match ($format) {
+            'csv' => $this->exportFormatter->toCsv($rows),
+            'json' => $this->exportFormatter->toJson($rows),
+            'xml' => $this->exportFormatter->toXml($rows),
+        };
+        $zipContent = $this->zipArchive->build($content, $format, $isProtected ? $submittedPin : null);
+
+        $response = new Response($zipContent);
+        $response->headers->set('Content-Type', 'application/zip');
+        $filename = sprintf('mitglieder-%s.zip', (new \DateTimeImmutable())->format('dmY_His'));
+        $response->headers->set('Content-Disposition', sprintf('attachment; filename="%s"', $filename));
 
         return $response;
     }
@@ -80,10 +106,20 @@ class AdminMemberController extends AbstractController
      * ab; betroffene Datensätze werden übersprungen und in `errors` gemeldet.
      */
     #[Route('/recalculate-contributions', name: 'api_admin_member_recalculate_all_contributions', methods: ['POST'])]
-    public function recalculateAllContributions(RecalculateAllMemberContributionsUseCase $useCase): JsonResponse
+    public function recalculateAllContributions(Request $request, RecalculateAllMemberContributionsUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
-        $result = $useCase->execute();
+        // Stichtag für die Alters-/Kategorieermittlung (siehe `RecalculateAllMemberContributionsUseCase`);
+        // ohne Angabe berechnet die Use Case selbst ab „jetzt“.
+        $rawAt = trim($request->getPayload()->getString('at', ''));
+        $at = null;
+        if ($rawAt !== '') {
+            $at = \DateTimeImmutable::createFromFormat('!Y-m-d', $rawAt);
+            if ($at === false) {
+                throw new BadRequestHttpException('Der Stichtag ist ungültig.');
+            }
+        }
+        $result = $useCase->execute($at);
 
         return new JsonResponse([
             'updated' => $result->updated,
@@ -98,21 +134,31 @@ class AdminMemberController extends AbstractController
     }
 
     #[Route('/import', name: 'api_admin_member_import', methods: ['POST'])]
-    public function import(Request $request, ImportMembersUseCase $useCase): JsonResponse
+    public function import(Request $request, ImportMembersUseCase $useCase, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
-        $format = (string) $request->request->get('format', 'csv');
-        if (!in_array($format, self::EXPORT_FORMATS, true)) {
-            throw new BadRequestHttpException('Das Import-Format wird nicht unterstützt.');
-        }
         $file = $request->files->get('file');
         if (!$file instanceof UploadedFile) {
             throw new BadRequestHttpException('Es wurde keine Datei übermittelt.');
         }
-        $content = file_get_contents($file->getPathname());
-        if ($content === false) {
+        $zipContent = file_get_contents($file->getPathname());
+        if ($zipContent === false) {
             throw new BadRequestHttpException('Die Datei konnte nicht gelesen werden.');
         }
+
+        // Derselbe PIN, mit dem das Export-ZIP verschlüsselt wurde (siehe `export()` oben) — bei
+        // aktiviertem Schutz erst hier verifiziert, bevor überhaupt versucht wird, das Archiv damit
+        // zu entpacken.
+        $submittedPin = (string) $request->request->get('pin', '');
+        $submittedPin = $submittedPin === '' ? null : $submittedPin;
+        $verifyPin->execute(ProtectedAction::MembersExport, $submittedPin);
+        $isProtected = $this->memberExportIsPinProtected($pinSettingsQuery);
+
+        ['content' => $content, 'format' => $format] = $this->zipArchive->extract(
+            $zipContent,
+            $isProtected ? $submittedPin : null,
+            self::EXPORT_FORMATS,
+        );
 
         $rawRows = $this->importFileParser->parse($content, $format);
         $rows = [];

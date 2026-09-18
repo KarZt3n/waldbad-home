@@ -109,6 +109,12 @@ readonly class MemberResponseFactory
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
             'contributionLiable' => $member->contributionLiable,
             'leftAt' => $member->leftAt?->format('Y-m-d'),
+            // Für die Zahler-Baumdarstellung der Familienzugehörigkeit im Admin-Frontend (siehe
+            // `assets/admin/members.js`, `groupHouseholdByPayer`) — dort entscheidet
+            // `payerType`/`payerMemberId`, welche Haushaltsmitglieder als eigene Wurzel (Zahler)
+            // bzw. als deren eingerückte Kinder dargestellt werden.
+            'payerType' => $member->payerType->value,
+            'payerMemberId' => $member->payerMemberId,
         ];
     }
 

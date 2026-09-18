@@ -1776,11 +1776,16 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .member-household-list, .member-payer-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
 
 /* Familienzugehörigkeit: Der Rahmen umschließt nur die Personen-Info, der Öffnen-Button steht
-   als eigenes Element rechts daneben, außerhalb des Rahmens. */
-.member-household-list li { display: flex; align-items: center; gap: .6rem; }
-.member-household-list .member-list-card { flex: 1; padding: .6rem .9rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--sand-50); }
+   als eigenes Element rechts daneben, außerhalb des Rahmens. Als Baum nach Zahler gruppiert (siehe
+   `groupHouseholdByPayer`): `flex-wrap` + `flex-basis: 100%` auf den Kindern lässt sie unterhalb
+   der Zahler-Zeile in voller Breite umbrechen statt daneben zu stehen. */
+.member-household-list li { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.member-household-list .member-list-card { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; flex-wrap: wrap; padding: .6rem .9rem; border: 1px solid var(--line); border-radius: .75rem; background: var(--sand-50); }
 .member-household-list .member-list-card.is-current { border-color: var(--forest-700); background: var(--forest-100); }
+/* Gesamtbetrag steht nur bei Zahlern (siehe `householdTreeItem`), rechtsbündig neben Name/Rolle. */
+.member-household-list .member-list-card-total { white-space: nowrap; font-weight: 700; color: var(--forest-900); }
 .member-household-list .secondary-button, .member-payer-list .secondary-button { padding: .35rem .7rem; font-size: .85rem; }
+.member-household-children { flex-basis: 100%; margin: .5rem 0 0; padding: 0 0 0 1.1rem; border-left: .2rem solid var(--line); list-style: none; display: grid; gap: .5rem; }
 
 /* Gesamtberechnung für den Zahler: Name links, darunter die einzelnen Beitragssatz-Positionen;
    die Summe pro Mitglied steht rechts daneben. */
