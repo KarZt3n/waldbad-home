@@ -47,6 +47,16 @@ const bucketItemsByDate = (items, getDate, getTime) => {
 };
 const showEventHelpers = async () => {
     const data = await request('/api/admin/v1/event-help-requests');
+    // `showEventManagement()` (aufgerufen nach jeder Teilnahme-/Verknüpfungsänderung) baut die
+    // gesamte Sektion neu auf — ohne das würden alle Archiv-Accordions (Jahres-Archiv, „Nicht
+    // teilgenommen" je Veranstaltung) dabei wieder zuklappen. Der Zustand wird deshalb vor dem
+    // Neuaufbau aus dem noch alten DOM gelesen (siehe `data-archive-key` unten) und beim Aufbau
+    // der neuen `<details>`-Elemente wiederhergestellt.
+    const previouslyOpenArchiveKeys = new Set(
+        [...workspace.querySelectorAll('details.event-helper-archive[open]')]
+            .map((details) => details.dataset.archiveKey)
+            .filter(Boolean),
+    );
     const saveParticipation = async (requestItem, participated, intervals = []) => {
         await request(`/api/admin/v1/event-help-requests/${requestItem.id}/participation`, {
             method: 'POST',
@@ -731,13 +741,21 @@ const showEventHelpers = async () => {
         });
         addHelperButton.addEventListener('click', () => openAddEventHelperDialog(event));
         const visibleEntries = buildParticipantEntries(visibleRequests, event);
-        const notParticipatedAccordion = notParticipatedRequests.length ? element('details', {className: 'event-helper-archive event-helper-not-participated', children: [
-            element('summary', {children: [
-                element('strong', {text: 'Nicht teilgenommen'}),
-                element('span', {className: 'status-badge', text: String(notParticipatedRequests.length)}),
-            ]}),
-            element('div', {className: 'event-helper-archive-list event-helper-list', children: buildParticipantEntries(notParticipatedRequests, event)}),
-        ]}) : null;
+        const notParticipatedKey = `not-participated:${event.eventIdentifier}`;
+        const notParticipatedAccordion = notParticipatedRequests.length ? element('details', {
+            className: 'event-helper-archive event-helper-not-participated',
+            attributes: {
+                'data-archive-key': notParticipatedKey,
+                ...(previouslyOpenArchiveKeys.has(notParticipatedKey) ? {open: 'open'} : {}),
+            },
+            children: [
+                element('summary', {children: [
+                    element('strong', {text: 'Nicht teilgenommen'}),
+                    element('span', {className: 'status-badge', text: String(notParticipatedRequests.length)}),
+                ]}),
+                element('div', {className: 'event-helper-archive-list event-helper-list', children: buildParticipantEntries(notParticipatedRequests, event)}),
+            ],
+        }) : null;
         return element('section', {className: 'event-helper-group', children: [
         element('header', {children: [
             element('div', {children: [
@@ -772,22 +790,29 @@ const showEventHelpers = async () => {
             element('div', {className: 'event-helper-section-list', children: eventGroups.map(renderEventHelperGroup)}),
         ],
     });
-    const eventArchive = (title, eventGroups) => element('details', {className: 'event-helper-archive', children: [
-        element('summary', {children: [
-            element('strong', {text: title}),
-            element('span', {className: 'status-badge', text: String(eventGroups.length)}),
-        ]}),
-        element('div', {className: 'event-helper-archive-list', children: eventGroups.map(renderEventHelperGroup)}),
-    ]});
+    const eventArchive = (title, eventGroups, key) => element('details', {
+        className: 'event-helper-archive',
+        attributes: {
+            'data-archive-key': key,
+            ...(previouslyOpenArchiveKeys.has(key) ? {open: 'open'} : {}),
+        },
+        children: [
+            element('summary', {children: [
+                element('strong', {text: title}),
+                element('span', {className: 'status-badge', text: String(eventGroups.length)}),
+            ]}),
+            element('div', {className: 'event-helper-archive-list', children: eventGroups.map(renderEventHelperGroup)}),
+        ],
+    });
     const sections = [
         ...(todayGroups.length ? [eventSection('Heute', todayGroups, 'event-helper-section-today')] : []),
         ...(upcomingGroups.length ? [eventSection('Kommende Veranstaltungen', upcomingGroups)] : []),
         ...(completedCurrentYearGroups.length
-            ? [eventArchive(`Abgeschlossene Veranstaltungen ${currentYear}`, completedCurrentYearGroups)]
+            ? [eventArchive(`Abgeschlossene Veranstaltungen ${currentYear}`, completedCurrentYearGroups, `current-year:${currentYear}`)]
             : []),
         ...[...archiveGroups.entries()]
             .sort(([firstYear], [secondYear]) => secondYear - firstYear)
-            .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups)),
+            .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups, `year:${year}`)),
     ];
     workspace.replaceChildren(
         sectionHeading('Veranstaltungshelfer', 'Anmeldungen nach Veranstaltung gruppiert verwalten'),
