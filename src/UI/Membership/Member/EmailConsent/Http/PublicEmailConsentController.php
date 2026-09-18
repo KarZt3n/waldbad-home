@@ -3,6 +3,7 @@
 namespace App\UI\Membership\Member\EmailConsent\Http;
 
 use App\Logic\Membership\Member\EmailConsent\UseCase\ConfirmMemberEmailConsentUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -32,7 +33,8 @@ readonly class PublicEmailConsentController
 
         $limit = $this->emailConsentConfirmLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $useCase->execute($token);

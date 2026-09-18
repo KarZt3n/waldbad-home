@@ -3,6 +3,7 @@
 namespace App\UI\Event\HelpRequest\Http;
 
 use App\Logic\Event\HelpRequest\UseCase\SubmitEventHelpRequestUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -51,7 +52,8 @@ readonly class PublicEventHelpRequestController
         }
         $limit = $this->eventHelpFormLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warten Sie, bevor Sie eine weitere Helferanmeldung senden.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds, formal: true));
         }
 
         $result = $useCase->execute($eventIdentifier, $firstName, $lastName, $message, $birthDate, $activityIds, $email === '' ? null : $email);

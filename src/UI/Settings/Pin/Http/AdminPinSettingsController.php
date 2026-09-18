@@ -10,6 +10,7 @@ use App\Logic\Settings\Pin\UseCase\SetActionPinUseCase;
 use App\Logic\Settings\Pin\UseCase\SetGlobalPinUseCase;
 use App\Logic\Settings\Pin\UseCase\UpdateProtectedActionsUseCase;
 use App\Logic\Settings\Pin\UseCase\VerifyPinUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -83,7 +84,8 @@ class AdminPinSettingsController extends AbstractController
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
         $limit = $this->pinVerificationLimiter->create($this->getUser()?->getUserIdentifier() ?? $request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Zu viele Versuche. Bitte kurz warten.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds, formal: true));
         }
 
         $payload = $request->getPayload();

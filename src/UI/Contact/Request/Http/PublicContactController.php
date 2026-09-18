@@ -3,6 +3,7 @@
 namespace App\UI\Contact\Request\Http;
 
 use App\Logic\Contact\Request\UseCase\SubmitContactRequestUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -29,7 +30,8 @@ readonly class PublicContactController
 
         $limit = $this->contactFormLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warten Sie, bevor Sie eine weitere Nachricht senden.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds, formal: true));
         }
 
         if ($name === '' || $email === '' || $message === '' || !$privacyAccepted) {

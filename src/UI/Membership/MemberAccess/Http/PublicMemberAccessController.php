@@ -9,6 +9,7 @@ use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\MemberAccess\UseCase\SetMemberEmailConsentSelfServiceUseCase;
 use App\Logic\Membership\MemberAccess\UseCase\UpdateMemberSelfServiceContactUseCase;
 use App\Logic\Membership\MemberMessage\UseCase\SendMemberMessageUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -51,7 +52,8 @@ readonly class PublicMemberAccessController
 
         $limit = $this->memberAccessRequestLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte, bevor du einen weiteren Zugang anforderst.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $useCase->execute($email, $birthDate);
@@ -77,7 +79,8 @@ readonly class PublicMemberAccessController
 
         $limit = $this->memberAccessSessionLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         return new JsonResponse($this->sessionToArray($useCase->execute($token, $password)));
@@ -103,7 +106,8 @@ readonly class PublicMemberAccessController
 
         $limit = $this->memberMessageLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte, bevor du eine weitere Nachricht sendest.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $useCase->execute($token, $password, $memberId, $message);
@@ -136,7 +140,8 @@ readonly class PublicMemberAccessController
 
         $limit = $this->memberSelfServiceUpdateLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $session = $useCase->execute(
@@ -173,7 +178,8 @@ readonly class PublicMemberAccessController
 
         $limit = $this->memberSelfServiceUpdateLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $session = $useCase->execute($token, $password, $memberId, $data->getBoolean('granted'));

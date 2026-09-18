@@ -3,6 +3,12 @@ framework:
     secret: '%env(APP_SECRET)%'
     csrf_protection: true
 
+    # Reverse proxies (docker/stage-access-gateway.conf, ddev-router) sit on the private docker
+    # network in front of the app container, so getClientIp() needs to trust their forwarded
+    # headers instead of falling back to the proxy's own container IP.
+    trusted_proxies: 'private_ranges'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto']
+
     # Note that the session will be started ONLY if you read or write from it.
     session: true
 

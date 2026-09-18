@@ -4,6 +4,7 @@ namespace App\UI\Guestbook\Entry\Http;
 
 use App\Logic\Guestbook\Entry\Query\ListPublishedGuestbookEntriesQuery;
 use App\Logic\Guestbook\Entry\UseCase\SubmitGuestbookEntryUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -43,7 +44,8 @@ readonly class PublicGuestbookController
 
         $limit = $this->guestbookFormLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warten Sie, bevor Sie einen weiteren Eintrag senden.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds, formal: true));
         }
 
         if ($displayName === '' || $message === '') {

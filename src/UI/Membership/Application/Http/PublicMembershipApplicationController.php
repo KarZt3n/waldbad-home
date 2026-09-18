@@ -3,6 +3,7 @@
 namespace App\UI\Membership\Application\Http;
 
 use App\Logic\Membership\Application\UseCase\SubmitMembershipApplicationUseCase;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
@@ -23,9 +24,10 @@ readonly class PublicMembershipApplicationController
     {
         $limit = $this->membershipApplicationLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
             throw new TooManyRequestsHttpException(
-                $limit->getRetryAfter()->getTimestamp() - time(),
-                'Bitte warten Sie, bevor Sie einen weiteren Mitgliedsantrag senden.',
+                $retryAfterSeconds,
+                RateLimitMessage::exceeded($retryAfterSeconds, formal: true),
             );
         }
         $result = $useCase->execute($this->requestMapper->submit($request));

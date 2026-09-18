@@ -13,6 +13,7 @@ use App\Logic\IdentityAccess\Session\UseCase\RefreshSessionUseCase;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\PageAccess;
 use App\Logic\IdentityAccess\User\Model\Role;
+use App\UI\Common\RateLimit\RateLimitMessage;
 use App\UI\IdentityAccess\Security\AccessTokenHandler;
 use App\UI\IdentityAccess\Security\AdminCsrfSubscriber;
 use App\UI\IdentityAccess\Security\AuthenticatedUser;
@@ -61,7 +62,8 @@ readonly class AuthenticationController
 
         $limit = $this->loginRequestLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte, bevor du einen weiteren Anmeldelink anforderst.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         $this->eventPublisher->publish(new LoginRequestedEvent($email));
@@ -81,7 +83,8 @@ readonly class AuthenticationController
 
         $limit = $this->loginSessionLimiter->create($request->getClientIp() ?? 'unknown')->consume();
         if (!$limit->isAccepted()) {
-            throw new TooManyRequestsHttpException($limit->getRetryAfter()->getTimestamp() - time(), 'Bitte warte einen Moment.');
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
         return $this->sessionResponse($request, $useCase->execute($token));
