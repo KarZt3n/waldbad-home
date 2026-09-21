@@ -4,7 +4,9 @@ namespace App\Tests\Unit\Logic\Membership\Member\UseCase;
 
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
+use App\Logic\Membership\ContributionRate\Model\ContributionRate;
 use App\Logic\Membership\Member\Dto\ContributionOutcome;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\{FamilyRole, Member, MemberFunction, PayerType, PaymentDay, PaymentMethod, Salutation};
@@ -41,6 +43,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
                 return new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null);
             },
         );
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -68,6 +71,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         $calculator = $this->createMock(MemberContributionCalculator::class);
         $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), $at)
             ->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createMock(ClockInterface::class);
         $clock->expects(self::never())->method('now');
@@ -103,6 +107,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
                 return new ContributionOutcome(null, 0, null);
             },
         );
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -144,6 +149,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
                 return new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null);
             },
         );
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -171,6 +177,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $calculator = $this->createStub(MemberContributionCalculator::class);
         $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -183,27 +190,108 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         self::assertStringContainsString('IBAN', $result->errors[0]->message);
     }
 
+    /**
+     * Ende-zu-Ende mit einem echten `MemberContributionCalculator` (statt gemockt): Ein Kind, das
+     * über die Kinder-Altersspanne hinausgewachsen ist, wird nicht nur mit dem Einzelpersonen-Satz
+     * neu berechnet, sondern auch mit `familyRole: None` gespeichert — laut Beitragsordnung gilt es
+     * dann als Einzelperson, nicht mehr als „Kind" der Familie.
+     */
+    public function testAgedOutChildIsSavedWithFamilyRoleNoneAfterRecalculation(): void
+    {
+        $parent = $this->member('parent', 'M-0001', familyRole: FamilyRole::Head, birthDate: '1975-01-01');
+        $formerChild = $this->member(
+            'former-child',
+            'M-0002',
+            familyRole: FamilyRole::Child,
+            birthDate: '2000-01-01', // 26 Jahre am Stichtag
+            primaryMemberNumber: 'M-0001',
+        );
+        $stillChild = $this->member(
+            'still-child',
+            'M-0003',
+            familyRole: FamilyRole::Child,
+            birthDate: '2015-01-01', // 11 Jahre am Stichtag
+            primaryMemberNumber: 'M-0001',
+        );
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$parent, $formerChild, $stillChild]);
+        $saved = [];
+        $members->method('save')->willReturnCallback(
+            static function (Member $member) use (&$saved): Member {
+                $saved[$member->id] = $member;
+
+                return $member;
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        (new RecalculateAllMemberContributionsUseCase($members, $this->realCalculator(), $clock, new BoardFamilyExemptionResolver()))->execute();
+
+        self::assertSame(FamilyRole::None, $saved['former-child']->familyRole);
+        self::assertSame(ContributionCategory::IndividualSenior, $saved['former-child']->contributionCategory);
+        self::assertSame(FamilyRole::Child, $saved['still-child']->familyRole);
+    }
+
+    private function realCalculator(): MemberContributionCalculator
+    {
+        $rates = [
+            'individual_junior' => [3000, null, 20],
+            'individual_senior' => [5000, 21, null],
+            'family_adult' => [4000, null, null],
+            'family_child_paying' => [3000, 4, 20],
+            'family_child_exempt' => [0, null, 3],
+            'work_assignment_surcharge' => [1500, 8, 65],
+        ];
+        $manager = $this->createStub(ContributionRateManagerInterface::class);
+        $manager->method('findByCategory')->willReturnCallback(
+            static function (ContributionCategory $category) use ($rates): ?ContributionRate {
+                if (!isset($rates[$category->value])) {
+                    return null;
+                }
+                [$amountCents, $minAge, $maxAge] = $rates[$category->value];
+
+                return new ContributionRate(
+                    id: $category->value,
+                    category: $category,
+                    label: $category->value,
+                    amountCents: $amountCents,
+                    period: PaymentInterval::Yearly,
+                    minAge: $minAge,
+                    maxAge: $maxAge,
+                );
+            },
+        );
+
+        return new MemberContributionCalculator($manager);
+    }
+
     private function member(
         string $id,
         string $memberNumber,
         MemberFunction $function = MemberFunction::Member,
         bool $contributionLiable = true,
         ?string $iban = 'DE89370400440532013000',
+        FamilyRole $familyRole = FamilyRole::None,
+        string $birthDate = '1990-01-01',
+        ?string $primaryMemberNumber = null,
     ): Member {
         return new Member(
             id: $id,
             memberNumber: $memberNumber,
-            primaryMemberNumber: $memberNumber,
+            primaryMemberNumber: $primaryMemberNumber ?? $memberNumber,
             salutation: Salutation::Diverse,
             lastName: 'Muster',
             firstName: 'Max',
-            birthDate: new \DateTimeImmutable('1990-01-01'),
+            birthDate: new \DateTimeImmutable($birthDate),
             street: 'Kirchanger 14',
             postalCode: '14822',
             city: 'Borkheide',
             email: null,
             phone: null,
-            familyRole: FamilyRole::None,
+            familyRole: $familyRole,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
             function: $function,

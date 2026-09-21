@@ -47,6 +47,7 @@ readonly class HouseholdContributionRecalculator
             ));
             try {
                 $candidate = $this->exemption->correct($candidate, $hasBoardMember);
+                $candidate = $candidate->withFamilyRole($this->calculator->resolveFamilyRole($candidate, $otherHouseholdMembers, $now));
                 $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
                 $saved = $this->manager->save($candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents));
             } catch (BusinessRuleViolationException $exception) {

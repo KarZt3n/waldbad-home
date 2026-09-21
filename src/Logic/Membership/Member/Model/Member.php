@@ -189,6 +189,55 @@ readonly class Member
         );
     }
 
+    /**
+     * Wechselt die Familienzugehörigkeit — insbesondere für den automatischen Übergang „Kind" →
+     * „Einzelperson" (`FamilyRole::None`), sobald ein Kind laut Beitragsordnung nach Vollendung des
+     * 21. Lebensjahres aus der Familien-Kinderpreisung herausgewachsen ist (siehe
+     * `MemberContributionCalculator::resolveFamilyRole()`, angewendet bei jeder Neuberechnung).
+     */
+    public function withFamilyRole(FamilyRole $familyRole): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
     public function withOneTimeCharge(ContributionCharge $charge): self
     {
         return new self(

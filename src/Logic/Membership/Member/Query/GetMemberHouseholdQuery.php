@@ -53,13 +53,20 @@ readonly class GetMemberHouseholdQuery
         );
     }
 
+    /**
+     * `None` steht hier absichtlich hinter `Head`/`Partner`, nicht auf derselben Stufe: Ein
+     * Haushaltsmitglied kann `familyRole: None` nicht nur als „echte" Einzelperson haben, sondern
+     * auch, weil ein ehemaliges Kind laut Beitragsordnung automatisch dorthin gewechselt ist (siehe
+     * `MemberContributionCalculator::resolveFamilyRole()`) — es soll dann weiterhin eher bei den
+     * (verbliebenen) Kindern als vor dem eigentlichen Hauptmitglied/Partner einsortiert werden.
+     */
     private static function sortRank(Member $member): int
     {
         return match ($member->familyRole) {
             FamilyRole::Head => 0,
             FamilyRole::Partner => 1,
-            FamilyRole::Child => 2,
-            FamilyRole::None => 0,
+            FamilyRole::None => 2,
+            FamilyRole::Child => 3,
         };
     }
 }

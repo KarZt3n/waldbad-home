@@ -66,6 +66,7 @@ readonly class RecalculateAllMemberContributionsUseCase
                 ));
                 try {
                     $candidate = $this->exemption->correct($candidate, $hasBoardMember);
+                    $candidate = $candidate->withFamilyRole($this->calculator->resolveFamilyRole($candidate, $otherHouseholdMembers, $now));
                     $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
                     $this->manager->save($candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents));
                     ++$updated;

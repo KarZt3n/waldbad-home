@@ -34,6 +34,7 @@ final class HouseholdContributionRecalculatorTest extends TestCase
 
         $calculator = $this->createStub(MemberContributionCalculator::class);
         $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -71,6 +72,7 @@ final class HouseholdContributionRecalculatorTest extends TestCase
                 return new ContributionOutcome(null, 0, null);
             },
         );
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -111,6 +113,7 @@ final class HouseholdContributionRecalculatorTest extends TestCase
                 return new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null);
             },
         );
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
@@ -136,6 +139,7 @@ final class HouseholdContributionRecalculatorTest extends TestCase
 
         $calculator = $this->createStub(MemberContributionCalculator::class);
         $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));

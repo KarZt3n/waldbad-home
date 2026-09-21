@@ -15,6 +15,7 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\Member\Service\MemberContributionCalculator;
 use App\Logic\Membership\PaymentInterval;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class MemberContributionCalculatorTest extends TestCase
@@ -184,6 +185,97 @@ final class MemberContributionCalculatorTest extends TestCase
 
         self::assertSame(ContributionCategory::IndividualSenior, $outcome->category);
         self::assertSame(5000, $outcome->amountCents);
+    }
+
+    /**
+     * `resolveFamilyRole()` ist das Gegenstück zur automatischen Umstellung der Beitragsberechnung
+     * oben: Ist ein Kind über die Kinder-Altersspanne hinausgewachsen, wechselt nicht nur die
+     * Berechnung, sondern auch `familyRole` selbst auf „Einzelperson" (`FamilyRole::None`) — die
+     * aufrufende Stelle (siehe `RecalculateAllMemberContributionsUseCase`) speichert das dann.
+     */
+    public function testResolveFamilyRoleSwitchesAgedOutChildToNone(): void
+    {
+        $calculator = $this->calculator();
+        $formerChild = $this->member(birthDate: '2000-01-01', familyRole: FamilyRole::Child); // 26 Jahre
+
+        self::assertSame(FamilyRole::None, $calculator->resolveFamilyRole($formerChild, [], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    public function testResolveFamilyRoleKeepsAChildStillWithinTheChildPricingAge(): void
+    {
+        $calculator = $this->calculator();
+        $child = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Child); // 11 Jahre
+
+        self::assertSame(FamilyRole::Child, $calculator->resolveFamilyRole($child, [], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    public function testResolveFamilyRoleLeavesNoneUnchanged(): void
+    {
+        $calculator = $this->calculator();
+        $member = $this->member(birthDate: '2005-01-01', familyRole: FamilyRole::None);
+
+        self::assertSame(FamilyRole::None, $calculator->resolveFamilyRole($member, [], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    /**
+     * Kehrseite von `hasQualifyingChild()`: Gibt es im Haushalt gar kein Kind (mehr), das
+     * qualifiziert, ist es laut Beitragsordnung keine „Familie" mehr — dann werden auch
+     * Hauptmitglied und Familienangehörige/r automatisch zu Einzelpersonen, nicht nur die
+     * Berechnung wechselt (kein Familienrabatt mehr), sondern auch `familyRole` selbst.
+     */
+    #[DataProvider('headOrPartnerProvider')]
+    public function testResolveFamilyRoleSwitchesHeadOrPartnerToNoneWithoutAnyQualifyingChildInTheHousehold(FamilyRole $familyRole): void
+    {
+        $calculator = $this->calculator();
+        $candidate = $this->member(birthDate: '1985-01-01', familyRole: $familyRole, id: 'candidate');
+        $otherAdult = $this->member(birthDate: '1987-01-01', familyRole: FamilyRole::Partner, id: 'other-adult');
+        $formerChild = $this->member(birthDate: '2000-01-01', familyRole: FamilyRole::Child, id: 'former-child'); // 26 Jahre, herausgewachsen
+
+        self::assertSame(
+            FamilyRole::None,
+            $calculator->resolveFamilyRole($candidate, [$otherAdult, $formerChild], new \DateTimeImmutable('2026-06-01')),
+        );
+    }
+
+    #[DataProvider('headOrPartnerProvider')]
+    public function testResolveFamilyRoleKeepsHeadOrPartnerWithAQualifyingChildInTheHousehold(FamilyRole $familyRole): void
+    {
+        $calculator = $this->calculator();
+        $candidate = $this->member(birthDate: '1985-01-01', familyRole: $familyRole, id: 'candidate');
+        $child = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Child, id: 'child'); // 11 Jahre, qualifiziert noch
+
+        self::assertSame(
+            $familyRole,
+            $calculator->resolveFamilyRole($candidate, [$child], new \DateTimeImmutable('2026-06-01')),
+        );
+    }
+
+    /**
+     * Abgrenzung zu den beiden Tests oben: Eine frisch beigetretene Familie ganz ohne jemals ein
+     * Kind (kein einziges `familyRole: Child`-Mitglied im Haushalt) darf nicht automatisch zu
+     * Einzelpersonen werden — die Regel greift nur, wenn tatsächlich Kinder da waren und
+     * herausgewachsen sind, nicht schon bei bloßem Fehlen von Kindern von Anfang an.
+     */
+    #[DataProvider('headOrPartnerProvider')]
+    public function testResolveFamilyRoleKeepsHeadOrPartnerWhenTheHouseholdNeverHadAChildAtAll(FamilyRole $familyRole): void
+    {
+        $calculator = $this->calculator();
+        $candidate = $this->member(birthDate: '1985-01-01', familyRole: $familyRole, id: 'candidate');
+        $otherAdult = $this->member(birthDate: '1987-01-01', familyRole: FamilyRole::Partner, id: 'other-adult');
+
+        self::assertSame(
+            $familyRole,
+            $calculator->resolveFamilyRole($candidate, [$otherAdult], new \DateTimeImmutable('2026-06-01')),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{FamilyRole}>
+     */
+    public static function headOrPartnerProvider(): iterable
+    {
+        yield 'Head' => [FamilyRole::Head];
+        yield 'Partner' => [FamilyRole::Partner];
     }
 
     public function testTwoAdultsWithSameHouseholdWithoutQualifyingChildGetNoFamilyDiscount(): void

@@ -28,9 +28,10 @@ use App\Logic\Membership\Member\Model\Member;
  * Kinder-Beitragssätze (`family_child_exempt`/`family_child_paying`) konfigurierte Altersspanne
  * hinaus, wechselt seine eigene Beitragsberechnung automatisch auf den Einzelpersonen-Satz — und
  * dasselbe Kind zählt ab diesem Zeitpunkt auch nicht mehr als Grund für den Familienrabatt der
- * Eltern. Die Hauptnummer und `familyRole` bleiben davon unberührt (die Familienzugehörigkeit an
- * sich endet nicht automatisch); es ändert sich ausschließlich die Beitragsberechnung. Zwei
- * Erwachsene mit derselben Hauptnummer bleiben deshalb „Familie“, erhalten aber keinen
+ * Eltern. Die aufrufende Stelle (siehe `resolveFamilyRole()`) setzt bei derselben Gelegenheit auch
+ * die `familyRole` von `Child` auf `None` („Einzelperson") — die Hauptnummer bleibt unverändert,
+ * die Person bleibt also weiter unter demselben Haushalt geführt, gilt aber nicht mehr als „Kind"
+ * der Familie. Zwei Erwachsene mit derselben Hauptnummer bleiben „Familie“, erhalten aber keinen
  * Familienrabatt mehr, sobald kein Kind diese Altersspanne mehr erfüllt.
  *
  * Welcher Beitragssatz zutrifft, wird ausschließlich über die bei jedem Beitragssatz hinterlegte
@@ -80,6 +81,52 @@ readonly class MemberContributionCalculator
         $surchargeCents = $surchargeRate !== null && $surchargeRate->appliesToAge($age) ? $surchargeRate->annualAmountCents() : null;
 
         return new ContributionOutcome($category, $rate->annualAmountCents(), $surchargeCents);
+    }
+
+    /**
+     * Die laut Beitragsordnung passende Familienzugehörigkeit zu `$at`, in beide Richtungen:
+     *
+     * - Ist `$candidate` aktuell `familyRole: Child`, aber bereits aus der Familien-Kinderpreisung
+     *   „herausgewachsen" (`hasAgedOutOfChildPricing()`), gilt sie/er automatisch als
+     *   „Einzelperson" (`FamilyRole::None`).
+     * - Ist `$candidate` `Head`/`Partner`, gibt es im Haushalt (noch) mindestens ein Mitglied mit
+     *   `familyRole: Child`, aber keines davon qualifiziert mehr (`hasQualifyingChild()` liefert
+     *   `false`) — die Kinder sind also alle aus der Kinderpreisung herausgewachsen, nicht bloß nie
+     *   vorhanden gewesen —, gilt sie/er ebenfalls automatisch als „Einzelperson": Ohne verbleibendes
+     *   Kind ist es laut Beitragsordnung keine „Familie" mehr. Eine frisch angelegte Familie ganz
+     *   ohne jemals ein Kind (z. B. ein junges Ehepaar bei Beitritt) bleibt davon unberührt — dafür
+     *   muss mindestens ein `familyRole: Child`-Mitglied im Haushalt (egal welchen Alters) stehen.
+     *
+     * Beides unabhängig von Austritt oder Beitragsbefreiung, da es sich um den Familienstatus und
+     * nicht um die Beitragspflicht handelt; bereits `None` bleibt unverändert (keine automatische
+     * Rückstufung in die andere Richtung, etwa nach der Geburt eines neuen Kindes — das entscheidet
+     * weiterhin die Verwaltung manuell). Die Hauptnummer selbst ändert sich dadurch nie — die
+     * Person bleibt im selben Haushalt geführt. Aufrufende Stellen wenden das Ergebnis per
+     * `Member::withFamilyRole()` an, bevor sie `calculate()` für denselben Kandidaten aufrufen
+     * (siehe `RecalculateAllMemberContributionsUseCase`, `HouseholdContributionRecalculator`).
+     *
+     * @param list<Member> $householdMembers Andere Mitglieder mit derselben Hauptnummer wie $candidate (ohne $candidate selbst).
+     */
+    public function resolveFamilyRole(Member $candidate, array $householdMembers, \DateTimeImmutable $at): FamilyRole
+    {
+        if ($candidate->familyRole === FamilyRole::Child) {
+            $hasAgedOut = $this->hasAgedOutOfChildPricing(
+                $candidate->age($at),
+                $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge,
+                $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge,
+            );
+
+            return $hasAgedOut ? FamilyRole::None : FamilyRole::Child;
+        }
+
+        if (($candidate->familyRole === FamilyRole::Head || $candidate->familyRole === FamilyRole::Partner)
+            && $this->hasAnyChildRole($householdMembers)
+            && !$this->hasQualifyingChild($householdMembers, $at)
+        ) {
+            return FamilyRole::None;
+        }
+
+        return $candidate->familyRole;
     }
 
     /**
@@ -148,11 +195,11 @@ readonly class MemberContributionCalculator
         // Laut Beitrags- und Kassenordnung werden Familienmitglieder nach Vollendung des 21.
         // Lebensjahres ohne fristgemäße Kündigung automatisch Einzelmitglieder: Ist die Person
         // älter als die für Familien-Kinder konfigurierte Altersspanne erlaubt, gilt automatisch
-        // der Einzelpersonen-Satz. Die Hauptnummer und Familienzugehörigkeit (`familyRole`) bleiben
-        // dabei unverändert bestehen — nur die Beitragsberechnung wechselt auf Einzelmitgliedschaft.
-        // Liegt dagegen gar keine Altersspanne vor, in die die Person fallen könnte (z. B. weil
-        // beide Kinder-Beitragssätze gelöscht wurden oder sie jünger als jede konfigurierte Spanne
-        // ist), bleibt das ein zu meldender Konfigurationsfehler statt einer stillen Annahme.
+        // der Einzelpersonen-Satz — die Hauptnummer bleibt unverändert (siehe `resolveFamilyRole()`
+        // für den zugehörigen Wechsel von `familyRole: Child` auf `None`). Liegt dagegen gar keine
+        // Altersspanne vor, in die die Person fallen könnte (z. B. weil beide Kinder-Beitragssätze
+        // gelöscht wurden oder sie jünger als jede konfigurierte Spanne ist), bleibt das ein zu
+        // meldender Konfigurationsfehler statt einer stillen Annahme.
         if ($this->hasAgedOutOfChildPricing($age, $childExemptRate?->maxAge, $childPayingRate?->maxAge)) {
             return $this->matchIndividualCategory($age)
                 ?? throw new BusinessRuleViolationException('Für das Alter dieses ehemaligen Familienmitglieds ist kein passender Beitragssatz (Einzelperson) hinterlegt.');
@@ -217,6 +264,25 @@ readonly class MemberContributionCalculator
     }
 
     /**
+     * Ob im Haushalt (unabhängig vom Alter) überhaupt ein Mitglied mit `familyRole: Child` geführt
+     * wird — Grundlage für `resolveFamilyRole()`, um „Kinder sind alle herausgewachsen" (Head/Partner
+     * werden zu Einzelperson) von „es gab nie Kinder" (Head/Partner bleiben unverändert) zu
+     * unterscheiden.
+     *
+     * @param list<Member> $householdMembers
+     */
+    private function hasAnyChildRole(array $householdMembers): bool
+    {
+        foreach ($householdMembers as $member) {
+            if ($member->familyRole === FamilyRole::Child) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Symmetrisch zu `hasQualifyingChild()`: der Familienrabatt für Kinder setzt einen eigenen
      * Elternteil (Head/Partner) im Haushalt voraus, der selbst bereits aus der Kinderpreisung
      * „herausgewachsen" ist — sonst handelt es sich um keine „Familie" im Sinne der
@@ -244,9 +310,11 @@ readonly class MemberContributionCalculator
     /**
      * Geburtsreihenfolge des Kandidaten unter allen Kindern desselben Haushalts (1-basiert), die
      * selbst noch nicht aus der Kinderpreisung „herausgewachsen" sind (`hasAgedOutOfChildPricing`).
-     * Ein über 21-jähriges Geschwisterkind bleibt zwar `familyRole: Child` (siehe oben), zählt aber
-     * nicht mehr als eines der „ersten drei Kinder" der Familie mit — sonst würde es z. B. ein
-     * jüngeres, tatsächlich drittes Kind fälschlich zum vierten (und damit ebenfalls
+     * Ein über 21-jähriges Geschwisterkind bekommt zwar durch `resolveFamilyRole()` bei der nächsten
+     * Neuberechnung `familyRole: None`, kann aber bis dahin (oder falls diese Stelle mit veralteten
+     * Haushaltsdaten aufgerufen wird) noch als `familyRole: Child` vorliegen — zählt dann aber
+     * trotzdem nicht mehr als eines der „ersten drei Kinder" der Familie mit, sonst würde es z. B.
+     * ein jüngeres, tatsächlich drittes Kind fälschlich zum vierten (und damit ebenfalls
      * beitragsfreien) Kind machen, obwohl es unter den noch aktiven Kindern erst das dritte ist.
      *
      * Bei gleichem Geburtsdatum (z. B. Zwillingen) reicht `birthDate` allein als Sortierschlüssel
