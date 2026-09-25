@@ -689,7 +689,7 @@ Benutzer ohne globale Administratorrolle können im Modul Seiten zusätzlich auf
 
 Das Modul „Vermietung“ (`Rental`) bündelt vermietbare Angebote des Waldbads; erstes Untermodul ist die Sauna (`Rental/Sauna`, CMS-Modul `rental_sauna`). In der Redaktion liegt unter „Vermietung“ je Untermodul eine eigene Reiterebene, für die Sauna mit „Anmeldungen“, „Saison“ und „Kosten“.
 
-Eine Sauna-Saison besitzt eine Bezeichnung, einen Beginn, ein optionales Ende, die Dauer einer Buchungseinheit (15–720 Minuten) und einen Wochenplan mit beliebig vielen, sich nicht überschneidenden Zeitfenstern je Wochentag (Mo–So). Jedes Zeitfenster wird im Kalender in Buchungseinheiten der Saison zerlegt; angebrochene Restzeiten ergeben keine Einheit.
+Eine Sauna-Saison besitzt einen Beginn, ein optionales Ende, die Dauer einer Buchungseinheit (15–720 Minuten) und einen Wochenplan mit beliebig vielen, sich nicht überschneidenden Zeitfenstern je Wochentag (Mo–So). Jedes Zeitfenster wird im Kalender in Buchungseinheiten der Saison zerlegt; angebrochene Restzeiten ergeben keine Einheit.
 
 Es ist immer nur eine Saison aktiv. Wird eine neue Saison angelegt, werden alle noch offenen Saisons automatisch zum Beginn der neuen Saison abgeschlossen, frühestens zum heutigen Tag; ihr geplantes Enddatum bleibt dabei unverändert. Im Bearbeitungsdialog kann eine Saison zusätzlich über „Saison abschließen“ ab heute abgeschlossen werden. Ab dem Abschlusstag ist sie nicht mehr buchbar; bestehende Anmeldungen bleiben erhalten.
 
@@ -702,3 +702,11 @@ Unterhalb des Kalenders bietet der Button „Individuelle Anfrage“ dasselbe Fo
 Neue Anfragen erhalten den Status „Offen“ und belegen den Zeitraum bereits, damit er nicht doppelt angefragt wird. In der Verwaltung werden sie angenommen oder abgelehnt; abgelehnte Anfragen geben den Zeitraum im Kalender wieder frei. Eine Anfrage kann nur angenommen werden, wenn keine andere angenommene Anfrage denselben Zeitraum belegt.
 
 Beim Absenden wird die Person wie bei der Helferanmeldung automatisch einem Mitglied zugeordnet. Das Matching liegt in der Mitgliederverwaltung (`MemberIdentityMatcher`) und steht anderen Modulen über die BusinessQuery `FindMatchingMemberQuery` zur Verfügung. Die Vermietung nutzt sie ausschließlich über ihr eigenes Adapter-Interface `SaunaGuestMatcherInterface` und speichert Mitglieds-ID und Mitgliedsnummer zum Zeitpunkt der Anfrage.
+
+## 23. Fachliche Erweiterung: Fotos
+
+Das Modul „Fotos“ (`Media/PhotoAlbum`, CMS-Modul `photos`) verwaltet das Fotoarchiv der Website. Ein Eintrag besteht aus einem Titel, der im Frontend unverändert angezeigt wird (z. B. „Flohmarkt am 26.04.2026“), einem Datum für Jahreszuordnung und Sortierung, der Sichtbarkeit sowie bis zu zehn Aktionsbuttons wie bei Veranstaltungen – etwa „Öffnen“ für das Fotoalbum und „Ergebnisse“ für eine Ergebnisliste, jeweils mit URL oder CMS-Seite als Ziel. Einträge ohne Aktionsbutton erscheinen als reiner Hinweis.
+
+Öffentliche Seiten binden das Archiv über den Blocktyp `extension` mit dem Schlüssel `photo_albums` ein (`GET /api/public/v1/photo-albums`). Die Einträge werden nach Jahren gruppiert und absteigend sortiert; die zwei neuesten Jahre sind aufgeklappt.
+
+Die Einträge der Bestandsseite „Fotos u.a.“ (2003–2026) liegen in `docs/content-migration/photo-albums.json` und werden mit `bin/console app:photo-albums:import` übernommen. Der Import ist wiederholbar; Einträge mit gleichem Titel und Datum werden übersprungen. Google-Kurzlinks (`goo.gl`) wurden dabei auf ihre dauerhaften Ziel-URLs aufgelöst. Ergebnislisten und Audio-/Videodateien, die noch auf der Bestandsdomain liegen, müssen vor dem Domainwechsel in die Medienbibliothek übernommen werden.

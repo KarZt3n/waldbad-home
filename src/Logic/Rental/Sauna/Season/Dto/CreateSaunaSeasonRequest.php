@@ -10,7 +10,6 @@ readonly class CreateSaunaSeasonRequest
      * @param list<SaunaOpeningHours> $openingHours
      */
     public function __construct(
-        public string $name,
         public \DateTimeImmutable $startsOn,
         public ?\DateTimeImmutable $endsOn,
         public int $slotDurationMinutes,

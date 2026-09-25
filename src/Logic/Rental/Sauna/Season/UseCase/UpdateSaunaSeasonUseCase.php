@@ -18,7 +18,6 @@ readonly class UpdateSaunaSeasonUseCase
     public function execute(UpdateSaunaSeasonRequest $request): SaunaSeasonResponse
     {
         $season = $this->manager->get($request->id)->revise(
-            name: trim($request->name),
             startsOn: $request->startsOn,
             endsOn: $request->endsOn,
             slotDurationMinutes: $request->slotDurationMinutes,

@@ -16,4 +16,5 @@ enum CmsModule: string
     case UserManagement = 'user_management';
     case MemberMessages = 'member_messages';
     case RentalSauna = 'rental_sauna';
+    case Photos = 'photos';
 }

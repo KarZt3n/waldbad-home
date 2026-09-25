@@ -42,7 +42,6 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         );
 
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
-            'name' => 'Wintersaison',
             'startsOn' => $tomorrow,
             'endsOn' => null,
             'slotDurationMinutes' => 60,
@@ -55,7 +54,6 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         // Eine weitere Saison schließt die offene automatisch zu ihrem Beginn ab, ohne deren Enddatum zu setzen.
         $successorStart = (new \DateTimeImmutable('+30 days'))->format('Y-m-d');
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
-            'name' => 'Nachfolgesaison',
             'startsOn' => $successorStart,
             'endsOn' => null,
             'slotDurationMinutes' => 60,
@@ -173,14 +171,14 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertNull($this->responseData()['season']);
 
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
-        $this->createSeason('Abgelaufene Saison', '-60 days', '-30 days', $headers);
+        $this->createSeason('-60 days', '-30 days', $headers);
         $this->client->request('GET', '/api/public/v1/sauna/calendar');
         self::assertNull($this->responseData()['season']);
 
         $upcomingStart = (new \DateTimeImmutable('+40 days'))->format('Y-m-d');
-        $upcomingId = $this->createSeason('Kommende Saison', '+40 days', null, $headers);
+        $upcomingId = $this->createSeason('+40 days', null, $headers);
         $this->client->request('GET', '/api/public/v1/sauna/calendar');
-        self::assertSame(['name' => 'Kommende Saison', 'startsOn' => $upcomingStart], $this->responseData()['season']);
+        self::assertSame(['startsOn' => $upcomingStart, 'endsOn' => null], $this->responseData()['season']);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$upcomingId.'/close', [], $headers);
         self::assertResponseIsSuccessful();
@@ -189,10 +187,9 @@ final class SaunaBookingWorkflowTest extends WebTestCase
     }
 
     /** @param array<string, string> $headers */
-    private function createSeason(string $name, string $startsOn, ?string $endsOn, array $headers): string
+    private function createSeason(string $startsOn, ?string $endsOn, array $headers): string
     {
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
-            'name' => $name,
             'startsOn' => (new \DateTimeImmutable($startsOn))->format('Y-m-d'),
             'endsOn' => $endsOn === null ? null : (new \DateTimeImmutable($endsOn))->format('Y-m-d'),
             'slotDurationMinutes' => 60,

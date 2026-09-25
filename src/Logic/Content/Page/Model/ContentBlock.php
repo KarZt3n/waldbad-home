@@ -147,6 +147,7 @@ readonly class ContentBlock
             'next_work_assignment',
             'next_event_or_work_assignment',
             'sauna',
+            'photo_albums',
         ], true)) {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
         }

@@ -86,7 +86,7 @@ readonly class SaunaSlotAvailability
                 }
                 $slots[] = new SaunaCalendarSlot($slot->startTime, $slot->endTime, $state);
             }
-            $calendar[] = new SaunaCalendarDay($day, $season?->name, $slots);
+            $calendar[] = new SaunaCalendarDay($day, $slots);
         }
 
         return $calendar;

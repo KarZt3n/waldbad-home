@@ -1085,11 +1085,20 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
  * Aktionsbutton-Editor (Beschriftung + Ziel-URL/-Seite, mehrere möglich) — gemeinsam genutzt von
  * `openEventDialog` und `openEventTemplateDialog`. `callToActions` wird in place mutiert.
  */
-const buildCallToActionEditor = (callToActions, pages, dialogKey) => {
+/**
+ * Editor für Aktionsbuttons (Beschriftung + URL oder CMS-Seite) — genutzt von Veranstaltungen,
+ * Vorlagen und dem Modul „Fotos“ (`admin/photos.js`). `callToActions` wird in place gepflegt.
+ */
+const buildCallToActionEditor = (callToActions, pages, dialogKey, options = {}) => {
+    const {
+        legend = 'Weitere Aktionsbuttons',
+        hint = 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.',
+        defaultLabel = 'Mehr erfahren',
+    } = options;
     const actionList = element('div', {className: 'event-call-action-editor-list'});
     const renderActions = () => {
         actionList.replaceChildren(...callToActions.map((action, actionIndex) => {
-            const label = field('Button-Beschriftung', `event-action-label-${dialogKey}-${actionIndex}`, action.label || 'Mehr erfahren');
+            const label = field('Button-Beschriftung', `event-action-label-${dialogKey}-${actionIndex}`, action.label || defaultLabel);
             const labelInput = label.querySelector('input');
             labelInput.maxLength = 80;
             labelInput.required = true;
@@ -1150,14 +1159,14 @@ const buildCallToActionEditor = (callToActions, pages, dialogKey) => {
     };
     const addAction = element('button', {className: 'secondary-button', text: '＋ Aktionsbutton hinzufügen', attributes: {type: 'button'}});
     addAction.addEventListener('click', () => {
-        callToActions.push({label: 'Mehr erfahren', url: '/', pageId: null});
+        callToActions.push({label: callToActions.length === 0 ? defaultLabel : 'Mehr erfahren', url: '/', pageId: null});
         renderActions();
     });
     renderActions();
 
     return element('fieldset', {className: 'event-call-action-editor', children: [
-        element('legend', {text: 'Weitere Aktionsbuttons'}),
-        element('small', {text: 'Optional können weitere Buttons auf eine URL oder eine CMS-Seite verweisen.'}),
+        element('legend', {text: legend}),
+        element('small', {text: hint}),
         actionList,
         addAction,
     ]});
@@ -1717,4 +1726,4 @@ const showEventManagement = async (segments = []) => {
     workspace.replaceChildren(tabStrip, panel);
 };
 
-export {showEventManagement};
+export {showEventManagement, buildCallToActionEditor};

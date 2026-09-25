@@ -19,6 +19,7 @@ import {showEventManagement} from './events.js';
 import {showContactFeedbackManagement} from './contact.js';
 import {showSettingsManagement} from './settings.js';
 import {showRentalManagement} from './rental.js';
+import {showPhotoManagement} from './photos.js';
 
 let workspace = null;
 
@@ -179,6 +180,10 @@ const mountAdminShell = async (session) => {
             if (!(await ensurePinUnlocked('members.module_access', 'Mitgliederverwaltung'))) return;
             await showMembershipManagement(segments);
         }));
+    }
+
+    if (hasModule('photos')) {
+        menuItems.push(addMenu('Fotos', 'fotos', ['fotos'], showPhotoManagement));
     }
 
     if (hasModule('rental_sauna')) {

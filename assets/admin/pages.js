@@ -784,6 +784,7 @@ const blockEditor = (block, index, handlers) => {
             element('option', {text: 'Arbeitseinsatz: nächste', attributes: {value: 'next_work_assignment'}}),
             element('option', {text: 'Veranstaltung/Arbeitseinsatz: nächste', attributes: {value: 'next_event_or_work_assignment'}}),
             element('option', {text: 'Sauna: Belegungskalender und Anfrage', attributes: {value: 'sauna'}}),
+            element('option', {text: 'Fotos: Archiv nach Jahren', attributes: {value: 'photo_albums'}}),
         ]});
         select.value = block.extensionKey || 'membership_application';
         block.extensionKey = select.value;

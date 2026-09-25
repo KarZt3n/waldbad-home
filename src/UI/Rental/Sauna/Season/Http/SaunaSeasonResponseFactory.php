@@ -10,7 +10,6 @@ readonly class SaunaSeasonResponseFactory
     /**
      * @return array{
      *     id: string,
-     *     name: string,
      *     startsOn: string,
      *     endsOn: string|null,
      *     slotDurationMinutes: int,
@@ -24,7 +23,6 @@ readonly class SaunaSeasonResponseFactory
     {
         return [
             'id' => $season->id,
-            'name' => $season->name,
             'startsOn' => $season->startsOn->format('Y-m-d'),
             'endsOn' => $season->endsOn?->format('Y-m-d'),
             'slotDurationMinutes' => $season->slotDurationMinutes,

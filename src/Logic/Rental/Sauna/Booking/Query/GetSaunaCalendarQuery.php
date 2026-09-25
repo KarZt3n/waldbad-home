@@ -37,8 +37,8 @@ readonly class GetSaunaCalendarQuery
             to: $from->modify(sprintf('+%d days', $request->days - 1)),
             days: $this->availability->calendar($from, $request->days, $now),
             terms: SaunaTermsResponse::fromTerms($this->terms->current()),
-            seasonName: $season?->name,
             seasonStartsOn: $season?->startsOn,
+            seasonEndsOn: $season?->endsOn,
         );
     }
 }

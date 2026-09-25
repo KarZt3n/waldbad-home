@@ -19,7 +19,6 @@ readonly class SaunaSeasonMapper
     {
         return new SaunaSeason(
             id: $entity->getId(),
-            name: $entity->getName(),
             startsOn: $entity->getStartsOn(),
             endsOn: $entity->getEndsOn(),
             slotDurationMinutes: $entity->getSlotDurationMinutes(),
@@ -41,7 +40,6 @@ readonly class SaunaSeasonMapper
     {
         $entity = new SaunaSeasonEntity(
             id: $season->id,
-            name: $season->name,
             startsOn: $season->startsOn,
             endsOn: $season->endsOn,
             slotDurationMinutes: $season->slotDurationMinutes,
@@ -57,7 +55,6 @@ readonly class SaunaSeasonMapper
     public function updateEntity(SaunaSeason $season, SaunaSeasonEntity $entity): void
     {
         $entity->update(
-            name: $season->name,
             startsOn: $season->startsOn,
             endsOn: $season->endsOn,
             slotDurationMinutes: $season->slotDurationMinutes,

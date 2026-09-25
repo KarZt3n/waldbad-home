@@ -32,7 +32,6 @@ final class SaunaSlotAvailabilityTest extends TestCase
         );
 
         self::assertCount(2, $days);
-        self::assertSame('Wintersaison', $days[0]->seasonName);
         $states = array_map(static fn ($slot): string => $slot->startTime.' '.$slot->state->value, $days[0]->slots);
         self::assertSame(['17:00 past', '18:00 booked', '19:00 free', '20:00 free'], $states);
         self::assertSame([], $days[1]->slots);
@@ -81,7 +80,6 @@ final class SaunaSlotAvailabilityTest extends TestCase
         $now = new \DateTimeImmutable('2026-09-01T00:00:00');
         $season = new SaunaSeason(
             id: 'season-1',
-            name: 'Wintersaison',
             startsOn: new \DateTimeImmutable('2026-10-01'),
             endsOn: null,
             slotDurationMinutes: 60,

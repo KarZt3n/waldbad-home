@@ -131,7 +131,6 @@ final class SaunaSeasonTest extends TestCase
 
         return new SaunaSeason(
             id: 'season-1',
-            name: 'Wintersaison',
             startsOn: new \DateTimeImmutable($startsOn),
             endsOn: $endsOn === null ? null : new \DateTimeImmutable($endsOn),
             slotDurationMinutes: 60,

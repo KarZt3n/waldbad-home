@@ -63,11 +63,10 @@ readonly class SaunaBookingResponseFactory
      *     days: list<array{
      *         date: string,
      *         weekday: int,
-     *         seasonName: string|null,
      *         slots: list<array{startTime: string, endTime: string, state: string}>
      *     }>,
      *     terms: array{priceCents: int, priceUnitMinutes: int, minPersons: int, maxPersons: int, updatedAt: string|null},
-     *     season: array{name: string, startsOn: string}|null
+     *     season: array{startsOn: string, endsOn: string|null}|null
      * }
      */
     public function calendar(SaunaCalendarResponse $calendar): array
@@ -79,7 +78,6 @@ readonly class SaunaBookingResponseFactory
                 static fn (SaunaCalendarDay $day): array => [
                     'date' => $day->date->format('Y-m-d'),
                     'weekday' => (int) $day->date->format('N'),
-                    'seasonName' => $day->seasonName,
                     'slots' => array_map(
                         static fn (SaunaCalendarSlot $slot): array => [
                             'startTime' => $slot->startTime,
@@ -92,9 +90,9 @@ readonly class SaunaBookingResponseFactory
                 $calendar->days,
             ),
             'terms' => $this->termsResponseFactory->terms($calendar->terms),
-            'season' => $calendar->seasonName === null || $calendar->seasonStartsOn === null ? null : [
-                'name' => $calendar->seasonName,
+            'season' => $calendar->seasonStartsOn === null ? null : [
                 'startsOn' => $calendar->seasonStartsOn->format('Y-m-d'),
+                'endsOn' => $calendar->seasonEndsOn?->format('Y-m-d'),
             ],
         ];
     }

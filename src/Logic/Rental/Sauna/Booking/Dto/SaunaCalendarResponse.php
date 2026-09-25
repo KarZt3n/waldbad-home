@@ -15,9 +15,9 @@ readonly class SaunaCalendarResponse
         public array $days,
         /** Konditionen, die das Anfrageformular zur Personenauswahl und Preisanzeige benötigt. */
         public SaunaTermsResponse $terms,
-        /** Laufende oder nächste kommende Saison; `null` = aktuell keine Saison (alle abgelaufen/abgeschlossen). */
-        public ?string $seasonName,
+        /** Beginn der laufenden oder nächsten kommenden Saison; `null` = aktuell keine Saison (alle abgelaufen/abgeschlossen). */
         public ?\DateTimeImmutable $seasonStartsOn,
+        public ?\DateTimeImmutable $seasonEndsOn,
     ) {
     }
 }

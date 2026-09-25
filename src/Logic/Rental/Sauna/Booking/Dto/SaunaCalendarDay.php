@@ -9,7 +9,6 @@ readonly class SaunaCalendarDay
      */
     public function __construct(
         public \DateTimeImmutable $date,
-        public ?string $seasonName,
         public array $slots,
     ) {
     }

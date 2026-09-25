@@ -19,7 +19,6 @@ readonly class SaunaSeasonRequestMapper
         $data = $request->getPayload();
 
         return new CreateSaunaSeasonRequest(
-            name: $this->name($data),
             startsOn: $this->requiredDate($data, 'startsOn', 'Der Saisonbeginn'),
             endsOn: $this->optionalDate($data, 'endsOn', 'Das Saisonende'),
             slotDurationMinutes: $this->slotDuration($data),
@@ -33,23 +32,11 @@ readonly class SaunaSeasonRequestMapper
 
         return new UpdateSaunaSeasonRequest(
             id: $id,
-            name: $this->name($data),
             startsOn: $this->requiredDate($data, 'startsOn', 'Der Saisonbeginn'),
             endsOn: $this->optionalDate($data, 'endsOn', 'Das Saisonende'),
             slotDurationMinutes: $this->slotDuration($data),
             openingHours: $this->openingHours($data),
         );
-    }
-
-    /** @param InputBag<string|int|float|bool|null> $data */
-    private function name(InputBag $data): string
-    {
-        $name = trim($data->getString('name'));
-        if ($name === '' || mb_strlen($name) > 120) {
-            throw new BadRequestHttpException('Die Saison benötigt eine Bezeichnung mit höchstens 120 Zeichen.');
-        }
-
-        return $name;
     }
 
     /** @param InputBag<string|int|float|bool|null> $data */

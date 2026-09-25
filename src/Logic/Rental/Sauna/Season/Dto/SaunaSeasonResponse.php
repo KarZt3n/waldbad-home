@@ -12,7 +12,6 @@ readonly class SaunaSeasonResponse
      */
     public function __construct(
         public string $id,
-        public string $name,
         public \DateTimeImmutable $startsOn,
         public ?\DateTimeImmutable $endsOn,
         public int $slotDurationMinutes,
@@ -27,7 +26,6 @@ readonly class SaunaSeasonResponse
     {
         return new self(
             id: $season->id,
-            name: $season->name,
             startsOn: $season->startsOn,
             endsOn: $season->endsOn,
             slotDurationMinutes: $season->slotDurationMinutes,

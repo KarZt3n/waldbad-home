@@ -55,7 +55,6 @@ final class SaunaSeasonRotationTest extends TestCase
 
         return new SaunaSeason(
             id: $id,
-            name: 'Saison '.$id,
             startsOn: new \DateTimeImmutable($startsOn),
             endsOn: null,
             slotDurationMinutes: 60,

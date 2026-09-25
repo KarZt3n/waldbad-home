@@ -1933,3 +1933,18 @@ dialog:modal {
 .sauna-booking-area { display: grid; gap: 1rem; }
 .sauna-booking-area[hidden], .sauna-no-season[hidden] { display: none; }
 .sauna-no-season { padding: 2rem 1rem; border: 1px dashed var(--line); border-radius: .85rem; font-size: 1.1rem; font-weight: 700; text-align: center; }
+
+/* Fotoarchiv (Seitenerweiterung `photo_albums`, siehe `assets/public/photo-albums.js`). */
+.photo-albums-extension { display: grid; gap: .75rem; margin: 2rem 0; }
+.photo-album-year { border: 1px solid var(--line); border-radius: .85rem; background: var(--white); }
+.photo-album-year > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .9rem 1.2rem; cursor: pointer; list-style-position: inside; }
+.photo-album-year-label { color: var(--forest-900); font-family: Georgia, "Times New Roman", serif; font-size: 1.4rem; font-weight: 700; }
+.photo-album-year-count { color: var(--muted); font-size: .9rem; }
+.photo-album-list { display: grid; margin: 0; padding: 0 1.2rem 1rem; list-style: none; }
+.photo-album { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .7rem 0; border-top: 1px solid var(--line); }
+.photo-album-title { flex: 1 1 18rem; color: #33463b; line-height: 1.5; }
+/* Erster Aktionsbutton (meist „Öffnen“) steht ganz rechts, jeder weitere links daneben. Nur optisch
+   umgekehrt — in DOM- und Tabulatorreihenfolge bleibt der erste Button der erste. */
+.photo-album-actions { display: flex; flex-direction: row-reverse; flex-wrap: wrap; gap: .5rem; }
+.photo-album-action { margin-top: 0; padding: .4rem .9rem; font-size: .9rem; }
+.photo-album-action[hidden] { display: none; }

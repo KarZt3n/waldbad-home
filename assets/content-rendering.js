@@ -5,6 +5,7 @@
 
 import {confirmAction, element, field, formMessage, pageHref, request, SALUTATION_LABELS, selectField, toast} from './core.js';
 import {renderSaunaExtension} from './public/sauna.js';
+import {renderPhotoAlbumsExtension} from './public/photo-albums.js';
 
 const renderMembershipApplicationForm = (preview = false) => {
     const instanceId = `membership-${Math.random().toString(36).slice(2)}`;
@@ -322,6 +323,9 @@ const renderEventScheduleExtension = (kind, mode, context) => {
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
+    }
+    if (block.type === 'extension' && block.extensionKey === 'photo_albums') {
+        return renderPhotoAlbumsExtension(context.isPreview === true);
     }
     if (block.type === 'extension' && block.extensionKey === 'sauna') {
         return renderSaunaExtension(context.isPreview === true);

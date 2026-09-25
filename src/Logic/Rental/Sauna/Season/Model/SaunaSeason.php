@@ -21,7 +21,6 @@ readonly class SaunaSeason
      */
     public function __construct(
         public string $id,
-        public string $name,
         public \DateTimeImmutable $startsOn,
         public ?\DateTimeImmutable $endsOn,
         public int $slotDurationMinutes,
@@ -30,9 +29,6 @@ readonly class SaunaSeason
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $closedOn = null,
     ) {
-        if (trim($this->name) === '' || mb_strlen(trim($this->name)) > 120) {
-            throw new BusinessRuleViolationException('Die Saison benötigt eine Bezeichnung mit höchstens 120 Zeichen.');
-        }
         if ($this->endsOn !== null && $this->endsOn->format('Y-m-d') < $this->startsOn->format('Y-m-d')) {
             throw new BusinessRuleViolationException('Das Saisonende darf nicht vor dem Saisonbeginn liegen.');
         }
@@ -62,7 +58,6 @@ readonly class SaunaSeason
      * @param list<SaunaOpeningHours> $openingHours
      */
     public function revise(
-        string $name,
         \DateTimeImmutable $startsOn,
         ?\DateTimeImmutable $endsOn,
         int $slotDurationMinutes,
@@ -71,7 +66,6 @@ readonly class SaunaSeason
     ): self {
         return new self(
             id: $this->id,
-            name: $name,
             startsOn: $startsOn,
             endsOn: $endsOn,
             slotDurationMinutes: $slotDurationMinutes,
@@ -96,7 +90,6 @@ readonly class SaunaSeason
 
         return new self(
             id: $this->id,
-            name: $this->name,
             startsOn: $this->startsOn,
             endsOn: $this->endsOn,
             slotDurationMinutes: $this->slotDurationMinutes,

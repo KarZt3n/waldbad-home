@@ -21,8 +21,6 @@ class SaunaSeasonEntity
         #[ORM\Id]
         #[ORM\Column(type: Types::STRING, length: 36)]
         private string $id,
-        #[ORM\Column(type: Types::STRING, length: 120)]
-        private string $name,
         #[ORM\Column(type: Types::DATE_IMMUTABLE)]
         private \DateTimeImmutable $startsOn,
         #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
@@ -40,7 +38,6 @@ class SaunaSeasonEntity
     }
 
     public function getId(): string { return $this->id; }
-    public function getName(): string { return $this->name; }
     public function getStartsOn(): \DateTimeImmutable { return $this->startsOn; }
     public function getEndsOn(): ?\DateTimeImmutable { return $this->endsOn; }
     public function getSlotDurationMinutes(): int { return $this->slotDurationMinutes; }
@@ -52,14 +49,12 @@ class SaunaSeasonEntity
     public function getOpeningHours(): array { return array_values($this->openingHours->toArray()); }
 
     public function update(
-        string $name,
         \DateTimeImmutable $startsOn,
         ?\DateTimeImmutable $endsOn,
         int $slotDurationMinutes,
         \DateTimeImmutable $updatedAt,
         ?\DateTimeImmutable $closedOn,
     ): void {
-        $this->name = $name;
         $this->startsOn = $startsOn;
         $this->endsOn = $endsOn;
         $this->slotDurationMinutes = $slotDurationMinutes;

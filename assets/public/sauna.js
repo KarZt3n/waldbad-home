@@ -98,7 +98,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection = null) => {
     const submit = element('button', {className: 'button', text: 'Sauna-Anfrage absenden', attributes: {type: 'submit'}});
     const form = element('form', {className: 'public-form event-help-form', children: [
         element('header', {children: [
-            element('p', {className: 'eyebrow', text: individual ? 'Sauna-Anfrage außerhalb der Kalenderzeiten' : 'Sauna-Anfrage'}),
+            element('p', {className: 'eyebrow', text: individual ? 'Sauna-Anfrage' : 'Sauna-Anfrage'}),
             element('h2', {text: heading}),
             element('p', {text: `Die Sauna wird nur an Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen vergeben; eine Einzelnutzung ist nicht möglich. Deine Anfrage ist erst verbindlich, wenn der Verein sie angenommen hat.`}),
         ]}),

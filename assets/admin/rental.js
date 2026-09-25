@@ -118,6 +118,11 @@ const seasonState = (season, today) => {
     return {label: 'Aktiv', badge: 'status-active'};
 };
 
+/** Saisons haben keine eigene Bezeichnung; sie werden über ihren Zeitraum benannt. */
+const seasonLabel = (season) => season.endsOn
+    ? `Saison ${formatDateDE(season.startsOn)} – ${formatDateDE(season.endsOn)}`
+    : `Saison ab ${formatDateDE(season.startsOn)}`;
+
 const weeklySummary = (openingHours) => WEEKDAYS
     .map(([weekday]) => {
         const windows = openingHours
@@ -174,7 +179,6 @@ const buildWeeklyPlanEditor = (openingHours) => {
 const openSeasonDialog = (season, onSaved) => {
     const dialog = element('dialog', {className: 'activity-dialog sauna-season-dialog'});
     const key = season?.id || 'new';
-    const name = field('Bezeichnung', `sauna-season-name-${key}`, season?.name || '');
     const startsOn = field('Saisonbeginn', `sauna-season-starts-${key}`, season?.startsOn || '', 'date');
     const endsOn = field('Saisonende (optional)', `sauna-season-ends-${key}`, season?.endsOn || '', 'date');
     const slotDuration = field('Dauer einer Buchungseinheit (Minuten)', `sauna-season-slot-${key}`, season?.slotDurationMinutes ?? 60, 'number');
@@ -192,7 +196,7 @@ const openSeasonDialog = (season, onSaved) => {
         const closeButton = element('button', {className: 'secondary-button', text: 'Saison abschließen', attributes: {type: 'button'}});
         closeButton.addEventListener('click', async () => {
             const confirmed = await confirmAction(
-                `„${season.name}“ abschließen?`,
+                `${seasonLabel(season)} abschließen?`,
                 'Ab heute ist die Sauna in dieser Saison nicht mehr buchbar. Das geplante Enddatum bleibt unverändert, bestehende Anmeldungen bleiben erhalten.',
                 'Saison abschließen',
             );
@@ -212,7 +216,7 @@ const openSeasonDialog = (season, onSaved) => {
         const deleteButton = element('button', {className: 'button danger-button', text: 'Löschen', attributes: {type: 'button'}});
         deleteButton.addEventListener('click', async () => {
             const confirmed = await confirmAction(
-                `„${season.name}“ löschen?`,
+                `${seasonLabel(season)} löschen?`,
                 'Die Saison und ihr Wochenplan werden entfernt. Bestehende Sauna-Anmeldungen bleiben erhalten.',
                 'Löschen',
             );
@@ -231,9 +235,8 @@ const openSeasonDialog = (season, onSaved) => {
     const form = element('form', {className: 'activity-dialog-content', children: [
         element('header', {children: [
             element('p', {className: 'eyebrow', text: season ? 'Saison bearbeiten' : 'Neue Saison'}),
-            element('h2', {text: season?.name || 'Sauna-Saison anlegen'}),
+            element('h2', {text: season ? seasonLabel(season) : 'Sauna-Saison anlegen'}),
         ]}),
-        name,
         element('div', {className: 'form-grid', children: [startsOn, endsOn]}),
         element('small', {text: 'Ohne Saisonende ist die Sauna ab Saisonbeginn bis auf Weiteres buchbar.'}),
         ...(season?.closedOn ? [element('p', {className: 'sauna-season-closed-note', text: `Abgeschlossen zum ${formatDateDE(season.closedOn)} – ab diesem Tag nicht mehr buchbar.`})] : []),
@@ -245,7 +248,6 @@ const openSeasonDialog = (season, onSaved) => {
         message,
         element('div', {className: 'confirm-dialog-actions', children: actions}),
     ]});
-    name.querySelector('input').required = true;
     startsOn.querySelector('input').required = true;
     slotDurationInput.required = true;
     cancel.addEventListener('click', () => dialog.close());
@@ -257,7 +259,6 @@ const openSeasonDialog = (season, onSaved) => {
             await request(season ? `/api/admin/v1/sauna-seasons/${season.id}` : '/api/admin/v1/sauna-seasons', {
                 method: season ? 'PUT' : 'POST',
                 body: JSON.stringify({
-                    name: name.querySelector('input').value,
                     startsOn: startsOn.querySelector('input').value,
                     endsOn: endsOn.querySelector('input').value || null,
                     slotDurationMinutes: Number.parseInt(slotDurationInput.value, 10),
@@ -295,9 +296,9 @@ const showSaunaSeasons = async () => {
             attributes: {type: 'button', ...(canEditModule('rental_sauna') ? {} : {disabled: 'disabled'})},
             children: [
                 element('span', {className: 'activity-list-copy', children: [
-                    element('strong', {text: season.name}),
-                    element('small', {text: `ab ${formatDateDE(season.startsOn)} · ${season.endsOn ? `bis ${formatDateDE(season.endsOn)}` : 'ohne Ende'}`
-                        + `${season.closedOn ? ` · abgeschlossen zum ${formatDateDE(season.closedOn)}` : ''} · Einheiten à ${season.slotDurationMinutes} Min.`}),
+                    element('strong', {text: seasonLabel(season)}),
+                    element('small', {text: `${season.endsOn ? '' : 'ohne Ende · '}`
+                        + `${season.closedOn ? `abgeschlossen zum ${formatDateDE(season.closedOn)} · ` : ''}Einheiten à ${season.slotDurationMinutes} Min.`}),
                     element('small', {text: weeklySummary(season.openingHours)}),
                 ]}),
                 element('span', {className: `status-badge ${state.badge}`, text: state.label}),

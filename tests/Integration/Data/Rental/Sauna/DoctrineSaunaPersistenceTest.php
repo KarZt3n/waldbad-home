@@ -40,7 +40,6 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         $now = new \DateTimeImmutable('2026-09-25T10:00:00');
         $season = new SaunaSeason(
             id: 'season-1',
-            name: 'Wintersaison',
             startsOn: new \DateTimeImmutable('2026-10-01'),
             endsOn: null,
             slotDurationMinutes: 90,
@@ -53,7 +52,6 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         );
         $processor->save($season);
         $processor->save($season->revise(
-            name: 'Wintersaison 2026/27',
             startsOn: $season->startsOn,
             endsOn: new \DateTimeImmutable('2027-03-31'),
             slotDurationMinutes: 60,
@@ -65,7 +63,6 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         $loaded = $provider->find('season-1');
 
         self::assertNotNull($loaded);
-        self::assertSame('Wintersaison 2026/27', $loaded->name);
         self::assertSame('2027-03-31', $loaded->endsOn?->format('Y-m-d'));
         self::assertSame(60, $loaded->slotDurationMinutes);
         self::assertCount(1, $loaded->openingHours);

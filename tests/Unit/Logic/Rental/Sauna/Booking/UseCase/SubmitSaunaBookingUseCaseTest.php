@@ -115,7 +115,6 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $now = new \DateTimeImmutable('2026-09-25T10:00:00');
         $season = new SaunaSeason(
             id: 'season-1',
-            name: 'Wintersaison',
             startsOn: new \DateTimeImmutable('2026-10-01'),
             endsOn: null,
             slotDurationMinutes: 60,

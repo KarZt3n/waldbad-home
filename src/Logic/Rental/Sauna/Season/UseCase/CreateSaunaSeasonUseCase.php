@@ -25,7 +25,6 @@ readonly class CreateSaunaSeasonUseCase
         $now = $this->clock->now();
         $season = new SaunaSeason(
             id: $this->identifierGenerator->generate(),
-            name: trim($request->name),
             startsOn: $request->startsOn,
             endsOn: $request->endsOn,
             slotDurationMinutes: $request->slotDurationMinutes,
