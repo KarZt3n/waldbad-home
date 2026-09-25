@@ -1910,15 +1910,15 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .sauna-booking-badges { justify-content: flex-start; }
 }
 
-/* Alle Overlays (<dialog> per showModal, Frontend und Redaktion): oben mehr, unten weniger Abstand,
+/* Alle Overlays (<dialog> per showModal, Frontend und Redaktion): oben und unten gleicher Abstand,
    Höhe an der tatsächlich sichtbaren Viewport-Höhe (`dvh`) statt an `vh` bemessen — auf Mobilgeräten
    schließt `100vh` die ein-/ausblendende Browserleiste mit ein, wodurch Overlays oben und unten
    abgeschnitten wurden. `vh` bleibt als Rückfall für Browser ohne `dvh`. Die Safe-Area-Abstände
    berücksichtigen Notch und Home-Indikator. Innerhalb dieses Bereichs bleiben kleine Dialoge zentriert,
    lange scrollen in sich. */
 dialog:modal {
-    --dialog-gap-top: calc(2.5rem + env(safe-area-inset-top, 0px));
-    --dialog-gap-bottom: calc(.75rem + env(safe-area-inset-bottom, 0px));
+    --dialog-gap-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+    --dialog-gap-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
     inset-block: var(--dialog-gap-top) var(--dialog-gap-bottom);
     margin-block: auto;
     max-height: calc(100vh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
