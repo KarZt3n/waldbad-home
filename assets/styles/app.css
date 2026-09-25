@@ -273,6 +273,7 @@ a { color: var(--forest-700); }
 /*.content-card h2:first-child { margin-top: 0; }*/
 .embedded-page {
     /*margin-top: 0.5rem;*/
+    margin-bottom: 1.5rem;
     display: grid;
 }
 .embedded-page-error { padding: 1rem; border: 1px dashed #aabbb0; border-radius: .65rem; color: var(--muted); background: #f8faf8; }
@@ -490,7 +491,11 @@ a { color: var(--forest-700); }
     color: #33463b;
     line-height: 1.7;
 }
-.rich-html { max-width: 68ch; font-size: 1.1rem; }
+.rich-html {
+    max-width: 68ch;
+    font-size: 1.1rem;
+    margin: 0 0 2rem 0;
+}
 .rich-html:has(table) { max-width: none; overflow-x: auto; }
 .rich-html h2, .rich-html h3 { color: var(--forest-900); font-family: Georgia, "Times New Roman", serif; }
 .rich-html blockquote { margin-left: 0; padding-left: 1.25rem; border-left: .3rem solid var(--lime-400); }
@@ -1805,3 +1810,126 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 @media (max-width: 640px) {
     .data-table { display: block; overflow-x: auto; }
 }
+
+/* Sauna-Belegungskalender (Seitenerweiterung `sauna`, siehe `assets/public/sauna.js`). */
+.sauna-extension { display: grid; gap: 1rem; margin: 2rem 0; }
+.sauna-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.sauna-toolbar-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sauna-legend { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 0; color: var(--muted); font-size: .9rem; }
+.sauna-legend-item { display: inline-flex; align-items: center; gap: .45rem; }
+.sauna-legend-item::before { content: ""; width: .9rem; height: .9rem; border: 2px solid var(--forest-700); border-radius: .25rem; }
+.sauna-legend-free::before { background: var(--forest-100); }
+.sauna-legend-booked::before { border-color: #b9c3bd; background: repeating-linear-gradient(135deg, #e8ebe9 0 4px, #d5dbd7 4px 8px); }
+.sauna-month-label { margin: 0; color: var(--forest-900); font-size: 1.25rem; }
+.sauna-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .4rem; }
+.sauna-month-weekday { padding: .25rem 0; color: var(--muted); font-size: .85rem; font-weight: 800; text-align: center; }
+.sauna-month-day { display: grid; align-content: start; gap: .35rem; min-width: 0; min-height: 6.5rem; padding: .4rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--white); }
+.sauna-month-day.is-outside { border-color: transparent; background: transparent; }
+.sauna-month-day.is-empty { background: #f6f8f7; }
+.sauna-month-day.is-today { border: 2px solid var(--lime-400); }
+.sauna-month-day-label { display: flex; align-items: baseline; gap: .4rem; margin: 0; }
+.sauna-month-day-number { color: var(--forest-900); font-weight: 800; }
+.sauna-month-day.is-empty .sauna-month-day-number { color: var(--muted); font-weight: 600; }
+.sauna-month-day-weekday { display: none; color: var(--muted); font-size: .9rem; }
+.sauna-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr)); gap: .25rem; margin: 0; padding: 0; list-style: none; }
+.sauna-slot { display: grid; }
+.sauna-slot-time { font-weight: 800; }
+.sauna-slot-button, .sauna-slot-booked, .sauna-slot-past { width: 100%; padding: .3rem .15rem; border-radius: .4rem; font-size: .78rem; text-align: center; }
+.sauna-slot-button { border: 2px solid var(--forest-700); color: var(--forest-900); background: var(--forest-100); font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.sauna-slot-button:hover { color: var(--forest-950); background: var(--lime-400); border-color: var(--lime-400); }
+.sauna-slot-booked { color: #59645f; text-decoration: line-through; background: repeating-linear-gradient(135deg, #eef1ef 0 6px, #e2e7e4 6px 12px); }
+.sauna-slot-past { color: #59645f; opacity: .55; background: #f3f5f4; }
+.sauna-booking-start { padding: .7rem 0; color: var(--forest-900); font-size: 1.1rem; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Schmale Bildschirme: statt sieben enger Spalten eine Liste der Tage mit Saunazeiten. */
+@media (max-width: 760px) {
+    .sauna-month-grid { grid-template-columns: 1fr; }
+    .sauna-month-weekday, .sauna-month-day.is-outside, .sauna-month-day.is-empty { display: none; }
+    .sauna-month-day { grid-template-columns: 9rem minmax(0, 1fr); align-items: start; min-height: 0; padding: .6rem .75rem; }
+    .sauna-month-day-weekday { display: inline; }
+    .sauna-month-day-number { display: none; }
+    .sauna-slots { grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr)); }
+    .sauna-slot-button, .sauna-slot-booked, .sauna-slot-past { padding: .5rem .2rem; font-size: .85rem; }
+}
+@media (max-width: 480px) {
+    .sauna-month-day { grid-template-columns: 1fr; }
+    .sauna-toolbar { flex-direction: column; align-items: stretch; }
+    .sauna-toolbar-actions > .secondary-button, .sauna-toolbar > .secondary-button { flex: 1; }
+}
+
+/* Redaktion „Vermietung“: Wochenplan-Editor der Sauna-Saison (siehe `assets/admin/rental.js`). */
+.sauna-season-dialog { width: min(46rem, calc(100vw - 2rem)); overflow: auto; }
+.sauna-plan-editor { display: grid; gap: .75rem; }
+.sauna-plan-day { display: grid; gap: .5rem; margin: 0; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: .75rem; }
+.sauna-plan-day legend { padding: 0 .35rem; color: var(--forest-900); font-weight: 800; }
+.sauna-plan-day > .secondary-button { justify-self: start; }
+.sauna-plan-window { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.sauna-plan-window input[type="time"] { width: 8.5rem; }
+.sauna-plan-closed { color: var(--muted); }
+.sauna-booking-message { padding: .6rem .8rem; border-left: .25rem solid var(--lime-400); background: #f8faf8; }
+/* Zweite Reiterebene (z. B. Vermietung › Sauna › Anmeldungen/Saison), optisch der ersten untergeordnet. */
+.sub-tab-strip + .sub-tab-strip-nested { margin-top: -1rem; padding-left: .5rem; border-bottom-style: dashed; }
+.sub-tab-strip-nested .sub-tab { padding: .55rem .9rem; font-size: .92rem; }
+.sauna-terms { margin: 0; padding: .75rem 1rem; border-left: .3rem solid var(--lime-400); border-radius: .5rem; color: #33463b; background: var(--forest-100); }
+.sauna-booking-price { padding: .7rem 0; color: var(--forest-900); font-size: 1.1rem; }
+.sauna-booking-group { font-weight: 700; }
+.sauna-terms-form { display: grid; gap: 1.25rem; }
+.sauna-terms-group { display: grid; gap: .75rem; margin: 0; padding: 1rem; border: 1px solid var(--line); border-radius: .75rem; }
+.sauna-terms-group legend { padding: 0 .35rem; color: var(--forest-900); font-weight: 800; }
+.sauna-terms-example { margin: 0; color: var(--muted); }
+.sauna-terms-form > .button { justify-self: start; }
+.sauna-season-closed-note { margin: 0; padding: .6rem .8rem; border-radius: .5rem; color: #59645f; background: #e8ebe9; font-weight: 700; }
+.sauna-individual { margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; padding: 1rem 1.25rem; border: 1px dashed var(--forest-700); border-radius: .85rem; background: var(--forest-100); }
+.sauna-individual p { margin: 0; color: #33463b; }
+.sauna-individual .button { margin-top: 0; }
+.status-badge.sauna-individual-badge { color: var(--forest-950); background: var(--sun-400); }
+
+/* Sauna-Anmeldungen (Redaktion): Liste so breit wie die Überschrift (wie „Veranstaltungshelfer“),
+   Karte zweispaltig wie deren Teilnehmerzeilen — links Person und Termin, rechts Status oben,
+   Aktionen unten. */
+.sauna-booking-groups .card-list { width: 100%; max-width: none; margin-right: 0; margin-left: 0; }
+.sauna-booking-card { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 1rem 1.5rem; }
+.sauna-booking-card.status-rejected { opacity: .82; }
+.sauna-booking-main { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(0, 1.4fr); gap: .75rem 1.5rem; min-width: 0; }
+.sauna-booking-main .event-helper-participant-identity { display: grid; align-content: start; gap: .3rem; }
+.sauna-booking-main a.event-helper-member-detail { width: fit-content; font-size: .9rem; }
+.sauna-booking-appointment { display: grid; align-content: start; gap: .3rem; }
+.sauna-booking-appointment small { color: var(--muted); }
+.sauna-booking-appointment .sauna-booking-message { margin: .25rem 0 0; }
+.sauna-booking-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+.sauna-booking-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+.sauna-booking-actions { justify-content: flex-end; }
+.sauna-booking-actions .button, .sauna-booking-actions .secondary-button { margin-top: 0; }
+@media (max-width: 900px) {
+    .sauna-booking-main { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .sauna-booking-card { grid-template-columns: 1fr; }
+    .sauna-booking-side { flex-direction: row; flex-wrap: wrap; align-items: center; }
+    .sauna-booking-badges { justify-content: flex-start; }
+}
+
+/* Alle Overlays (<dialog> per showModal, Frontend und Redaktion): oben mehr, unten weniger Abstand,
+   Höhe an der tatsächlich sichtbaren Viewport-Höhe (`dvh`) statt an `vh` bemessen — auf Mobilgeräten
+   schließt `100vh` die ein-/ausblendende Browserleiste mit ein, wodurch Overlays oben und unten
+   abgeschnitten wurden. `vh` bleibt als Rückfall für Browser ohne `dvh`. Die Safe-Area-Abstände
+   berücksichtigen Notch und Home-Indikator. Innerhalb dieses Bereichs bleiben kleine Dialoge zentriert,
+   lange scrollen in sich. */
+dialog:modal {
+    --dialog-gap-top: calc(2.5rem + env(safe-area-inset-top, 0px));
+    --dialog-gap-bottom: calc(.75rem + env(safe-area-inset-bottom, 0px));
+    inset-block: var(--dialog-gap-top) var(--dialog-gap-bottom);
+    margin-block: auto;
+    max-height: calc(100vh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
+    max-height: calc(100dvh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.preview-dialog:modal {
+    height: calc(100vh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
+    height: calc(100dvh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
+}
+.sauna-booking-area { display: grid; gap: 1rem; }
+.sauna-booking-area[hidden], .sauna-no-season[hidden] { display: none; }
+.sauna-no-season { padding: 2rem 1rem; border: 1px dashed var(--line); border-radius: .85rem; font-size: 1.1rem; font-weight: 700; text-align: center; }

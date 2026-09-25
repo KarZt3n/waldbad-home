@@ -23,11 +23,14 @@ readonly class InitializeSiteUseCase
 
     public function execute(): int
     {
-        $existingSlugs = array_map(static fn (Page $page): string => $page->slug, $this->pageManager->all());
+        $pageIdsBySlug = [];
+        foreach ($this->pageManager->all() as $existingPage) {
+            $pageIdsBySlug[$existingPage->slug] = $existingPage->id;
+        }
         $created = 0;
 
         foreach ($this->definitions() as $definition) {
-            if (in_array($definition['slug'], $existingSlugs, true)) {
+            if (isset($pageIdsBySlug[$definition['slug']])) {
                 continue;
             }
 
@@ -37,7 +40,7 @@ readonly class InitializeSiteUseCase
                 title: $definition['title'],
                 slug: $definition['slug'],
                 navigationLabel: $definition['navigationLabel'],
-                parentId: null,
+                parentId: isset($definition['parentSlug']) ? ($pageIdsBySlug[$definition['parentSlug']] ?? null) : null,
                 blocks: $definition['blocks'],
                 status: PageStatus::Published,
                 visible: true,
@@ -52,7 +55,7 @@ readonly class InitializeSiteUseCase
                 updatedAt: $now,
                 publishedAt: $now,
             );
-            $this->pageManager->save($page);
+            $pageIdsBySlug[$page->slug] = $this->pageManager->save($page)->id;
             ++$created;
         }
 
@@ -67,6 +70,7 @@ readonly class InitializeSiteUseCase
      *     position: int,
      *     description: string,
      *     showInNavigation?: bool,
+     *     parentSlug?: string,
      *     blocks: list<ContentBlock>
      * }>
      */
@@ -221,6 +225,30 @@ readonly class InitializeSiteUseCase
                         textAlignment: 'left',
                         imageFit: 'contain',
                     ),
+                ],
+            ],
+            [
+                'title' => 'Vermietung',
+                'slug' => 'vermietung',
+                'navigationLabel' => 'Vermietung',
+                'position' => 75,
+                'description' => 'Angebote des Waldbads zur Miete für Mitglieder und Gäste.',
+                'blocks' => [
+                    new ContentBlock(ContentBlockType::Heading, 'Vermietung im Waldbad'),
+                    new ContentBlock(ContentBlockType::RichText, '<p>Hier finden Sie Angebote des Waldbads, die Sie für sich, Ihre Familie oder Ihre Gruppe reservieren können.</p>'),
+                ],
+            ],
+            [
+                'title' => 'Sauna',
+                'slug' => 'vermietung/sauna',
+                'navigationLabel' => 'Sauna',
+                'position' => 0,
+                'parentSlug' => 'vermietung',
+                'description' => 'Freie Sauna-Zeiten ansehen und direkt anfragen.',
+                'blocks' => [
+                    new ContentBlock(ContentBlockType::Heading, 'Sauna im Waldbad'),
+                    new ContentBlock(ContentBlockType::RichText, '<p>Wählen Sie im Kalender eine freie Zeit aus und senden Sie uns Ihre Anfrage. Nach der Prüfung durch den Verein ist die Zeit für Sie reserviert.</p>'),
+                    new ContentBlock(ContentBlockType::Extension, '', extensionKey: 'sauna'),
                 ],
             ],
             [

@@ -13,7 +13,7 @@ use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestConfirmationMailer;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestDuplicateMerger;
-use App\Logic\Event\HelpRequest\Service\EventHelpRequestMemberMatcher;
+use App\Logic\Membership\Member\Service\MemberIdentityMatcher;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 
 readonly class SubmitEventHelpRequestUseCase
@@ -22,7 +22,7 @@ readonly class SubmitEventHelpRequestUseCase
         private EventHelpRequestManagerInterface $manager,
         private VolunteerEventProviderInterface $eventProvider,
         private EventActivityManagerInterface $activityManager,
-        private EventHelpRequestMemberMatcher $memberMatcher,
+        private MemberIdentityMatcher $memberMatcher,
         private EventHelpRequestDuplicateMerger $duplicateMerger,
         private EventHelpRequestConfirmationMailer $confirmationMailer,
         private IdentifierGeneratorInterface $identifierGenerator,

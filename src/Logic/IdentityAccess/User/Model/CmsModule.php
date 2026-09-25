@@ -15,4 +15,5 @@ enum CmsModule: string
     case ContributionRates = 'contribution_rates';
     case UserManagement = 'user_management';
     case MemberMessages = 'member_messages';
+    case RentalSauna = 'rental_sauna';
 }

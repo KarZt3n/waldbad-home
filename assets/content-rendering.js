@@ -4,6 +4,7 @@
 // Vorschau zuverlässig dem späteren öffentlichen Ergebnis entspricht.
 
 import {confirmAction, element, field, formMessage, pageHref, request, SALUTATION_LABELS, selectField, toast} from './core.js';
+import {renderSaunaExtension} from './public/sauna.js';
 
 const renderMembershipApplicationForm = (preview = false) => {
     const instanceId = `membership-${Math.random().toString(36).slice(2)}`;
@@ -321,6 +322,9 @@ const renderEventScheduleExtension = (kind, mode, context) => {
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
+    }
+    if (block.type === 'extension' && block.extensionKey === 'sauna') {
+        return renderSaunaExtension(context.isPreview === true);
     }
     if (block.type === 'extension' && ['events_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment', 'next_event_or_work_assignment'].includes(block.extensionKey)) {
         const kind = block.extensionKey === 'next_event_or_work_assignment' ? 'any'

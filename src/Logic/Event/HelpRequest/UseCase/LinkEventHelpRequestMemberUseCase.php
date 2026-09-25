@@ -11,7 +11,7 @@ use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 
 /**
  * Verknüpft (oder löst) eine Helferanmeldung mit einem Mitgliedsdatensatz und korrigiert dabei
- * gleich Vor-/Nachname der Anmeldung — für den Fall, dass `EventHelpRequestMemberMatcher` beim
+ * gleich Vor-/Nachname der Anmeldung — für den Fall, dass `MemberIdentityMatcher` beim
  * Absenden keinen eindeutigen Treffer fand (z. B. wegen eines Tippfehlers) oder eine bestehende
  * Verknüpfung falsch war und korrigiert werden muss (siehe „Mitglied verknüpfen" in der
  * Helferverwaltung).

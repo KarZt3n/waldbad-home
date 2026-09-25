@@ -61,6 +61,10 @@ framework:
             policy: fixed_window
             limit: 20
             interval: '15 minutes'
+        sauna_booking:
+            policy: fixed_window
+            limit: 5
+            interval: '1 hour'
 
     #esi: true
     #fragments: true
@@ -95,6 +99,8 @@ when@test:
                 policy: no_limit
             member_self_service_update:
                 policy: no_limit
+            sauna_booking:
+                policy: no_limit
 
 when@dev:
     framework:
@@ -106,4 +112,6 @@ when@dev:
             login_request:
                 policy: no_limit
             member_access_request:
+                policy: no_limit
+            sauna_booking:
                 policy: no_limit

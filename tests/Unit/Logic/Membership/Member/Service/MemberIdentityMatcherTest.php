@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Tests\Unit\Logic\Event\HelpRequest\Service;
+namespace App\Tests\Unit\Logic\Membership\Member\Service;
 
-use App\Logic\Event\HelpRequest\Service\EventHelpRequestMemberMatcher;
+use App\Logic\Membership\Member\Service\MemberIdentityMatcher;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
@@ -14,14 +14,14 @@ use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\PaymentInterval;
 use PHPUnit\Framework\TestCase;
 
-final class EventHelpRequestMemberMatcherTest extends TestCase
+final class MemberIdentityMatcherTest extends TestCase
 {
     public function testMatchesOnNameAloneWhenUniqueRegardlessOfBirthDateOrEmail(): void
     {
         $member = $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01');
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         // Abweichendes Geburtsdatum und keine E-Mail stören nicht, solange der Name allein eindeutig ist.
         $match = $matcher->match('  ERIKA ', ' musterfrau  ', new \DateTimeImmutable('1999-09-09'), null);
@@ -34,7 +34,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
         $member = $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01');
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         self::assertNull($matcher->match('Erik', 'Musterfrau', new \DateTimeImmutable('2000-12-24'), null));
     }
@@ -48,7 +48,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
         $member = $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01');
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         self::assertSame($member, $matcher->match('Erik', 'Musterfrau', new \DateTimeImmutable('1990-01-01'), null));
     }
@@ -61,7 +61,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
             $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01'),
             $wanted,
         ]);
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         self::assertSame($wanted, $matcher->match('Erika', 'Musterfrau', new \DateTimeImmutable('1991-02-02'), null));
     }
@@ -73,7 +73,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
             $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01'),
             $this->member('m2', 'FAM-2', 'Erika', 'Musterfrau', null, '1991-02-02'),
         ]);
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         self::assertNull($matcher->match('Erika', 'Musterfrau', new \DateTimeImmutable('2000-03-03'), null));
     }
@@ -86,7 +86,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
         $members->method('search')->willReturnCallback(
             fn (?string $term): array => $term === 'Erika' ? [$wanted] : [],
         );
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         $match = $matcher->match('Erika', 'Musterfroh', new \DateTimeImmutable('1990-01-01'), null);
 
@@ -100,7 +100,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
         $members->method('search')->willReturnCallback(
             fn (?string $term): array => $term === 'Musterfrau' ? [$wanted] : [],
         );
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         $match = $matcher->match('Eryka', 'Musterfrau', new \DateTimeImmutable('1990-01-01'), null);
 
@@ -139,7 +139,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
                 default => [],
             },
         );
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         // Geburtsdatum passt zu keiner der beiden "Sally Kuck" (Tippfehler).
         $match = $matcher->match('Sally', 'Kuck', new \DateTimeImmutable('1999-09-09'), ' Sass.Karsten@Googlemail.com ');
@@ -161,7 +161,7 @@ final class EventHelpRequestMemberMatcherTest extends TestCase
                 default => [],
             },
         );
-        $matcher = new EventHelpRequestMemberMatcher($members);
+        $matcher = new MemberIdentityMatcher($members);
 
         self::assertNull($matcher->match('Sally', 'Kuck', new \DateTimeImmutable('1999-09-09'), 'unbekannt@example.test'));
     }

@@ -28,6 +28,7 @@ services:
             $memberMessageLimiter: '@limiter.member_message'
             $emailConsentConfirmLimiter: '@limiter.email_consent_confirm'
             $memberSelfServiceUpdateLimiter: '@limiter.member_self_service_update'
+            $saunaBookingLimiter: '@limiter.sauna_booking'
             $mediaUploadDirectory: '%media_upload_directory%'
             $logoPath: '%email_logo_path%'
             $fromAddress: '%env(MAILER_FROM_ADDRESS)%'

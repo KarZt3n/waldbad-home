@@ -31,4 +31,6 @@ enum Permission: string
     case UserManagementEdit = 'ROLE_MODULE_USER_MANAGEMENT_EDITOR';
     case MemberMessagesView = 'ROLE_MODULE_MEMBER_MESSAGES_VIEWER';
     case MemberMessagesEdit = 'ROLE_MODULE_MEMBER_MESSAGES_EDITOR';
+    case RentalSaunaView = 'ROLE_MODULE_RENTAL_SAUNA_VIEWER';
+    case RentalSaunaEdit = 'ROLE_MODULE_RENTAL_SAUNA_EDITOR';
 }

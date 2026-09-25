@@ -1,16 +1,16 @@
 <?php
 
-namespace App\Logic\Event\HelpRequest\Service;
+namespace App\Logic\Membership\Member\Service;
 
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\Member;
 
 /**
- * Versucht, eine Helferanmeldung automatisch einem Mitgliedsdatensatz zuzuordnen (siehe
- * `EventHelpRequest::$memberId`), damit die geleistete Arbeitszeit später dem richtigen Mitglied
- * gutgeschrieben werden kann. Bleibt am Ende mehr als ein Kandidat (oder keiner) übrig, bleibt die
- * Anmeldung unverknüpft und muss in der Verwaltung manuell verknüpft werden (siehe
- * `LinkEventHelpRequestMemberUseCase`).
+ * Ordnet eine öffentlich eingereichte Personenangabe (Vor-/Nachname, Geburtsdatum, optionale
+ * E-Mail) einem Mitgliedsdatensatz zu — genutzt für Helferanmeldungen (`EventHelpRequest::$memberId`)
+ * sowie modulübergreifend über `FindMatchingMemberQuery` (z. B. für Sauna-Anmeldungen). Bleibt am
+ * Ende mehr als ein Kandidat (oder keiner) übrig, gibt es keinen Treffer; die aufrufende Stelle
+ * entscheidet, ob manuell nachverknüpft wird (siehe `LinkEventHelpRequestMemberUseCase`).
  *
  * Vorgehen, jede Stufe nur bei Mehrdeutigkeit der vorherigen:
  * 1. Vor-/Nachname allein (bereits eindeutig bei den allermeisten Namen).
@@ -23,7 +23,7 @@ use App\Logic\Membership\Member\Model\Member;
  *    (z. B. meldet sich "Sally Kuck" mit der E-Mail-Adresse ihres Hauptmitglieds "Karsten Kuck" an —
  *    das darf den Treffer nicht verhindern).
  */
-readonly class EventHelpRequestMemberMatcher
+readonly class MemberIdentityMatcher
 {
     public function __construct(private MemberManagerInterface $members)
     {

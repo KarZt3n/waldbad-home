@@ -23,6 +23,7 @@ const CMS_MODULES = [
     ['contribution_rates', 'Beitragssätze'],
     ['user_management', 'Benutzerverwaltung'],
     ['member_messages', 'Mitgliedernachrichten'],
+    ['rental_sauna', 'Vermietung: Sauna'],
 ];
 const showPinProtection = async () => {
     const data = await request('/api/admin/v1/pin-settings');

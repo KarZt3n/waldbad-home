@@ -28,7 +28,7 @@ readonly class EventHelpRequest
         public bool $isMember = false,
         public ?string $email = null,
         public ?\DateTimeImmutable $birthDate = null,
-        /** Verweis auf `Member::$id`, entweder automatisch beim Absenden ermittelt (siehe `EventHelpRequestMemberMatcher`) oder nachträglich manuell verknüpft (siehe `withMember()`). Kein DB-Fremdschlüssel, analog zu `Member::$payerMemberId`. */
+        /** Verweis auf `Member::$id`, entweder automatisch beim Absenden ermittelt (siehe `MemberIdentityMatcher`) oder nachträglich manuell verknüpft (siehe `withMember()`). Kein DB-Fremdschlüssel, analog zu `Member::$payerMemberId`. */
         public ?string $memberId = null,
     ) {
         if (trim($this->eventIdentifier) === '' || trim($this->eventTitle) === '') {
@@ -106,7 +106,7 @@ readonly class EventHelpRequest
     /**
      * Korrigiert Vor-/Nachname nachträglich in der Verwaltung — z. B. wenn ein Tippfehler bei der
      * Anmeldung das automatische Zuordnen zu einem Mitglied verhindert hat (siehe
-     * `EventHelpRequestMemberMatcher`) und der Name manuell aus dem verknüpften Mitgliedsdatensatz
+     * `MemberIdentityMatcher`) und der Name manuell aus dem verknüpften Mitgliedsdatensatz
      * übernommen wird.
      */
     public function withIdentity(string $firstName, string $lastName, \DateTimeImmutable $updatedAt): self
@@ -135,7 +135,7 @@ readonly class EventHelpRequest
 
     /**
      * Verknüpft (oder löst, bei `null`) die Zuordnung zu einem Mitgliedsdatensatz — entweder
-     * automatisch beim Absenden ermittelt (`EventHelpRequestMemberMatcher`) oder nachträglich
+     * automatisch beim Absenden ermittelt (`MemberIdentityMatcher`) oder nachträglich
      * manuell in der Verwaltung gesetzt (siehe `LinkEventHelpRequestMemberUseCase`, das dieselbe
      * Aktion auch zur Korrektur einer falschen Verknüpfung nutzt).
      */

@@ -18,7 +18,7 @@ use App\Tests\Support\FixedSecureTokenGenerator;
 
 /**
  * Deckt die Zuordnung einer Helferanmeldung ("Ich möchte Helfen!") zu einem Mitgliedsdatensatz ab
- * (siehe `EventHelpRequestMemberMatcher`, `LinkEventHelpRequestMemberUseCase`) — Grundlage für die
+ * (siehe `MemberIdentityMatcher`, `LinkEventHelpRequestMemberUseCase`) — Grundlage für die
  * spätere Erstattung der Arbeitszeit-Pauschale zum Jahresende.
  */
 final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
@@ -131,7 +131,7 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
 
         // Tippfehler in Vor- UND Nachname -> auch die um das Geburtsdatum erweiterte Suche findet
-        // keinen eindeutigen Kandidaten (siehe `EventHelpRequestMemberMatcher`), obwohl das Mitglied
+        // keinen eindeutigen Kandidaten (siehe `MemberIdentityMatcher`), obwohl das Mitglied
         // existiert.
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId,
@@ -333,7 +333,7 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
      * Mitglieder in unterschiedlichen Haushalten) und passt das Geburtsdatum zu keinem der beiden
      * (Tippfehler), löst die angegebene E-Mail-Adresse die Mehrdeutigkeit auf — auch wenn sie nicht
      * der Kandidatin selbst, sondern einem anderen Mitglied ihres Haushalts gehört (siehe
-     * `EventHelpRequestMemberMatcher::emailBelongsToHousehold()`).
+     * `MemberIdentityMatcher::emailBelongsToHousehold()`).
      */
     public function testAmbiguousNameIsResolvedByHouseholdEmailWhenBirthDateMatchesNeither(): void
     {

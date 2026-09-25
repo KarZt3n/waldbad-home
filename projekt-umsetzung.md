@@ -350,6 +350,7 @@ Die fachlichen Rechte werden pro Modul zugewiesen. Das Modul `pages` kennt `View
 | Veranstaltungshelfer | Viewer: lesen; Editor: Teilnahme und Zeiten bearbeiten |
 | Mitgliedsanträge | Viewer: lesen; Editor: fachliche Aktionen ausführen |
 | Benutzerverwaltung | Viewer: lesen; Editor: Benutzer und Zugriffe gemäß globaler Schutzstufe verwalten |
+| Vermietung: Sauna | Viewer: Saisons und Anmeldungen lesen; Editor: Saisons pflegen, Anmeldungen annehmen oder ablehnen |
 
 ### 8.4 Benutzerverwaltung
 
@@ -683,3 +684,21 @@ Verfügbare Module sind Seiten, Aktivitäten, Gästebuch, Kontaktanfragen, Veran
 Admin und SuperAdmin erhalten innerhalb ihrer freigeschalteten Module alle fachlichen Rechte. Auch diese globalen Rollen erhalten keinen Zugriff auf nicht zugewiesene Module. Admins dürfen keine SuperAdmins bearbeiten oder sperren; nur SuperAdmins dürfen die globale Rolle SuperAdmin vergeben. Die vollständige Matrix und die serverseitigen Schutzregeln stehen in [benutzer-konzept.md](./benutzer-konzept.md).
 
 Benutzer ohne globale Administratorrolle können im Modul Seiten zusätzlich auf ausdrücklich ausgewählte Seiten eingeschränkt werden. Pro Seite wird ein Bearbeitungs- oder Veröffentlichungsrecht vergeben. Eingeschränkte Benutzer sehen in der Seitenverwaltung ausschließlich diese Seiten; direkte API-Aufrufe für andere Seiten werden ebenfalls abgewiesen. Admin und SuperAdmin sehen innerhalb ihres freigeschalteten Seitenmoduls unabhängig von solchen Einträgen immer alle Seiten.
+
+## 22. Fachliche Erweiterung: Vermietung – Sauna
+
+Das Modul „Vermietung“ (`Rental`) bündelt vermietbare Angebote des Waldbads; erstes Untermodul ist die Sauna (`Rental/Sauna`, CMS-Modul `rental_sauna`). In der Redaktion liegt unter „Vermietung“ je Untermodul eine eigene Reiterebene, für die Sauna mit „Anmeldungen“, „Saison“ und „Kosten“.
+
+Eine Sauna-Saison besitzt eine Bezeichnung, einen Beginn, ein optionales Ende, die Dauer einer Buchungseinheit (15–720 Minuten) und einen Wochenplan mit beliebig vielen, sich nicht überschneidenden Zeitfenstern je Wochentag (Mo–So). Jedes Zeitfenster wird im Kalender in Buchungseinheiten der Saison zerlegt; angebrochene Restzeiten ergeben keine Einheit.
+
+Es ist immer nur eine Saison aktiv. Wird eine neue Saison angelegt, werden alle noch offenen Saisons automatisch zum Beginn der neuen Saison abgeschlossen, frühestens zum heutigen Tag; ihr geplantes Enddatum bleibt dabei unverändert. Im Bearbeitungsdialog kann eine Saison zusätzlich über „Saison abschließen“ ab heute abgeschlossen werden. Ab dem Abschlusstag ist sie nicht mehr buchbar; bestehende Anmeldungen bleiben erhalten.
+
+Unter „Kosten“ legt die Redaktion den Preis je Buchung für eine Bezugsdauer fest (Ausgangswert: 20 € für 2 Stunden) sowie die zulässige Gruppengröße (Ausgangswert: 2 bis 6 Personen). Der Preis gilt für die ganze Gruppe und wird anteilig zur gebuchten Dauer berechnet. Eine Einzelnutzung ist ausgeschlossen, die Mindestgröße beträgt daher immer mindestens zwei Personen. Jede Anfrage enthält die Personenzahl der Gruppe und speichert den berechneten Preis als Momentaufnahme; spätere Änderungen der Kosten gelten nur für neue Anfragen.
+
+Öffentliche Seiten binden die Sauna über den Blocktyp `extension` mit dem Schlüssel `sauna` ein. Die Erweiterung zeigt einen Monatskalender (`GET /api/public/v1/sauna/calendar`) mit den Zuständen frei, belegt und vorbei; Angaben zu Personen werden dort nicht ausgeliefert. Ein Klick auf eine freie Einheit öffnet ein Anfrageformular mit Vorname, Nachname, Geburtsdatum, optionaler E-Mail-Adresse, optionaler Nachricht und Datenschutzbestätigung; das Ende kann auf weitere lückenlos anschließende freie Einheiten desselben Zeitfensters ausgedehnt werden (`POST /api/public/v1/sauna/bookings`, im Produktivbetrieb rate-limitiert). Die Seiteninitialisierung legt dafür die Hauptseite „Vermietung“ mit der Unterseite „Sauna“ an.
+
+Unterhalb des Kalenders bietet der Button „Individuelle Anfrage“ dasselbe Formular mit frei wählbarem Tag und freier Von-bis-Zeit an. Solche Anfragen sind an keine Saison und kein Zeitraster gebunden; sie dürfen nur nicht in der Vergangenheit liegen und keine offene oder angenommene Anfrage überschneiden. Preis, Gruppengröße, Mitgliederzuordnung und Statusablauf gelten unverändert; in der Verwaltung sind sie als „Individuelle Anfrage“ gekennzeichnet.
+
+Neue Anfragen erhalten den Status „Offen“ und belegen den Zeitraum bereits, damit er nicht doppelt angefragt wird. In der Verwaltung werden sie angenommen oder abgelehnt; abgelehnte Anfragen geben den Zeitraum im Kalender wieder frei. Eine Anfrage kann nur angenommen werden, wenn keine andere angenommene Anfrage denselben Zeitraum belegt.
+
+Beim Absenden wird die Person wie bei der Helferanmeldung automatisch einem Mitglied zugeordnet. Das Matching liegt in der Mitgliederverwaltung (`MemberIdentityMatcher`) und steht anderen Modulen über die BusinessQuery `FindMatchingMemberQuery` zur Verfügung. Die Vermietung nutzt sie ausschließlich über ihr eigenes Adapter-Interface `SaunaGuestMatcherInterface` und speichert Mitglieds-ID und Mitgliedsnummer zum Zeitpunkt der Anfrage.

@@ -12,7 +12,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Verschickt die Bestätigungsmail (Mailvorlage `MailTemplateKey::EventHelpRequestConfirmation`)
  * für eine Helferanmeldung, die beim Absenden automatisch einem Mitglied zugeordnet werden konnte
- * (siehe `EventHelpRequestMemberMatcher`, aufgerufen aus `SubmitEventHelpRequestUseCase`) — bewusst
+ * (siehe `MemberIdentityMatcher`, aufgerufen aus `SubmitEventHelpRequestUseCase`) — bewusst
  * nicht beim nachträglichen manuellen Verknüpfen in der Verwaltung
  * (`LinkEventHelpRequestMemberUseCase`), da die Anmeldung dort schon länger zurückliegt und eine
  * Bestätigung dann nicht mehr passt.
