@@ -282,7 +282,7 @@ const renderSaunaExtension = (preview = false) => {
     const bookingArea = element('div', {className: 'sauna-booking-area', children: [
         termsInfo,
         individualHint,
-        element('div', {className: 'sauna-toolbar', children: [previous, heading, element('div', {className: 'sauna-toolbar-actions', children: [today, next]})]}),
+        element('div', {className: 'sauna-toolbar', children: [today, heading, element('div', {className: 'sauna-toolbar-actions', children: [previous, next]})]}),
         grid,
         legend,
     ]});
