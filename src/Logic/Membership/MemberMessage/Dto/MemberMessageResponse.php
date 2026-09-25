@@ -16,10 +16,12 @@ readonly class MemberMessageResponse
         public MemberMessageStatus $status,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
+        /** Aktuelle E-Mail-Adresse des Mitglieds (bzw. seines Haushalts) als Vorbelegung für eine Antwort. */
+        public ?string $memberEmail = null,
     ) {
     }
 
-    public static function fromMessage(MemberMessage $message): self
+    public static function fromMessage(MemberMessage $message, ?string $memberEmail = null): self
     {
         return new self(
             id: $message->id,
@@ -30,6 +32,7 @@ readonly class MemberMessageResponse
             status: $message->status,
             submittedAt: $message->submittedAt,
             updatedAt: $message->updatedAt,
+            memberEmail: $memberEmail,
         );
     }
 }

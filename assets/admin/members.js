@@ -36,11 +36,41 @@ const deleteMemberWithOptionalPin = async (id) => {
         (pin) => request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify({pin})}),
     );
 };
+// Offene Nachrichten (neu, bzw. aus der Zeit vor dem Wegfall von „In Bearbeitung“ noch in
+// Bearbeitung) stehen oben; erledigte wandern wie bei den Mitgliedsanträgen in „Abgeschlossen
+// {Jahr}“. Nach jeder Aktion wird über `showMembershipManagement` neu aufgebaut, damit die
+// Reiterleiste erhalten bleibt.
 const showMemberMessages = async () => {
     const data = await request('/api/admin/v1/member-messages');
-    workspace.replaceChildren(sectionHeading('Mitgliedernachrichten', 'Über „Meine Mitgliedschaft" gesendete Nachrichten bearbeiten und abschließen'), element('div', {
-        className: 'card-list', children: data.items.length ? data.items.map((item) => memberMessageCard(item, showMemberMessages)) : [emptyState('Keine Nachrichten vorhanden.')],
-    }));
+    const openMessages = data.items.filter((item) => item.status !== 'resolved');
+    const resolvedByYear = new Map();
+    data.items.filter((item) => item.status === 'resolved').forEach((item) => {
+        const year = new Date(item.updatedAt).getFullYear();
+        if (!resolvedByYear.has(year)) resolvedByYear.set(year, []);
+        resolvedByYear.get(year).push(item);
+    });
+    resolvedByYear.forEach((items) => items.sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt)));
+    const archive = (title, items) => element('details', {className: 'event-helper-archive', children: [
+        element('summary', {children: [
+            element('strong', {text: title}),
+            element('span', {className: 'status-badge', text: String(items.length)}),
+        ]}),
+        element('div', {className: 'event-helper-archive-list', children: [
+            element('div', {className: 'card-list', children: items.map((item) => memberMessageCard(item, showMembershipManagement))}),
+        ]}),
+    ]});
+    const archiveSections = [...resolvedByYear.entries()]
+        .sort(([firstYear], [secondYear]) => secondYear - firstYear)
+        .map(([year, items]) => archive(`Abgeschlossen ${year}`, items));
+
+    workspace.replaceChildren(
+        sectionHeading('Mitgliedernachrichten', 'Über „Meine Mitgliedschaft" gesendete Nachrichten beantworten und abschließen'),
+        element('div', {className: 'management-toolbar', children: [element('span', {text: `${openMessages.length} offene Nachrichten`})]}),
+        element('div', {className: 'card-list', children: openMessages.length
+            ? openMessages.map((item) => memberMessageCard(item, showMembershipManagement))
+            : [emptyState('Keine offenen Nachrichten vorhanden.')]}),
+        ...(archiveSections.length ? [element('div', {className: 'event-helper-groups membership-archive-groups', children: archiveSections})] : []),
+    );
 };
 
 const showMembership = async () => {
@@ -1518,17 +1548,80 @@ const showContributionRates = async () => {
     );
 };
 
-const memberMessageCard = (item, refresh) => element('article', {className: 'management-card', children: [
-    element('header', {children: [
-        element('strong', {text: `${item.memberName} (${item.memberNumber})`}),
-        element('small', {text: item.status + ' · ' + new Date(item.submittedAt).toLocaleString('de-DE')}),
-    ]}),
-    element('p', {text: item.message}),
-    ...(canEditModule('member_messages') ? [element('div', {className: 'card-actions', children: [
-        actionButton('In Bearbeitung', `/api/admin/v1/member-messages/${item.id}/status/in_progress`, refresh, 'secondary-button', {success: 'Nachricht ist jetzt in Bearbeitung.'}),
-        actionButton('Erledigt', `/api/admin/v1/member-messages/${item.id}/status/resolved`, refresh, 'button', {success: 'Nachricht wurde als erledigt markiert.'}),
-    ]})] : []),
-]});
+const MEMBER_MESSAGE_STATUS_LABELS = {new: 'Neu', in_progress: 'In Bearbeitung', resolved: 'Erledigt'};
+
+/** Dialog „Mail an das Mitglied“: Empfänger mit der Adresse des Mitglieds bzw. Haushalts vorbelegt, Originalnachricht zitiert. */
+const openMemberMessageReplyDialog = (item) => {
+    const dialog = element('dialog', {className: 'confirm-dialog member-message-reply-dialog'});
+    const message = formMessage();
+    const submittedAt = new Date(item.submittedAt).toLocaleDateString('de-DE');
+    const recipientField = field('An', 'member-message-recipient', item.memberEmail || '', 'email');
+    const subjectField = field('Betreff', 'member-message-subject', `Ihre Nachricht vom ${submittedAt}`);
+    const bodyField = field('Text', 'member-message-body', `Hallo ${item.memberName},\n\n\n\n---\nIhre Nachricht vom ${submittedAt}:\n${item.message}`, 'textarea');
+    const recipientInput = recipientField.querySelector('input');
+    const subjectInput = subjectField.querySelector('input');
+    const bodyInput = bodyField.querySelector('textarea');
+    [recipientInput, subjectInput, bodyInput].forEach((input) => input.required = true);
+    bodyInput.rows = 12;
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button button-compact', text: 'Senden', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Mail an das Mitglied'}),
+        element('h2', {text: `${item.memberName} (${item.memberNumber})`}),
+        ...(item.memberEmail ? [] : [element('p', {className: 'form-message', text: 'Für dieses Mitglied und seinen Haushalt ist keine E-Mail-Adresse hinterlegt.'})]),
+        recipientField,
+        subjectField,
+        bodyField,
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        try {
+            await request(`/api/admin/v1/member-messages/${item.id}/reply`, {method: 'POST', body: JSON.stringify({
+                recipient: recipientInput.value,
+                subject: subjectInput.value,
+                body: bodyInput.value,
+            })});
+            toast('Die Mail wurde zum Versand übergeben.');
+            dialog.close();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            submit.disabled = false;
+        }
+    });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    bodyInput.focus();
+    bodyInput.setSelectionRange(`Hallo ${item.memberName},\n\n`.length, `Hallo ${item.memberName},\n\n`.length);
+};
+
+const memberMessageCard = (item, refresh) => {
+    const resolved = item.status === 'resolved';
+    const mail = element('button', {className: 'secondary-button', text: 'Mail', attributes: {type: 'button', title: 'Mail an das Mitglied schreiben'}});
+    mail.addEventListener('click', () => openMemberMessageReplyDialog(item));
+
+    return element('article', {className: `management-card member-message-card status-${item.status}`, children: [
+        element('header', {children: [
+            element('strong', {text: `${item.memberName} (${item.memberNumber})`}),
+            element('small', {text: `${MEMBER_MESSAGE_STATUS_LABELS[item.status] || item.status} · ${new Date(item.submittedAt).toLocaleString('de-DE')}`
+                + (resolved ? ` · erledigt am ${new Date(item.updatedAt).toLocaleDateString('de-DE')}` : '')}),
+        ]}),
+        element('p', {text: item.message}),
+        ...(item.memberEmail ? [element('small', {text: item.memberEmail})] : []),
+        ...(canEditModule('member_messages') ? [element('div', {className: 'card-actions', children: [
+            mail,
+            resolved
+                ? actionButton('Wieder öffnen', `/api/admin/v1/member-messages/${item.id}/status/new`, refresh, 'secondary-button', {success: 'Nachricht ist wieder offen.'})
+                : actionButton('Erledigt', `/api/admin/v1/member-messages/${item.id}/status/resolved`, refresh, 'button', {success: 'Nachricht wurde als erledigt markiert.'}),
+        ]})] : []),
+    ]});
+};
 
 const membershipTabsBySlug = {
     dashboard: 'dashboard',

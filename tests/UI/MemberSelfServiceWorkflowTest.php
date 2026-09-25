@@ -127,6 +127,22 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
         self::assertSame('Erika Musterfrau', $this->string($message, 'memberName'));
         self::assertSame('Meine Telefonnummer hat sich geändert.', $this->string($message, 'message'));
         self::assertSame('new', $this->string($message, 'status'));
+        $memberEmail = $this->string($message, 'memberEmail');
+
+        // 5. Die Verwaltung schreibt dem Mitglied eine Mail; der Status bleibt dabei unverändert.
+        $messageId = $this->string($message, 'id');
+        $this->client->jsonRequest('POST', '/api/admin/v1/member-messages/'.$messageId.'/reply', [
+            'recipient' => $memberEmail,
+            'subject' => 'Ihre Nachricht',
+            'body' => 'Vielen Dank, wir haben die Telefonnummer aktualisiert.',
+        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(202);
+        $this->client->jsonRequest('POST', '/api/admin/v1/member-messages/'.$messageId.'/reply', [
+            'recipient' => 'keine-adresse',
+            'subject' => 'Ihre Nachricht',
+            'body' => 'Text',
+        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
     }
 
     /**

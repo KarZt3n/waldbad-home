@@ -4,14 +4,8 @@ namespace App\Logic\Event\HelpRequest\UseCase;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestBroadcastResponse;
-use App\Logic\Settings\Email\Model\AssociationName;
-use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
-use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
-use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
+use App\Logic\Settings\Email\Service\FreeTextMailer;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Mailer\MailerInterface;
-use Symfony\Component\Mime\Address;
-use Symfony\Component\Mime\Email;
 
 /**
  * Verschickt eine frei formulierte Rundmail (Betreff/Text von der Verwaltung selbst getippt, keine
@@ -33,13 +27,8 @@ use Symfony\Component\Mime\Email;
 readonly class SendEventHelpRequestBroadcastUseCase
 {
     public function __construct(
-        private MailerInterface $mailer,
-        private MailContentRenderer $contentRenderer,
-        private BrandedEmailLayout $layout,
-        private EmailLogoProviderInterface $logoProvider,
+        private FreeTextMailer $mailer,
         private LoggerInterface $logger,
-        private string $fromAddress,
-        private ?string $fromName,
     ) {
     }
 
@@ -68,24 +57,11 @@ readonly class SendEventHelpRequestBroadcastUseCase
             throw new BusinessRuleViolationException('Es ist keine E-Mail-Adresse als Empfänger angegeben.');
         }
 
-        $html = $this->layout->wrap(
-            $trimmedSubject,
-            $this->contentRenderer->toHtmlFragment($trimmedBody),
-            $this->logoProvider->getLogoDataUri(),
-            AssociationName::CURRENT,
-        );
-
         $sent = 0;
         $failed = 0;
         foreach ($uniqueRecipients as $recipient) {
             try {
-                $email = (new Email())
-                    ->from(new Address($this->fromAddress, $this->fromName ?? ''))
-                    ->to($recipient)
-                    ->subject($trimmedSubject)
-                    ->text($trimmedBody)
-                    ->html($html);
-                $this->mailer->send($email);
+                $this->mailer->send($recipient, $trimmedSubject, $trimmedBody);
                 ++$sent;
             } catch (\Throwable $exception) {
                 ++$failed;
