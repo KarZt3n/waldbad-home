@@ -83,7 +83,9 @@ readonly class PayerDirectDebitPlanner
         $mandateUsed = $this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->mandateReference === $payer->mandateReference);
         foreach ($records as $record) {
             if ($record->contributionYear === $contributionYear) {
-                $warnings[] = sprintf('Für %d wurde bereits am %s eine Lastschrift über %s exportiert.', $contributionYear, $record->exportedAt->format('d.m.Y'), number_format($record->amountCents / 100, 2, ',', '.').' €');
+                $warnings[] = $record->isLegacyImport()
+                    ? sprintf('Für %d wurde laut Sage-Übernahme bereits eingezogen.', $contributionYear)
+                    : sprintf('Für %d wurde bereits am %s eine Lastschrift über %s exportiert.', $contributionYear, $record->exportedAt->format('d.m.Y'), number_format($record->amountCents / 100, 2, ',', '.').' €');
                 break;
             }
         }

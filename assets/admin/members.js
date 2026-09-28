@@ -1306,9 +1306,11 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
                 directDebitDataRow('Mandatsreferenz', preview.mandateReference),
                 directDebitDataRow('Mandat unterschrieben am', formatDateDE(preview.mandateSignedOn)),
                 directDebitDataRow('Zahlintervall', PAYMENT_INTERVAL_LABELS[preview.paymentInterval] || preview.paymentInterval),
-                directDebitDataRow('Letzte Lastschrift', preview.lastDebit
-                    ? `${formatDateDE(preview.lastDebit.collectionDate)} · ${preview.lastDebit.sequenceType} · ${formatEuro(preview.lastDebit.amountCents)} (Beitragsjahr ${preview.lastDebit.contributionYear})`
-                    : 'Noch keine über diese Verwaltung'),
+                directDebitDataRow('Letzte Lastschrift', !preview.lastDebit
+                    ? 'Noch keine über diese Verwaltung'
+                    : preview.lastDebit.legacyImport
+                        ? `Aus Sage übernommen (Beitragsjahr ${preview.lastDebit.contributionYear})`
+                        : `${formatDateDE(preview.lastDebit.collectionDate)} · ${preview.lastDebit.sequenceType} · ${formatEuro(preview.lastDebit.amountCents)} (Beitragsjahr ${preview.lastDebit.contributionYear})`),
             ]}),
             element('section', {children: [
                 element('h3', {text: 'Zahlungsempfänger'}),

@@ -156,6 +156,7 @@ final class AdminDirectDebitController extends AbstractController
                 'collectionDate' => $preview->lastDebit->collectionDate,
                 'amountCents' => $preview->lastDebit->amountCents,
                 'exportedAt' => $preview->lastDebit->exportedAt,
+                'legacyImport' => $preview->lastDebit->legacyImport,
             ],
         ];
     }

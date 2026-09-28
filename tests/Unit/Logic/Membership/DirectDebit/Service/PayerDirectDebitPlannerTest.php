@@ -181,6 +181,20 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertStringContainsString('Für 2027 wurde bereits', $draft->warnings[0]);
     }
 
+    public function testSageMarkedMandateOfAMemberJoinedThisYearGetsNoSecondJoiningYearDebit(): void
+    {
+        // In Sage 2026 eingetreten, Mandat 2026 unterschrieben und dort bereits eingezogen.
+        $payer = $this->member('payer', mandateValidFrom: '2026-02-01', joinedAt: '2026-02-01');
+        $sage = new DirectDebitRecord('sage', 'payer', 'MANDAT-1', 2026, SequenceType::Recurring, new \DateTimeImmutable('2026-09-28'), 0, DirectDebitRecord::LEGACY_IMPORT_MESSAGE_ID, new \DateTimeImmutable('2026-09-28 12:00:00'));
+
+        $draft = $this->planner([$payer], records: [$sage])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertFalse($draft->joiningYearDebit);
+        self::assertSame(2027, $draft->contributionYear);
+        self::assertSame(SequenceType::Recurring, $draft->defaultSequenceType);
+        self::assertTrue($draft->lastRecord?->isLegacyImport());
+    }
+
     private function record(int $contributionYear, SequenceType $sequenceType): DirectDebitRecord
     {
         return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'));

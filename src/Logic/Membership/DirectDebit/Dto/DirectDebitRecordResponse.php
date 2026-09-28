@@ -12,6 +12,7 @@ readonly class DirectDebitRecordResponse
         public string $collectionDate,
         public int $amountCents,
         public string $exportedAt,
+        public bool $legacyImport,
     ) {
     }
 
@@ -23,6 +24,7 @@ readonly class DirectDebitRecordResponse
             collectionDate: $record->collectionDate->format('Y-m-d'),
             amountCents: $record->amountCents,
             exportedAt: $record->exportedAt->format(\DateTimeInterface::ATOM),
+            legacyImport: $record->isLegacyImport(),
         );
     }
 }
