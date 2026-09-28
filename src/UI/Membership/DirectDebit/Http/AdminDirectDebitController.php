@@ -148,6 +148,15 @@ final class AdminDirectDebitController extends AbstractController
             'defaultSequenceType' => $preview->defaultSequenceType,
             'defaultRemittanceInformation' => $preview->defaultRemittanceInformation,
             'sequenceTypes' => $preview->sequenceTypes,
+            'contributionYear' => $preview->contributionYear,
+            'joiningYearDebit' => $preview->joiningYearDebit,
+            'lastDebit' => $preview->lastDebit === null ? null : [
+                'contributionYear' => $preview->lastDebit->contributionYear,
+                'sequenceType' => $preview->lastDebit->sequenceType,
+                'collectionDate' => $preview->lastDebit->collectionDate,
+                'amountCents' => $preview->lastDebit->amountCents,
+                'exportedAt' => $preview->lastDebit->exportedAt,
+            ],
         ];
     }
 }

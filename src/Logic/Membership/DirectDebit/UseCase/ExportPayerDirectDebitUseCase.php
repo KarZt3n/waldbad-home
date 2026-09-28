@@ -10,12 +10,15 @@ use App\Logic\Membership\DirectDebit\Dto\ExportPayerDirectDebitRequest;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitBatch;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitTransaction;
+use App\Logic\Membership\DirectDebit\Service\DirectDebitBookkeeper;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 
 /**
  * Erzeugt die SEPA-Lastschriftdatei für einen einzelnen Zahler aus den in der Vorschau
  * ausgewählten Positionen — als eine Buchung über deren Summe, so wie sie auch auf dem
- * Kontoauszug des Zahlers erscheint. Am Mitglied selbst wird dabei nichts verändert.
+ * Kontoauszug des Zahlers erscheint. Der Export wird in der Lastschrift-Historie festgehalten und
+ * rückt — außer bei der Lastschrift für das Eintrittsjahr — die „Nächste Buchung“ des Zahlers um
+ * ein Jahr vor (siehe `DirectDebitBookkeeper`).
  */
 readonly class ExportPayerDirectDebitUseCase
 {
@@ -25,6 +28,7 @@ readonly class ExportPayerDirectDebitUseCase
         private PayerDirectDebitPlanner $planner,
         private DirectDebitFileWriterInterface $writer,
         private ClockInterface $clock,
+        private DirectDebitBookkeeper $bookkeeper,
     ) {
     }
 
@@ -78,9 +82,12 @@ readonly class ExportPayerDirectDebitUseCase
             )],
         );
 
+        $content = $this->writer->write($batch);
+        $this->bookkeeper->book($draft, $batch);
+
         return new DirectDebitFileResponse(
             fileName: sprintf('sepa-lastschrift-%s-%s.xml', $payer->memberNumber, $request->collectionDate->format('Ymd')),
-            content: $this->writer->write($batch),
+            content: $content,
         );
     }
 }

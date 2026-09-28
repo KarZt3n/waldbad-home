@@ -4,9 +4,12 @@ namespace App\Logic\Membership\DirectDebit\Service;
 
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\DirectDebit\Manager\DirectDebitCreditorManagerInterface;
+use App\Logic\Membership\DirectDebit\Manager\DirectDebitRecordManagerInterface;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\PayerDirectDebitDraft;
+use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\Member\Model\PayerType;
@@ -18,6 +21,13 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  * Selbstzahler, plus alle Mitglieder, deren Beitrag er trägt. Je Person werden der gespeicherte
  * Beitrag und Arbeitseinsatz-Zuschlag sowie deren einmalige Gebühren (z. B. Beitrittsgebühr) als
  * wählbare Positionen angeboten; Ausgetretene und Beitragsbefreite entfallen wie dort.
+ *
+ * Anhand der Lastschrift-Historie des Zahlers: Ist er im laufenden Jahr eingetreten und wurde für
+ * dieses Jahr noch nichts eingezogen, ist es die Lastschrift für das Eintrittsjahr (sofort fällig).
+ * Sonst gilt die „Nächste Buchung“. Erstlastschrift (FRST) wird vorgeschlagen, wenn das Mandat noch
+ * nie über die App eingezogen wurde und im laufenden Jahr unterschrieben ist (Neumitglied oder neues
+ * Mandat, siehe `CreateMemberMandateUseCase`) — aus Sage übernommene Mandate wurden dort bereits
+ * genutzt und laufen als Folgelastschrift (RCUR) weiter.
  *
  * Laufende Positionen werden auf das Zahlintervall des Zahlers umgelegt (z. B. ein Viertel des
  * Jahresbetrags bei vierteljährlicher Zahlung). Einmalige Gebühren sind nur vorausgewählt, wenn sie
@@ -32,6 +42,7 @@ readonly class PayerDirectDebitPlanner
         private MemberManagerInterface $members,
         private ContributionRateManagerInterface $rates,
         private DirectDebitCreditorManagerInterface $creditors,
+        private DirectDebitRecordManagerInterface $records,
     ) {
     }
 
@@ -64,6 +75,19 @@ readonly class PayerDirectDebitPlanner
             $warnings[] = sprintf('Kein Mandatsdatum hinterlegt – es wird das Eintrittsdatum %s verwendet.', $payer->joinedAt->format('d.m.Y'));
         }
 
+        $year = (int) $now->format('Y');
+        $records = $this->records->findByPayerMemberId($payer->id);
+        $joinedThisYear = (int) $payer->joinedAt->format('Y') === $year;
+        $joiningYearDebit = $joinedThisYear && !$this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->contributionYear === $year);
+        $contributionYear = $joiningYearDebit ? $year : ($payer->nextBookingYear ?? $year);
+        $mandateUsed = $this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->mandateReference === $payer->mandateReference);
+        foreach ($records as $record) {
+            if ($record->contributionYear === $contributionYear) {
+                $warnings[] = sprintf('Für %d wurde bereits am %s eine Lastschrift über %s exportiert.', $contributionYear, $record->exportedAt->format('d.m.Y'), number_format($record->amountCents / 100, 2, ',', '.').' €');
+                break;
+            }
+        }
+
         return new PayerDirectDebitDraft(
             payer: $payer,
             debtorName: $payer->accountHolder ?? $this->memberName($payer),
@@ -72,13 +96,32 @@ readonly class PayerDirectDebitPlanner
             positions: $positions,
             blockers: $this->blockers($payer, $creditor->isComplete(), $now),
             warnings: $warnings,
-            defaultCollectionDate: $this->defaultCollectionDate($payer, $now),
+            defaultCollectionDate: $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $now),
             // Mandatsreferenz, Gläubiger-ID und Zahlungsempfänger.
             defaultRemittanceInformation: implode(' ', array_filter(
                 [$payer->mandateReference, $creditor->creditorId, $creditor->name],
                 static fn (?string $part): bool => $part !== null && trim($part) !== '',
             )),
+            defaultSequenceType: !$mandateUsed && (int) $mandateSignedOn->format('Y') >= $year ? SequenceType::First : SequenceType::Recurring,
+            contributionYear: $contributionYear,
+            joiningYearDebit: $joiningYearDebit,
+            lastRecord: $records[0] ?? null,
         );
+    }
+
+    /**
+     * @param list<DirectDebitRecord>          $records
+     * @param callable(DirectDebitRecord): bool $matches
+     */
+    private function hasRecordFor(array $records, callable $matches): bool
+    {
+        foreach ($records as $record) {
+            if ($matches($record)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -152,7 +195,7 @@ readonly class PayerDirectDebitPlanner
             $blockers[] = 'Für den Zahler ist keine echte Bankverbindung hinterlegt.';
         }
         if ($payer->mandateReference === null || trim($payer->mandateReference) === '') {
-            $blockers[] = 'Für den Zahler ist keine Mandatsreferenz hinterlegt.';
+            $blockers[] = 'Für den Zahler ist noch kein SEPA-Mandat erzeugt (Mitglied → Beitragsdaten → Kontodaten → „Mandat erzeugen“).';
         }
         if ($payer->mandateValidUntil !== null && $payer->mandateValidUntil->format('Y-m-d') < $now->format('Y-m-d')) {
             $blockers[] = sprintf('Das SEPA-Mandat des Zahlers ist abgelaufen (gültig bis %s).', $payer->mandateValidUntil->format('d.m.Y'));
@@ -162,19 +205,39 @@ readonly class PayerDirectDebitPlanner
     }
 
     /**
-     * Nächster Zahltag des Zahlers (01. bzw. 15.), der mindestens zwei Tage in der Zukunft liegt —
-     * fällt er aufs Wochenende, der darauffolgende Montag.
+     * Fälligkeit laut „Nächste Buchung“ des Zahlers (Monat/Jahr) an seinem Zahltag (01. bzw. 15.).
+     * Ist keine nächste Buchung hinterlegt oder liegt sie weniger als zwei Tage in der Zukunft (bzw.
+     * schon zurück), der nächste Zahltag mit mindestens zwei Tagen Vorlauf. Fällt das Datum aufs
+     * Wochenende, gilt der darauffolgende Montag.
      */
     private function defaultCollectionDate(Member $payer, \DateTimeImmutable $now): \DateTimeImmutable
+    {
+        $earliest = $now->setTime(0, 0)->modify('+2 days');
+        if ($payer->nextBookingMonth === null || $payer->nextBookingYear === null) {
+            return $this->nextPaymentDay($payer, $now);
+        }
+        $candidate = $earliest->setDate($payer->nextBookingYear, $payer->nextBookingMonth, $payer->paymentDay->dayOfMonth());
+
+        return $candidate < $earliest ? $this->nextPaymentDay($payer, $now) : $this->skipWeekend($candidate);
+    }
+
+    /** Nächster Zahltag des Zahlers mit mindestens zwei Tagen Vorlauf. */
+    private function nextPaymentDay(Member $payer, \DateTimeImmutable $now): \DateTimeImmutable
     {
         $earliest = $now->setTime(0, 0)->modify('+2 days');
         $candidate = $earliest->setDate((int) $earliest->format('Y'), (int) $earliest->format('n'), $payer->paymentDay->dayOfMonth());
         if ($candidate < $earliest) {
             $candidate = $candidate->modify('+1 month');
         }
-        $weekday = (int) $candidate->format('N');
 
-        return $weekday >= 6 ? $candidate->modify(sprintf('+%d days', 8 - $weekday)) : $candidate;
+        return $this->skipWeekend($candidate);
+    }
+
+    private function skipWeekend(\DateTimeImmutable $date): \DateTimeImmutable
+    {
+        $weekday = (int) $date->format('N');
+
+        return $weekday >= 6 ? $date->modify(sprintf('+%d days', 8 - $weekday)) : $date;
     }
 
     private function memberName(Member $member): string

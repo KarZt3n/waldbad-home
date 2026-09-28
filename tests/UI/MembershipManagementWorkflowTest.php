@@ -691,14 +691,27 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         ], $headers);
         self::assertResponseStatusCodeSame(422);
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), $headers);
+        // Neumitglied im laufenden Jahr (z. B. aus einem angenommenen Antrag).
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['joinedAt' => (new \DateTimeImmutable())->format('Y-m-d')]), $headers);
         self::assertResponseStatusCodeSame(201);
         $memberId = $this->string($this->responseData(), 'id');
+        $memberNumber = $this->string($this->responseData(), 'memberNumber');
+        $nextBookingYear = $this->int($this->responseData(), 'nextBookingYear');
+        // Ein neues Mitglied hat noch kein SEPA-Mandat.
+        self::assertNull($this->responseData()['mandateReference']);
 
-        // Ohne Gläubigerdaten zeigt die Vorschau den Hinderungsgrund, der Export scheitert.
+        // Ohne Gläubigerdaten und ohne Mandat zeigt die Vorschau beide Hinderungsgründe.
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview', server: $headers);
         self::assertResponseIsSuccessful();
-        self::assertCount(1, $this->arrayList($this->responseData(), 'blockers'));
+        self::assertCount(2, $this->arrayList($this->responseData(), 'blockers'));
+
+        // „Mandat erzeugen“: Referenz = Mitgliedsnummer, Datum = Eintrittsdatum; nur einmal möglich.
+        $this->client->request('POST', '/api/admin/v1/members/'.$memberId.'/mandate', server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('WV-'.$memberNumber.'-00001', $this->responseData()['mandateReference']);
+        self::assertSame((new \DateTimeImmutable())->format('Y-m-d'), $this->responseData()['mandateValidFrom']);
+        $this->client->request('POST', '/api/admin/v1/members/'.$memberId.'/mandate', server: $headers);
+        self::assertResponseStatusCodeSame(422);
 
         $this->client->jsonRequest('PUT', '/api/admin/v1/direct-debit-creditor', [
             'name' => 'Waldbad Borkheide e.V.', 'creditorId' => 'DE98 ZZZ0 9999 9999 99', 'iban' => 'DE02 1203 0000 0000 2020 51', 'bic' => '',
@@ -710,6 +723,11 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $preview = $this->responseData();
         self::assertSame([], $preview['blockers']);
+        // Eintrittsjahr: Erstlastschrift für das laufende Jahr, noch keine Historie.
+        self::assertTrue($preview['joiningYearDebit']);
+        self::assertSame((int) date('Y'), $preview['contributionYear']);
+        self::assertSame('FRST', $preview['defaultSequenceType']);
+        self::assertNull($preview['lastDebit']);
         $positionIds = [];
         foreach ($this->arrayList($preview, 'positions') as $position) {
             self::assertIsArray($position);
@@ -723,7 +741,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $collectionDate = (new \DateTimeImmutable('+10 days'))->format('Y-m-d');
         $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
             'collectionDate' => $collectionDate,
-            'sequenceType' => 'RCUR',
+            'sequenceType' => 'FRST',
             'remittanceInformation' => 'Mitgliedsbeitrag 2026',
             'positionIds' => $positionIds,
         ], $headers);
@@ -733,6 +751,20 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertStringContainsString('<InstdAmt Ccy="EUR">75.00</InstdAmt>', $xml);
         self::assertStringContainsString('<ReqdColltnDt>'.$collectionDate.'</ReqdColltnDt>', $xml);
         self::assertStringContainsString('<IBAN>DE89370400440532013000</IBAN>', $xml);
+        self::assertStringContainsString('<SeqTp>FRST</SeqTp>', $xml);
+
+        // Danach: Folgelastschrift zur nächsten Buchung, die Erstlastschrift ist in der Historie.
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview', server: $headers);
+        $afterFirst = $this->responseData();
+        self::assertFalse($afterFirst['joiningYearDebit']);
+        self::assertSame($nextBookingYear, $afterFirst['contributionYear']);
+        self::assertSame('RCUR', $afterFirst['defaultSequenceType']);
+        $lastDebit = $this->arrayData($afterFirst, 'lastDebit');
+        self::assertSame('FRST', $lastDebit['sequenceType']);
+        self::assertSame(7500, $lastDebit['amountCents']);
+        // Die Lastschrift für das Eintrittsjahr lässt die nächste Buchung unverändert.
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: $headers);
+        self::assertSame($nextBookingYear, $this->responseData()['nextBookingYear']);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
             'collectionDate' => (new \DateTimeImmutable('yesterday'))->format('Y-m-d'),

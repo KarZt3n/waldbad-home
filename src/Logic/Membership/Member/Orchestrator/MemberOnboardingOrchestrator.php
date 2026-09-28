@@ -12,7 +12,6 @@ use App\Logic\Membership\Member\MemberNumberGeneratorInterface;
 use App\Logic\Membership\Member\Model\ContributionCharge;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
-use App\Logic\Membership\Member\Model\PayerType;
 use App\Logic\Membership\Member\Service\MemberContributionCalculator;
 use App\Logic\Membership\Member\Service\MemberOneTimeChargeResolver;
 
@@ -73,10 +72,9 @@ readonly class MemberOnboardingOrchestrator
                 )))->id;
         }
 
+        // Ein neues Mitglied hat noch kein SEPA-Mandat — es wird erst über „Mandat erzeugen“
+        // angelegt (siehe `CreateMemberMandateUseCase`), außer die Importdatei bringt eines mit.
         $mandateReference = $request->mandateReference;
-        if ($mandateReference === null && $request->payerType === PayerType::SelfPayer) {
-            $mandateReference = $memberNumber;
-        }
 
         $member = $this->factory->createFromRequest(
             request: $request,

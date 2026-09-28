@@ -469,6 +469,11 @@ const openMemberDialog = async (member, onSaved) => {
     const mandateReference = field('Mandatsreferenz', `member-mandate-reference-${suffix}`, member?.mandateReference || '');
     const mandateValidFrom = field('Mandat gültig von', `member-mandate-valid-from-${suffix}`, member?.mandateValidFrom || '', 'date');
     const mandateValidUntil = field('Mandat gültig bis', `member-mandate-valid-until-${suffix}`, member?.mandateValidUntil || '', 'date');
+    // Ein neues Mitglied hat noch kein SEPA-Mandat; es wird hier erzeugt (Referenz =
+    // „WV-<Mitgliedsnummer>-00001“, Datum = Eintrittsdatum, siehe `CreateMemberMandateUseCase`).
+    const createMandateButton = member && canEditModule('members')
+        ? element('button', {className: 'secondary-button', text: 'Mandat erzeugen', attributes: {type: 'button'}})
+        : null;
 
     const paymentMethod = selectField('Zahlart', `member-payment-method-${suffix}`, Object.entries(PAYMENT_METHOD_LABELS), member?.paymentMethod || 'sepa_direct_debit');
     const paymentMethodSelect = paymentMethod.querySelector('select');
@@ -537,12 +542,37 @@ const openMemberDialog = async (member, onSaved) => {
         paymentDay.querySelectorAll('input').forEach((input) => { input.disabled = !liable || paidByOtherMember; });
         const payerSearchInput = payerMember.querySelector('input[type="text"]');
         if (payerSearchInput) payerSearchInput.disabled = !liable;
+        if (createMandateButton) {
+            createMandateButton.hidden = paidByOtherMember
+                || paymentMethodSelect.value !== 'sepa_direct_debit'
+                || mandateReference.querySelector('input').value.trim() !== '';
+        }
     };
     contributionLiable.addEventListener('change', () => applyContributionLiableState());
     leftAt.querySelector('input').addEventListener('input', () => applyContributionLiableState());
     paymentMethodSelect.addEventListener('change', () => applyContributionLiableState());
     payerTypeSelect.addEventListener('change', () => applyContributionLiableState(true));
+    mandateReference.querySelector('input').addEventListener('input', () => applyContributionLiableState());
     applyContributionLiableState();
+    if (createMandateButton) {
+        createMandateButton.addEventListener('click', async () => {
+            createMandateButton.disabled = true;
+            try {
+                // Speichert serverseitig direkt am Mitglied; Formularfelder und Version werden
+                // nachgezogen, damit ein späteres „Speichern“ das Mandat nicht wieder leert.
+                const updated = await request(`/api/admin/v1/members/${member.id}/mandate`, {method: 'POST'});
+                member = {...member, version: updated.version, mandateReference: updated.mandateReference, mandateValidFrom: updated.mandateValidFrom};
+                mandateReference.querySelector('input').value = updated.mandateReference || '';
+                mandateValidFrom.querySelector('input').value = updated.mandateValidFrom || '';
+                applyContributionLiableState();
+                toast('Das SEPA-Mandat wurde erzeugt.');
+            } catch (error) {
+                toast(error.message, 'error');
+            } finally {
+                createMandateButton.disabled = false;
+            }
+        });
+    }
 
     // Vorstandsmitglieder sind laut Satzung beitragsfrei: Beim Umstellen der Funktion auf
     // „Vorstand“ wird „Beitragspflichtig“ direkt im Formular deaktiviert, beim Umstellen weg
@@ -704,7 +734,15 @@ const openMemberDialog = async (member, onSaved) => {
     const directDebitButton = (currentMember) => {
         if (!canEditModule('members')) return [];
         const button = element('button', {className: 'secondary-button', text: 'SEPA-Lastschrift…', attributes: {type: 'button'}});
-        button.addEventListener('click', () => openDirectDebitDialog(currentMember.id));
+        // Der Export kann die „Nächste Buchung“ des Zahlers vorrücken — ist das der geöffnete
+        // Datensatz, werden Feld und Version nachgezogen, damit ein späteres Speichern den neuen
+        // Stand nicht mit dem alten Formularwert überschreibt.
+        button.addEventListener('click', () => openDirectDebitDialog(currentMember.id, async () => {
+            const fresh = await request(`/api/admin/v1/members/${member.id}`);
+            member = {...member, version: fresh.version, nextBookingMonth: fresh.nextBookingMonth, nextBookingYear: fresh.nextBookingYear};
+            nextBookingMonthSelect.value = fresh.nextBookingMonth == null ? '' : String(fresh.nextBookingMonth);
+            nextBookingYearInput.value = fresh.nextBookingYear == null ? '' : String(fresh.nextBookingYear);
+        }));
 
         return [button];
     };
@@ -806,6 +844,7 @@ const openMemberDialog = async (member, onSaved) => {
                 element('legend', {text: 'Kontodaten'}),
                 accountHolder, iban, bankName,
                 fieldRow([mandateReference, mandateValidFrom, mandateValidUntil], 3),
+                ...(createMandateButton ? [createMandateButton] : []),
                 element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich und werden nur bei dieser Zahlart bearbeitbar. Zahlt ein anderes Mitglied, werden Kontodaten und nächste Buchung geleert. „Gültig von/bis“ stammt aus dem Sage-GS-Bestand (MANDATABDATUM/MANDATBISDATUM) und kann hier gepflegt werden.'}),
             ]}),
             ...(contributionSection ? [contributionSection] : []),
@@ -1188,7 +1227,7 @@ const directDebitDataRow = (label, value) => element('div', {className: 'member-
     element('span', {className: 'member-data-value', text: value || '–'}),
 ]});
 
-const openDirectDebitDialog = async (memberId) => {
+const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
     let preview;
     try {
         preview = await request(`/api/admin/v1/members/${memberId}/direct-debit-preview`);
@@ -1253,6 +1292,9 @@ const openDirectDebitDialog = async (memberId) => {
     const form = element('form', {className: 'confirm-dialog-content', children: [
         element('p', {className: 'eyebrow', text: 'SEPA-Lastschrift'}),
         element('h2', {text: `Lastschrift für ${preview.payerName} (${preview.payerMemberNumber})`}),
+        element('p', {className: 'field-hint', text: preview.joiningYearDebit
+            ? `Beitragsjahr ${preview.contributionYear} (Eintrittsjahr): sofort fällig, „Nächste Buchung“ bleibt unverändert.`
+            : `Beitragsjahr ${preview.contributionYear}: Nach dem Export rückt „Nächste Buchung“ um ein Jahr vor.`}),
         ...preview.blockers.map((text) => element('p', {className: 'failure-message', text})),
         ...preview.warnings.map((text) => element('p', {className: 'field-hint', text: `⚠ ${text}`})),
         element('div', {className: 'direct-debit-columns', children: [
@@ -1264,6 +1306,9 @@ const openDirectDebitDialog = async (memberId) => {
                 directDebitDataRow('Mandatsreferenz', preview.mandateReference),
                 directDebitDataRow('Mandat unterschrieben am', formatDateDE(preview.mandateSignedOn)),
                 directDebitDataRow('Zahlintervall', PAYMENT_INTERVAL_LABELS[preview.paymentInterval] || preview.paymentInterval),
+                directDebitDataRow('Letzte Lastschrift', preview.lastDebit
+                    ? `${formatDateDE(preview.lastDebit.collectionDate)} · ${preview.lastDebit.sequenceType} · ${formatEuro(preview.lastDebit.amountCents)} (Beitragsjahr ${preview.lastDebit.contributionYear})`
+                    : 'Noch keine über diese Verwaltung'),
             ]}),
             element('section', {children: [
                 element('h3', {text: 'Zahlungsempfänger'}),
@@ -1304,6 +1349,7 @@ const openDirectDebitDialog = async (memberId) => {
             URL.revokeObjectURL(url);
             toast('Die SEPA-Lastschriftdatei wurde erstellt.');
             dialog.close();
+            await onExported();
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');

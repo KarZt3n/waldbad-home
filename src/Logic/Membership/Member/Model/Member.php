@@ -89,9 +89,10 @@ readonly class Member
         if ($this->leftAt !== null && $this->leftAt < $this->joinedAt) {
             throw new BusinessRuleViolationException('Das Austrittsdatum darf nicht vor dem Eintrittsdatum liegen.');
         }
-        // Kontodaten (Kontoinhaber, IBAN, Mandatsreferenz) sind nur für Selbstzahler mit
-        // SEPA-Lastschrift zwingend erforderlich — nur dafür existiert überhaupt ein
-        // SEPA-Mandat. Bei Überweisung oder Barzahlung braucht auch ein Selbstzahler keine
+        // Kontodaten (Kontoinhaber, IBAN) sind nur für Selbstzahler mit SEPA-Lastschrift
+        // zwingend erforderlich. Die Mandatsreferenz nicht: Ein neues Mitglied hat noch kein
+        // Mandat, es wird erst über „Mandat erzeugen“ angelegt (siehe `CreateMemberMandateUseCase`);
+        // bis dahin sperrt der Lastschrift-Export (siehe `PayerDirectDebitPlanner`). Bei Überweisung oder Barzahlung braucht auch ein Selbstzahler keine
         // eigene Bankverbindung. Ein Mitglied, für das ein anderes Mitglied zahlt, braucht
         // ohnehin keine eigene Bankverbindung. Ist trotzdem eine IBAN hinterlegt (z. B.
         // historisch), wird ihr Format dennoch geprüft.
@@ -101,9 +102,6 @@ readonly class Member
             }
             if ($this->iban === null || !$this->isValidIban($this->iban)) {
                 throw new BusinessRuleViolationException('Die IBAN ist für einen Selbstzahler mit SEPA-Lastschrift erforderlich und muss gültig sein.');
-            }
-            if ($this->mandateReference === null || trim($this->mandateReference) === '') {
-                throw new BusinessRuleViolationException('Die Mandatsreferenz ist für einen Selbstzahler mit SEPA-Lastschrift erforderlich.');
             }
         } elseif ($this->iban !== null && trim($this->iban) !== '' && !$this->isValidIban($this->iban)) {
             throw new BusinessRuleViolationException('Die IBAN ist ungültig.');
@@ -461,6 +459,50 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $emailConsent,
+        );
+    }
+
+    /** Nach einem Lastschrift-Export rückt die nächste Buchung vor (siehe `DirectDebitBookkeeper`). */
+    public function withNextBooking(?int $month, ?int $year): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $month,
+            nextBookingYear: $year,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
         );
     }
 

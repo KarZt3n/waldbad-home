@@ -6,6 +6,9 @@ use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterfa
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\ContributionRate\Model\ContributionRate;
 use App\Logic\Membership\DirectDebit\Manager\DirectDebitCreditorManagerInterface;
+use App\Logic\Membership\DirectDebit\Manager\DirectDebitRecordManagerInterface;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
+use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitCreditor;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
@@ -51,8 +54,8 @@ final class PayerDirectDebitPlannerTest extends TestCase
             array_map(static fn (DirectDebitPosition $position): array => [$position->id, $position->label, $position->amountCents, $position->selectedByDefault], $draft->positions),
         );
         self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $draft->defaultRemittanceInformation);
-        // Nächster 01. mit mindestens zwei Tagen Vorlauf: 01.10.2026 ist ein Donnerstag.
-        self::assertSame('2026-10-01', $draft->defaultCollectionDate->format('Y-m-d'));
+        // Nächste Buchung 03/2027, Zahltag 01. — der 01.03.2027 ist ein Montag.
+        self::assertSame('2027-03-01', $draft->defaultCollectionDate->format('Y-m-d'));
     }
 
     public function testPayerComesFirstFollowedByTheOthersFromOldestToYoungest(): void
@@ -98,24 +101,96 @@ final class PayerDirectDebitPlannerTest extends TestCase
 
         $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
 
-        self::assertSame('2026-01-01', $draft->mandateSignedOn->format('Y-m-d'));
-        self::assertStringContainsString('Eintrittsdatum 01.01.2026', $draft->warnings[0]);
+        self::assertSame('2020-01-01', $draft->mandateSignedOn->format('Y-m-d'));
+        self::assertStringContainsString('Eintrittsdatum 01.01.2020', $draft->warnings[0]);
+    }
+
+    public function testCollectionDateFollowsTheNextBookingAndThePaymentDay(): void
+    {
+        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, mandateValidFrom: '2020-03-01');
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame('2027-03-15', $draft->defaultCollectionDate->format('Y-m-d'));
+    }
+
+    public function testOverdueNextBookingFallsBackToTheNextPossiblePaymentDay(): void
+    {
+        // Nächste Buchung 03/2026 liegt zurück — nächster 01. mit zwei Tagen Vorlauf ist der 01.10.2026.
+        $payer = $this->member('payer', mandateValidFrom: '2020-03-01', nextBookingYear: 2026);
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame('2026-10-01', $draft->defaultCollectionDate->format('Y-m-d'));
     }
 
     public function testCollectionDateOnAWeekendMovesToMonday(): void
     {
-        // Nächster 15. ab 13.11.2026 + 2 Tage ist Sonntag, der 15.11.2026.
-        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, mandateValidFrom: '2020-03-01');
+        // Ohne nächste Buchung: nächster 15. ab 13.11.2026 + 2 Tage ist Sonntag, der 15.11.2026.
+        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, mandateValidFrom: '2020-03-01', nextBookingYear: null);
 
         $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable('2026-11-13 09:00:00'));
 
         self::assertSame('2026-11-16', $draft->defaultCollectionDate->format('Y-m-d'));
     }
 
+    public function testMemberWhoJoinedThisYearGetsAFirstDebitForTheJoiningYearRightAway(): void
+    {
+        // Antrag angenommen im Sept. 2026: nächste Buchung steht auf 03/2027, der Beitrag 2026 fehlt noch.
+        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, joinedAt: '2026-09-01');
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertTrue($draft->joiningYearDebit);
+        self::assertSame(2026, $draft->contributionYear);
+        self::assertSame(SequenceType::First, $draft->defaultSequenceType);
+        self::assertSame('2026-10-15', $draft->defaultCollectionDate->format('Y-m-d'));
+        self::assertNull($draft->lastRecord);
+    }
+
+    public function testAfterTheJoiningYearDebitTheNextBookingFollowsAsRecurringDebit(): void
+    {
+        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, joinedAt: '2026-09-01');
+        $joiningDebit = $this->record(2026, SequenceType::First);
+
+        $draft = $this->planner([$payer], records: [$joiningDebit])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertFalse($draft->joiningYearDebit);
+        self::assertSame(2027, $draft->contributionYear);
+        self::assertSame(SequenceType::Recurring, $draft->defaultSequenceType);
+        self::assertSame('2027-03-15', $draft->defaultCollectionDate->format('Y-m-d'));
+        self::assertSame($joiningDebit, $draft->lastRecord);
+    }
+
+    public function testImportedMemberWithoutHistoryGetsARecurringDebit(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01');
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertFalse($draft->joiningYearDebit);
+        self::assertSame(SequenceType::Recurring, $draft->defaultSequenceType);
+    }
+
+    public function testWarnsWhenTheContributionYearWasAlreadyDebited(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01');
+
+        $draft = $this->planner([$payer], records: [$this->record(2027, SequenceType::Recurring)])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertStringContainsString('Für 2027 wurde bereits', $draft->warnings[0]);
+    }
+
+    private function record(int $contributionYear, SequenceType $sequenceType): DirectDebitRecord
+    {
+        return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'));
+    }
+
     /**
-     * @param list<Member> $members
+     * @param list<Member>            $members
+     * @param list<DirectDebitRecord> $records
      */
-    private function planner(array $members, ?DirectDebitCreditor $creditor = null): PayerDirectDebitPlanner
+    private function planner(array $members, ?DirectDebitCreditor $creditor = null, array $records = []): PayerDirectDebitPlanner
     {
         $byId = [];
         foreach ($members as $member) {
@@ -141,7 +216,10 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $creditors = $this->createStub(DirectDebitCreditorManagerInterface::class);
         $creditors->method('get')->willReturn($creditor ?? new DirectDebitCreditor('Waldbad Borkheide e.V.', 'DE98ZZZ09999999999', 'DE02120300000000202051', null));
 
-        return new PayerDirectDebitPlanner($memberManager, $rates, $creditors);
+        $recordManager = $this->createStub(DirectDebitRecordManagerInterface::class);
+        $recordManager->method('findByPayerMemberId')->willReturn($records);
+
+        return new PayerDirectDebitPlanner($memberManager, $rates, $creditors, $recordManager);
     }
 
     /**
@@ -162,6 +240,8 @@ final class PayerDirectDebitPlannerTest extends TestCase
         ?string $mandateValidUntil = null,
         array $charges = [],
         string $birthDate = '1985-05-05',
+        ?int $nextBookingYear = 2027,
+        string $joinedAt = '2020-01-01',
     ): Member {
         $isPayer = $payerId === null;
 
@@ -179,7 +259,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
             email: null,
             phone: null,
             familyRole: $isPayer ? FamilyRole::Head : FamilyRole::Child,
-            joinedAt: new \DateTimeImmutable('2026-01-01'),
+            joinedAt: new \DateTimeImmutable($joinedAt),
             leftAt: $leftAt === null ? null : new \DateTimeImmutable($leftAt),
             function: $liable ? MemberFunction::Member : MemberFunction::Board,
             accountHolder: $isPayer ? 'Payer Muster' : null,
@@ -191,8 +271,8 @@ final class PayerDirectDebitPlannerTest extends TestCase
             paymentDay: $paymentDay,
             payerType: $isPayer ? PayerType::SelfPayer : PayerType::OtherMember,
             payerMemberId: $payerId,
-            nextBookingMonth: 3,
-            nextBookingYear: 2027,
+            nextBookingMonth: $nextBookingYear === null ? null : 3,
+            nextBookingYear: $nextBookingYear,
             contributionCategory: $category,
             contributionAmountCents: $amountCents,
             workAssignmentSurchargeCents: $surchargeCents,

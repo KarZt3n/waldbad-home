@@ -32,6 +32,9 @@ readonly class PayerDirectDebitPreviewResponse
         public string $defaultSequenceType,
         public string $defaultRemittanceInformation,
         public array $sequenceTypes,
+        public int $contributionYear,
+        public bool $joiningYearDebit,
+        public ?DirectDebitRecordResponse $lastDebit,
     ) {
     }
 
@@ -54,12 +57,15 @@ readonly class PayerDirectDebitPreviewResponse
             blockers: $draft->blockers,
             warnings: $draft->warnings,
             defaultCollectionDate: $draft->defaultCollectionDate->format('Y-m-d'),
-            defaultSequenceType: SequenceType::Recurring->value,
+            defaultSequenceType: $draft->defaultSequenceType->value,
             defaultRemittanceInformation: $draft->defaultRemittanceInformation,
             sequenceTypes: array_map(
                 static fn (SequenceType $type): array => ['value' => $type->value, 'label' => $type->label()],
                 SequenceType::cases(),
             ),
+            contributionYear: $draft->contributionYear,
+            joiningYearDebit: $draft->joiningYearDebit,
+            lastDebit: $draft->lastRecord === null ? null : DirectDebitRecordResponse::fromRecord($draft->lastRecord),
         );
     }
 }

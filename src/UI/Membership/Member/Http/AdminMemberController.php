@@ -10,6 +10,7 @@ use App\Logic\Membership\Member\Query\GetMemberQuery;
 use App\Logic\Membership\Member\Query\ListMembersQuery;
 use App\Logic\Membership\Member\EmailConsent\UseCase\SendMemberEmailConsentRequestUseCase;
 use App\Logic\Membership\Member\UseCase\AddMemberRemarkUseCase;
+use App\Logic\Membership\Member\UseCase\CreateMemberMandateUseCase;
 use App\Logic\Membership\Member\UseCase\CreateMemberUseCase;
 use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
 use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
@@ -266,6 +267,14 @@ class AdminMemberController extends AbstractController
         $remarkRequest = $this->requestMapper->addRemark($id, $request, $user->getDisplayName());
 
         return new JsonResponse($this->responseFactory->member($useCase->execute($remarkRequest)));
+    }
+
+    #[Route('/{id}/mandate', name: 'api_admin_member_create_mandate', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function createMandate(string $id, CreateMemberMandateUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+
+        return new JsonResponse($this->responseFactory->member($useCase->execute($id)));
     }
 
     #[Route('/{id}/recalculate-contribution', name: 'api_admin_member_recalculate_contribution', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]

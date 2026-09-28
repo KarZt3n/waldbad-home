@@ -114,7 +114,7 @@ readonly class ImportMembersUseCase
             accountHolder: $row->accountHolder,
             iban: $row->iban,
             bankName: $row->bankName,
-            mandateReference: $row->mandateReference ?? $memberNumber,
+            mandateReference: $row->mandateReference ?? $existing->mandateReference,
             paymentMethod: $row->paymentMethod,
             paymentInterval: $row->paymentInterval,
             paymentDay: $row->paymentDay,

@@ -5,12 +5,17 @@ namespace App\Tests\Unit\Logic\Membership\DirectDebit\UseCase;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
+use App\Logic\Common\IdentifierGeneratorInterface;
+use App\Logic\Membership\DirectDebit\DirectDebitBookingTransactionInterface;
 use App\Logic\Membership\DirectDebit\DirectDebitFileWriterInterface;
 use App\Logic\Membership\DirectDebit\Dto\ExportPayerDirectDebitRequest;
 use App\Logic\Membership\DirectDebit\Manager\DirectDebitCreditorManagerInterface;
+use App\Logic\Membership\DirectDebit\Manager\DirectDebitRecordManagerInterface;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitBatch;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitCreditor;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
+use App\Logic\Membership\DirectDebit\Service\DirectDebitBookkeeper;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 use App\Logic\Membership\DirectDebit\UseCase\ExportPayerDirectDebitUseCase;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
@@ -27,6 +32,35 @@ use PHPUnit\Framework\TestCase;
 
 final class ExportPayerDirectDebitUseCaseTest extends TestCase
 {
+    /** @var list<DirectDebitRecord> */
+    private array $savedRecords = [];
+    /** @var list<Member> */
+    private array $savedMembers = [];
+
+    public function testRegularDebitIsRecordedAndAdvancesTheNextBooking(): void
+    {
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class))->execute($this->request(['payer:contribution'], '2027-03-01'));
+
+        self::assertCount(1, $this->savedRecords);
+        self::assertSame(2027, $this->savedRecords[0]->contributionYear);
+        self::assertSame(SequenceType::Recurring, $this->savedRecords[0]->sequenceType);
+        self::assertSame(5000, $this->savedRecords[0]->amountCents);
+        self::assertCount(1, $this->savedMembers);
+        self::assertSame(2028, $this->savedMembers[0]->nextBookingYear);
+        self::assertSame(3, $this->savedMembers[0]->nextBookingMonth);
+    }
+
+    public function testJoiningYearDebitIsRecordedWithoutAdvancingTheNextBooking(): void
+    {
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class), joinedAt: '2026-09-01')
+            ->execute(new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable('2026-10-01'), SequenceType::First, 'Beitrag 2026', ['payer:contribution']));
+
+        self::assertCount(1, $this->savedRecords);
+        self::assertSame(2026, $this->savedRecords[0]->contributionYear);
+        self::assertSame(SequenceType::First, $this->savedRecords[0]->sequenceType);
+        self::assertSame([], $this->savedMembers);
+    }
+
     public function testWritesOneTransactionOverTheSelectedPositions(): void
     {
         $captured = null;
@@ -91,7 +125,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         return new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable($collectionDate), SequenceType::Recurring, 'Mitgliedsbeitrag 2026', $positionIds);
     }
 
-    private function useCase(DirectDebitFileWriterInterface $writer, ?DirectDebitCreditor $creditor = null): ExportPayerDirectDebitUseCase
+    private function useCase(DirectDebitFileWriterInterface $writer, ?DirectDebitCreditor $creditor = null, string $joinedAt = '2020-01-01'): ExportPayerDirectDebitUseCase
     {
         $payer = new Member(
             id: 'payer',
@@ -107,7 +141,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
             email: null,
             phone: null,
             familyRole: FamilyRole::None,
-            joinedAt: new \DateTimeImmutable('2026-01-01'),
+            joinedAt: new \DateTimeImmutable($joinedAt),
             leftAt: null,
             function: MemberFunction::Member,
             accountHolder: 'Erika Musterfrau',
@@ -132,15 +166,34 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('get')->willReturn($payer);
         $members->method('findByPayerMemberId')->willReturn([]);
+        $members->method('save')->willReturnCallback(function (Member $member): Member {
+            $this->savedMembers[] = $member;
+
+            return $member;
+        });
+        $records = $this->createStub(DirectDebitRecordManagerInterface::class);
+        $records->method('findByPayerMemberId')->willReturn([]);
+        $records->method('save')->willReturnCallback(function (DirectDebitRecord $record): DirectDebitRecord {
+            $this->savedRecords[] = $record;
+
+            return $record;
+        });
+        $transaction = $this->createStub(DirectDebitBookingTransactionInterface::class);
+        $transaction->method('execute')->willReturnCallback(static function (callable $work): void {
+            $work();
+        });
+        $identifiers = $this->createStub(IdentifierGeneratorInterface::class);
+        $identifiers->method('generate')->willReturn('record-1');
         $creditors = $this->createStub(DirectDebitCreditorManagerInterface::class);
         $creditors->method('get')->willReturn($creditor ?? new DirectDebitCreditor('Waldbad Borkheide e.V.', 'DE98ZZZ09999999999', 'DE02120300000000202051', null));
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-09-28 10:00:00'));
 
         return new ExportPayerDirectDebitUseCase(
-            new PayerDirectDebitPlanner($members, $this->createStub(ContributionRateManagerInterface::class), $creditors),
+            new PayerDirectDebitPlanner($members, $this->createStub(ContributionRateManagerInterface::class), $creditors, $records),
             $writer,
             $clock,
+            new DirectDebitBookkeeper($records, $members, $identifiers, $transaction),
         );
     }
 }
