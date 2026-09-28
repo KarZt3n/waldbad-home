@@ -50,9 +50,24 @@ final class PayerDirectDebitPlannerTest extends TestCase
             ],
             array_map(static fn (DirectDebitPosition $position): array => [$position->id, $position->label, $position->amountCents, $position->selectedByDefault], $draft->positions),
         );
-        self::assertSame('Mitgliedsbeitrag 2026 Bad-payer Muster', $draft->defaultRemittanceInformation);
+        self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $draft->defaultRemittanceInformation);
         // Nächster 01. mit mindestens zwei Tagen Vorlauf: 01.10.2026 ist ein Donnerstag.
         self::assertSame('2026-10-01', $draft->defaultCollectionDate->format('Y-m-d'));
+    }
+
+    public function testPayerComesFirstFollowedByTheOthersFromOldestToYoungest(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2020-03-01', birthDate: '1990-01-01');
+        $youngest = $this->member('youngest', payerId: 'payer', birthDate: '2015-06-01');
+        $oldest = $this->member('oldest', payerId: 'payer', birthDate: '1960-02-02');
+        $middle = $this->member('middle', payerId: 'payer', birthDate: '2008-03-03');
+
+        $draft = $this->planner([$payer, $youngest, $oldest, $middle])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame(
+            ['payer', 'oldest', 'middle', 'youngest'],
+            array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberId, $draft->positions))),
+        );
     }
 
     public function testRecurringPositionsAreSplitByThePayersInterval(): void
@@ -146,6 +161,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
         ?string $mandateValidFrom = null,
         ?string $mandateValidUntil = null,
         array $charges = [],
+        string $birthDate = '1985-05-05',
     ): Member {
         $isPayer = $payerId === null;
 
@@ -156,7 +172,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
             salutation: Salutation::Diverse,
             lastName: 'Muster',
             firstName: ucfirst($id),
-            birthDate: new \DateTimeImmutable('1985-05-05'),
+            birthDate: new \DateTimeImmutable($birthDate),
             street: 'Kirchanger 14',
             postalCode: '14822',
             city: 'Borkheide',

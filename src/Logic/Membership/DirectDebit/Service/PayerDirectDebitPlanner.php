@@ -41,7 +41,9 @@ readonly class PayerDirectDebitPlanner
         $payer = $member->payerType === PayerType::OtherMember && $member->payerMemberId !== null
             ? $this->members->get($member->payerMemberId)
             : $member;
+        // Zahler zuoberst, darunter die übrigen vom ältesten zum jüngsten.
         $paidByPayer = $this->members->findByPayerMemberId($payer->id);
+        usort($paidByPayer, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate);
         $entries = $payer->payerType === PayerType::SelfPayer ? [$payer, ...$paidByPayer] : $paidByPayer;
 
         $warnings = [];
@@ -71,7 +73,11 @@ readonly class PayerDirectDebitPlanner
             blockers: $this->blockers($payer, $creditor->isComplete(), $now),
             warnings: $warnings,
             defaultCollectionDate: $this->defaultCollectionDate($payer, $now),
-            defaultRemittanceInformation: sprintf('Mitgliedsbeitrag %s %s %s', $now->format('Y'), $payer->memberNumber, $payer->lastName),
+            // Mandatsreferenz, Gläubiger-ID und Zahlungsempfänger.
+            defaultRemittanceInformation: implode(' ', array_filter(
+                [$payer->mandateReference, $creditor->creditorId, $creditor->name],
+                static fn (?string $part): bool => $part !== null && trim($part) !== '',
+            )),
         );
     }
 

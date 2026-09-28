@@ -1163,7 +1163,6 @@ const openDirectDebitDialog = async (memberId) => {
         const cents = checkboxes.filter(({checkbox}) => checkbox.checked).reduce((sum, {position}) => sum + position.amountCents, 0);
         totalValue.textContent = formatEuro(cents);
     };
-    checkboxes.forEach(({checkbox}) => checkbox.addEventListener('change', updateTotal));
     updateTotal();
 
     const byMember = new Map();
@@ -1187,7 +1186,17 @@ const openDirectDebitDialog = async (memberId) => {
     const sequenceType = selectField('Lastschrifttyp', 'direct-debit-sequence-type', preview.sequenceTypes.map((type) => [type.value, type.label]), preview.defaultSequenceType);
     const remittance = field('Verwendungszweck', 'direct-debit-remittance', preview.defaultRemittanceInformation);
     const remittanceInput = remittance.querySelector('input');
-    remittanceInput.maxLength = 140;
+    const remittanceCounter = element('small', {className: 'field-hint'});
+    const updateRemittanceCounter = () => {
+        const length = remittanceInput.value.length;
+        remittanceCounter.textContent = length > 140
+            ? `${length}/140 Zeichen – zu lang für die Bank, bitte kürzen.`
+            : `${length}/140 Zeichen`;
+        remittanceCounter.classList.toggle('failure-message', length > 140);
+    };
+    remittanceInput.addEventListener('input', updateRemittanceCounter);
+    checkboxes.forEach(({checkbox}) => checkbox.addEventListener('change', updateTotal));
+    updateRemittanceCounter();
 
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const submit = element('button', {className: 'button', text: 'XML exportieren', attributes: {type: 'submit'}});
@@ -1220,6 +1229,7 @@ const openDirectDebitDialog = async (memberId) => {
         element('div', {className: 'member-payer-total', children: [element('span', {text: 'Betrag der Lastschrift'}), totalValue]}),
         fieldRow([collectionDate, sequenceType]),
         remittance,
+        remittanceCounter,
         message,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]});
