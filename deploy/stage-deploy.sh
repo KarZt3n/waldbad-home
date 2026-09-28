@@ -101,7 +101,14 @@ compose_file="$release_dir/deploy/compose.stage.yaml"
 
 printf 'Deploye Release %s aus Commit %s.\n' "$release_name" "$commit"
 docker compose -f "$compose_file" build --pull app
-docker compose -f "$compose_file" up -d --remove-orphans
+# Schlägt der Start fehl (z. B. eine Migration im Entrypoint), Status und Logs ausgeben, bevor
+# `set -e` abbricht — sonst steht im Deploy-Log nur „container … is unhealthy“.
+if ! docker compose -f "$compose_file" up -d --remove-orphans; then
+    docker compose -f "$compose_file" ps
+    docker compose -f "$compose_file" logs --tail=150 app database
+    printf 'Waldbad-home konnte nicht gestartet werden.\n' >&2
+    exit 1
+fi
 
 attempt=0
 until curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8083/api/public/v1/navigation >/dev/null; do
