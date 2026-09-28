@@ -109,17 +109,17 @@ class AdminMemberController extends AbstractController
     public function recalculateAllContributions(Request $request, RecalculateAllMemberContributionsUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
-        // Stichtag für die Alters-/Kategorieermittlung (siehe `RecalculateAllMemberContributionsUseCase`);
-        // ohne Angabe berechnet die Use Case selbst ab „jetzt“.
-        $rawAt = trim($request->getPayload()->getString('at', ''));
-        $at = null;
-        if ($rawAt !== '') {
-            $at = \DateTimeImmutable::createFromFormat('!Y-m-d', $rawAt);
-            if ($at === false) {
-                throw new BadRequestHttpException('Der Stichtag ist ungültig.');
+        // Beitragsjahr (Stichtag 31.12., siehe `RecalculateAllMemberContributionsUseCase`); ohne
+        // Angabe rechnet die Use Case mit dem laufenden Jahr.
+        $rawYear = trim($request->getPayload()->getString('year', ''));
+        $year = null;
+        if ($rawYear !== '') {
+            if (preg_match('/^\d{4}$/', $rawYear) !== 1) {
+                throw new BadRequestHttpException('Das Beitragsjahr ist ungültig.');
             }
+            $year = (int) $rawYear;
         }
-        $result = $useCase->execute($at);
+        $result = $useCase->execute($year);
 
         return new JsonResponse([
             'updated' => $result->updated,

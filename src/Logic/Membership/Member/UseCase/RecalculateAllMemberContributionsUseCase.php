@@ -41,13 +41,17 @@ readonly class RecalculateAllMemberContributionsUseCase
     }
 
     /**
-     * $at: Stichtag für die Alters-/Kategorieermittlung (siehe `MemberContributionCalculator`) —
-     * ohne Angabe der reale „jetzt“. Damit lässt sich z. B. ein gestern stattgefundener Geburtstag
-     * bewusst noch nicht berücksichtigen (Stichtag auf vorgestern setzen).
+     * $year: Beitragsjahr, dessen Stichtag 31.12. das Beitragsalter bestimmt (siehe
+     * `MemberContributionCalculator`) — ohne Angabe das laufende Jahr. Ob ein Mitglied bereits
+     * ausgetreten ist, wird im laufenden Jahr zum heutigen Tag geprüft, für jedes andere Jahr zu
+     * dessen Jahresbeginn (wer bis dahin ausgetreten ist, zahlt für dieses Jahr keinen Beitrag).
      */
-    public function execute(?\DateTimeImmutable $at = null): RecalculateAllContributionsResponse
+    public function execute(?int $year = null): RecalculateAllContributionsResponse
     {
-        $now = $at ?? $this->clock->now();
+        $now = $this->clock->now();
+        if ($year !== null && $year !== (int) $now->format('Y')) {
+            $now = $now->setDate($year, 1, 1)->setTime(0, 0);
+        }
 
         /** @var array<string, list<Member>> $households */
         $households = [];

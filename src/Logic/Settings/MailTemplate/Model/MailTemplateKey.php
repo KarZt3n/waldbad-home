@@ -211,8 +211,8 @@ enum MailTemplateKey: string
                 'mitgliedsnummer' => 'Bad-01234',
                 'beitrittsdatum' => '01.06.2026',
                 'personen' => <<<'TEXT'
-                    - Erika Musterfrau (Hauptmitglied), geb. 01.01.1985
-                    - Max Mustermann (Familienangehöriger), geb. 01.01.1983
+                    - Erika Musterfrau (Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)
+                    - Max Mustermann (Familienangehöriger), geb. 01.01.1983 (Beitragsalter 2026: 43)
                     TEXT,
                 'beitraege' => <<<'TEXT'
                     - Erika Musterfrau: 50,00 € pro Jahr

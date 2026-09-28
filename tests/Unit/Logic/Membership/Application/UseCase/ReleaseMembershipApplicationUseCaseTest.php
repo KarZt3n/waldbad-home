@@ -110,6 +110,52 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertSame(Salutation::Diverse, $child->salutation);
     }
 
+    public function testJoinDateIsTheSubmissionDateAndRoleUsesTheContributionAge(): void
+    {
+        // Eingegangen im August, angenommen im September: Eintritt ist der Eingang. Die zweite
+        // Person wird erst am 31.12. 21 — zählt laut Stichtag 31.12. aber schon als erwachsen.
+        $submittedAt = new \DateTimeImmutable('2026-08-14T09:00:00+02:00');
+        $now = new \DateTimeImmutable('2026-09-28T10:00:00+02:00');
+        $application = $this->familyApplication($now, '2005-12-31', $submittedAt);
+
+        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
+        $applications->method('get')->willReturn($application);
+        $applications->method('save')->willReturnCallback(
+            static fn (MembershipApplication $saved): MembershipApplication => $saved,
+        );
+
+        $createdMembers = [];
+        $orchestrator = $this->createStub(MemberOnboardingOrchestrator::class);
+        $orchestrator->method('createFromRequest')->willReturnCallback(
+            function (CreateMemberRequest $request) use (&$createdMembers): Member {
+                $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1));
+                $createdMembers[] = ['request' => $request, 'member' => $member];
+
+                return $member;
+            },
+        );
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn($now);
+
+        (new ReleaseMembershipApplicationUseCase(
+            $applications,
+            $orchestrator,
+            $clock,
+            $this->notConfiguredMailer(),
+            $this->createStub(HouseholdContributionRecalculator::class),
+            $this->createStub(MemberManagerInterface::class),
+            $this->contributionRates(),
+            $this->workAssignmentCreditConfig(),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('application-1');
+
+        [$head, $partner] = array_column($createdMembers, 'request');
+        self::assertEquals($submittedAt, $head->joinedAt);
+        self::assertEquals($submittedAt, $partner->joinedAt);
+        self::assertSame(FamilyRole::Partner, $partner->familyRole);
+    }
+
     /**
      * Die Bestätigungsmail soll je Person nicht nur den Betrag, sondern auch die Bezeichnung des
      * zugrunde liegenden Beitragssatzes nennen, damit der Gesamtbetrag nachvollziehbar ist.
@@ -187,6 +233,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertNotNull($capturedEmail);
         self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getTextBody());
         self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getHtmlBody());
+        self::assertStringContainsString('(Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)', (string) $capturedEmail->getTextBody());
     }
 
     /**
@@ -351,14 +398,14 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertCount(3, $response->releasedMemberIds);
     }
 
-    private function familyApplication(\DateTimeImmutable $now): MembershipApplication
+    private function familyApplication(\DateTimeImmutable $now, string $secondApplicantBirthDate = '1983-01-01', ?\DateTimeImmutable $submittedAt = null): MembershipApplication
     {
         return new MembershipApplication(
             id: 'application-1',
             membershipType: MembershipType::Family,
             applicants: [
                 new Applicant('a-1', 0, Salutation::Ms, 'Maria', 'Muster', new \DateTimeImmutable('1985-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, 'maria@example.com'),
-                new Applicant('a-2', 1, Salutation::Mr, 'Max', 'Muster', new \DateTimeImmutable('1983-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
+                new Applicant('a-2', 1, Salutation::Mr, 'Max', 'Muster', new \DateTimeImmutable($secondApplicantBirthDate), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
                 new Applicant('a-3', 2, Salutation::Diverse, 'Mia', 'Muster', new \DateTimeImmutable('2015-01-01'), 'Kirchanger', '14', '14822', 'Borkheide', null, null),
             ],
             accountHolder: 'Maria Muster',
@@ -368,7 +415,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             emailConsent: true,
             declarationVersion: '2026-01',
             version: 1,
-            submittedAt: $now,
+            submittedAt: $submittedAt ?? $now,
             updatedAt: $now,
         );
     }

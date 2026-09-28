@@ -152,7 +152,20 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
 
         $this->client->request('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/release', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
-        self::assertIsString($this->responseData()['releasedAt']);
+        $released = $this->responseData();
+        self::assertIsString($released['releasedAt']);
+        self::assertIsString($released['submittedAt']);
+        self::assertIsArray($released['releasedMemberIds']);
+        self::assertIsString($released['releasedMemberIds'][0]);
+
+        // Eintritt ist der Eingang des Antrags; der volle Jahresbeitrag wird erst im März des
+        // Folgejahres abgebucht.
+        $this->client->request('GET', '/api/admin/v1/members/'.$released['releasedMemberIds'][0], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $member = $this->responseData();
+        self::assertSame(substr($released['submittedAt'], 0, 10), $member['joinedAt']);
+        self::assertSame(3, $member['nextBookingMonth']);
+        self::assertSame((int) substr($released['submittedAt'], 0, 4) + 1, $member['nextBookingYear']);
 
         $this->client->request('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/reject', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(422);

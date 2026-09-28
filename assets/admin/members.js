@@ -3,7 +3,7 @@
 // (`/admin/mitglieder/...`).
 
 import {
-    CONTRIBUTION_CATEGORY_LABELS, confirmAction, csrfToken, element, FAMILY_ROLE_LABELS, field,
+    CONTRIBUTION_CATEGORY_LABELS, confirmAction, contributionAge, csrfToken, element, FAMILY_ROLE_LABELS, field,
     fieldRow, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS, PAYER_TYPE_LABELS,
     PAYMENT_DAY_LABELS, PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, PERSON_GROUP_LABELS,
     radioGroup, request, SALUTATION_LABELS, selectField, toast,
@@ -235,6 +235,16 @@ const ageLabel = (birthDate) => {
 
     return age === null ? '' : `${age} ${age === 1 ? 'Jahr' : 'Jahre'}`;
 };
+// Echtes Alter plus — nur wenn es davon abweicht — das für den Beitrag maßgebliche Beitragsalter
+// (Stichtag 31.12., siehe `contributionAge`), z. B. „20 Jahre, Beitragsalter 2026: 21“.
+const ageWithContributionAgeLabel = (birthDate) => {
+    const age = ageInYears(birthDate);
+    if (age === null) return '';
+    const feeAge = contributionAge(birthDate);
+
+    return feeAge === age ? ageLabel(birthDate) : `${ageLabel(birthDate)}, Beitragsalter ${new Date().getFullYear()}: ${feeAge}`;
+};
+const CONTRIBUTION_AGE_HINT = `Für den Beitrag zählt laut Beitragsordnung das Alter, das im laufenden Jahr erreicht wird (Stichtag 31.12.${new Date().getFullYear()}) – nicht das heutige Alter.`;
 
 const memberOpenButton = (entry, currentId, openOther) => entry.id === currentId
     ? null
@@ -266,7 +276,7 @@ const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCe
         element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}`, children: [
             element('span', {className: 'member-list-card-label', children: [
                 element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
+                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
             ]}),
             // Nur bei Zahlern gesetzt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
             // ganzen von ihnen bezahlten Personenkreis, rechtsbündig neben Name/Rolle/Nummer.
@@ -369,7 +379,7 @@ const payerListItem = (entry, currentId, openOther) => {
             element('div', {className: 'member-payer-info', children: [
                 element('div', {className: 'member-payer-entry-header', children: [
                     element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-                    element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
+                    element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
                 ]}),
                 element('ul', {className: 'member-payer-positions', children: positions.length
                     ? positions.map(([label, cents]) => element('li', {children: [
@@ -428,7 +438,7 @@ const openMemberDialog = async (member, onSaved) => {
     const birthDateInput = birthDate.querySelector('input');
     const updateBirthDateLabel = () => {
         const age = birthDateInput.value ? ageInYears(birthDateInput.value) : null;
-        birthDateLabel.textContent = age === null ? 'Geburtsdatum' : `Geburtsdatum (${ageLabel(birthDateInput.value)})`;
+        birthDateLabel.textContent = age === null ? 'Geburtsdatum' : `Geburtsdatum (${ageLabel(birthDateInput.value)} · Beitragsalter ${new Date().getFullYear()}: ${contributionAge(birthDateInput.value)})`;
     };
     birthDateInput.addEventListener('input', updateBirthDateLabel);
     updateBirthDateLabel();
@@ -676,6 +686,7 @@ const openMemberDialog = async (member, onSaved) => {
                 0,
             ))}),
         ]}),
+        element('p', {className: 'field-hint', text: `ⓘ ${CONTRIBUTION_AGE_HINT}`}),
     ];
     const payerBody = member ? element('div', {children: payerContent(household, member)}) : null;
     const payerSection = member ? element('fieldset', {children: [
@@ -1068,15 +1079,17 @@ const openRecalculationErrorsDialog = (errors) => {
     dialog.showModal();
 };
 
-// Fragt vor der Sammel-Neuberechnung einen Stichtag ab (Default: 1. März des laufenden Jahres) —
-// Alter und Kategorie (siehe `MemberContributionCalculator`) werden zu diesem Datum ermittelt statt
-// zum tatsächlichen „jetzt“, z. B. um einen erst gestern stattgefundenen Geburtstag bewusst noch
-// nicht zu berücksichtigen. Liefert das gewählte Datum (`YYYY-MM-DD`) oder `null` bei „Abbrechen“.
+// Fragt vor der Sammel-Neuberechnung das Beitragsjahr ab (Default: laufendes Jahr) — Alter und
+// Kategorie (siehe `MemberContributionCalculator`) werden immer zum Stichtag 31.12. dieses Jahres
+// ermittelt. Liefert das gewählte Jahr (`YYYY`) oder `null` bei „Abbrechen“.
 const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
     const dialog = element('dialog', {className: 'confirm-dialog'});
     const message = formMessage();
-    const dateField = field('Stichtag', 'recalculate-contributions-at', `${new Date().getFullYear()}-03-01`, 'date');
-    const dateInput = dateField.querySelector('input');
+    const yearField = field('Beitragsjahr', 'recalculate-contributions-year', String(new Date().getFullYear()), 'number');
+    const yearInput = yearField.querySelector('input');
+    yearInput.min = '1900';
+    yearInput.max = '2999';
+    yearInput.step = '1';
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const submit = element('button', {className: 'button', text: 'Neu berechnen', attributes: {type: 'submit'}});
     let answered = false;
@@ -1089,8 +1102,8 @@ const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
         element('p', {className: 'eyebrow', text: 'Mitglieder'}),
         element('h2', {text: 'Beiträge neu berechnen'}),
         element('p', {text: 'Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Das kann nicht rückgängig gemacht werden.'}),
-        dateField,
-        element('small', {text: 'Alter und Kategorie werden zu diesem Stichtag ermittelt, nicht zum heutigen Datum.'}),
+        yearField,
+        element('small', {text: 'Alter und Kategorie werden laut Beitragsordnung zum Stichtag 31.12. dieses Jahres ermittelt: Wer im Beitragsjahr noch Geburtstag hat, zählt bereits ein Jahr älter.'}),
         message,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]});
@@ -1105,16 +1118,16 @@ const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
     });
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-        if (!dateInput.value) {
-            message.textContent = 'Bitte einen Stichtag wählen.';
+        if (!/^\d{4}$/.test(yearInput.value)) {
+            message.textContent = 'Bitte ein Beitragsjahr angeben.';
             return;
         }
-        finish(dateInput.value);
+        finish(yearInput.value);
     });
     dialog.append(form);
     document.body.append(dialog);
     dialog.showModal();
-    dateInput.focus();
+    yearInput.focus();
 });
 
 let memberSearchTerm = '';
@@ -1147,11 +1160,11 @@ const showMembers = () => {
         // gemacht werden, statt wie bei `actionButton` ungelesen zu verfallen.
         const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge für alle Mitglieder neu berechnen', attributes: {type: 'button'}});
         recalculateAll.addEventListener('click', async () => {
-            const at = await openRecalculateAllContributionsDialog();
-            if (!at) return;
+            const year = await openRecalculateAllContributionsDialog();
+            if (!year) return;
             recalculateAll.disabled = true;
             try {
-                const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST', body: JSON.stringify({at})});
+                const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST', body: JSON.stringify({year})});
                 if (result.errors.length) {
                     toast(`${result.updated} Mitglied(er) aktualisiert, ${result.errors.length} übersprungen — siehe Liste.`, 'info');
                     openRecalculationErrorsDialog(result.errors);

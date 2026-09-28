@@ -4,7 +4,7 @@
 // (`renderMemberSelfServiceData`).
 
 import {
-    app, element, field, fieldRow, FAMILY_ROLE_LABELS, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS,
+    app, contributionAge, element, field, fieldRow, FAMILY_ROLE_LABELS, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS,
     PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, request, SALUTATION_LABELS, toast,
 } from '../core.js';
 import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './site-chrome.js';
@@ -105,6 +105,7 @@ const renderMemberSelfServiceTotal = (members, validFrom, workAssignmentCredit) 
                 ]})),
             ]
             : element('p', {className: 'empty-copy', text: 'Kein beitragspflichtiges Mitglied in diesem Haushalt.'}),
+        ...(liableMembers.length ? [element('p', {className: 'field-hint', text: `ⓘ Laut Beitragsordnung zählt für den Beitrag das Alter, das im laufenden Jahr erreicht wird (Stichtag 31.12.${new Date().getFullYear()}) – nicht das heutige Alter. Wer im Laufe des Jahres noch Geburtstag hat, wird für den Beitrag also schon ab Jahresbeginn ein Jahr älter gerechnet.`})] : []),
         ...(validFrom ? [element('p', {className: 'field-hint', text: `Beitragsordnung / Beitragssätze – gültig ab ${formatDateDE(validFrom)}`})] : []),
         ...(workAssignmentCredit && workAssignmentCredit.liableMemberCount > 0 ? [renderWorkAssignmentCredit(workAssignmentCredit)] : []),
     ].flat()});
@@ -274,6 +275,7 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
                 element('h4', {text: 'Beitragsdaten'}),
                 memberDataRow('Beitragspflichtig', member.contributionLiable ? 'Ja' : 'Nein (z. B. Vorstand)'),
                 ...(member.contributionLiable ? [
+                    memberDataRow(`Alter für den Beitrag ${new Date().getFullYear()}`, `${contributionAge(member.birthDate)} ${contributionAge(member.birthDate) === 1 ? 'Jahr' : 'Jahre'}`),
                     ...(member.contributionCategoryLabel ? [memberDataRow('Beitragssatz', member.contributionCategoryLabel)] : []),
                     memberDataRow('Beitrag', `${formatEuro(member.contributionAmountCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`),
                     ...(member.workAssignmentSurchargeCents ? [memberDataRow('Arbeitseinsatz-Zuschlag', `${formatEuro(member.workAssignmentSurchargeCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`)] : []),

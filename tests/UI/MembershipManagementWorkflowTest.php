@@ -649,36 +649,35 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
     }
 
-    public function testRecalculateAllUsesTheGivenReferenceDateForAgeBasedCategories(): void
+    public function testRecalculateAllUsesTheAgeReachedByTheEndOfTheGivenYear(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
 
-        // Wird am 01.03.2026 21 Jahre alt — ein Stichtag davor bzw. am/nach dem Geburtstag muss die
-        // Kategorie individual_junior/individual_senior entsprechend unterscheiden, statt immer vom
-        // tatsächlichen „jetzt“ auszugehen.
+        // Wird am 01.03.2026 21 Jahre alt — für das Beitragsjahr 2025 also noch 20
+        // (individual_junior), für 2026 laut Stichtag 31.12. bereits 21 (individual_senior).
         $member = array_replace($this->validMember(), ['birthDate' => '2005-03-01']);
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $member, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
         $memberId = $this->string($this->responseData(), 'id');
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => '2026-02-28'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => '2025'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertSame('individual_junior', $this->responseData()['contributionCategory']);
         self::assertSame(3000, $this->responseData()['contributionAmountCents']);
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => '2026-03-01'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => '2026'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
         self::assertSame(5000, $this->responseData()['contributionAmountCents']);
     }
 
-    public function testRecalculateAllRejectsAnInvalidReferenceDate(): void
+    public function testRecalculateAllRejectsAnInvalidYear(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['at' => 'not-a-date'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => 'not-a-year'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(400);
     }
 

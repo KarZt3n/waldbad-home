@@ -56,27 +56,46 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         self::assertSame('Kein passender Beitragssatz.', $result->errors[0]->message);
     }
 
-    public function testUsesTheGivenReferenceDateInsteadOfTheRealNowWhenProvided(): void
+    public function testGivenOtherYearIsCalculatedFromThatYearsStart(): void
     {
-        // Ein übergebener Stichtag geht direkt an den Beitragsrechner statt der echten Uhrzeit —
-        // z. B. um einen erst gestern stattgefundenen Geburtstag bewusst noch nicht zu
-        // berücksichtigen (siehe `AdminMemberController::recalculateAllContributions`).
+        // Ein anderes Beitragsjahr als das laufende rechnet ab dessen Jahresbeginn — das
+        // Beitragsalter ergibt sich daraus (Stichtag 31.12. dieses Jahres, siehe
+        // `MemberContributionCalculator`), der Austritt wird zum 01.01. geprüft.
         $member = $this->member('member-a', 'M-0001');
 
-        $members = $this->createMock(MemberManagerInterface::class);
+        $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
         $members->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
 
-        $at = new \DateTimeImmutable('2026-02-27');
         $calculator = $this->createMock(MemberContributionCalculator::class);
-        $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), $at)
+        $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), new \DateTimeImmutable('2027-01-01'))
             ->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
         $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
 
-        $clock = $this->createMock(ClockInterface::class);
-        $clock->expects(self::never())->method('now');
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-09-28 10:15:00'));
 
-        (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute($at);
+        (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute(2027);
+    }
+
+    public function testCurrentYearIsCalculatedFromToday(): void
+    {
+        $member = $this->member('member-a', 'M-0001');
+
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$member]);
+        $members->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
+
+        $now = new \DateTimeImmutable('2026-09-28 10:15:00');
+        $calculator = $this->createMock(MemberContributionCalculator::class);
+        $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), $now)
+            ->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveFamilyRole')->willReturnCallback(static fn (Member $candidate): FamilyRole => $candidate->familyRole);
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn($now);
+
+        (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute(2026);
     }
 
     public function testHouseholdWithBoardMemberIsExemptFromContributionRegardlessOfStoredValue(): void

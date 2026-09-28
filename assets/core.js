@@ -241,6 +241,9 @@ const renderError = (message) => {
     }));
 };
 const formatDateDE = (isoDate) => isoDate ? new Date(isoDate + 'T00:00:00').toLocaleDateString('de-DE') : null;
+// „Beitragsalter“: das Alter, das im Beitragsjahr erreicht wird (Stichtag 31.12.) — dieselbe Regel,
+// nach der das Backend den Beitrag berechnet (`Member::contributionAge()`), hier nur zur Anzeige.
+const contributionAge = (birthDate, year = new Date().getFullYear()) => birthDate ? year - Number(birthDate.slice(0, 4)) : null;
 const field = (label, name, value = '', type = 'text') => {
     const input = element(type === 'textarea' ? 'textarea' : 'input', {
         attributes: {name, id: name, ...(type !== 'textarea' ? {type} : {})},
@@ -285,6 +288,7 @@ export {
     formMessage,
     renderError,
     formatDateDE,
+    contributionAge,
     field,
     fieldRow,
 };

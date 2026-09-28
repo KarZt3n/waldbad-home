@@ -55,6 +55,26 @@ final class MemberContributionCalculatorTest extends TestCase
         self::assertSame(5000, $outcome->amountCents);
     }
 
+    public function testAgeIsTheAgeReachedByTheEndOfTheContributionYear(): void
+    {
+        // Wird erst am 31.12.2026 21 — zählt laut Beitragsordnung (Stichtag 31.12.) aber schon ab
+        // Jahresbeginn als 21-jährig, nicht erst ab dem Geburtstag.
+        $calculator = $this->calculator();
+        $candidate = $this->member(birthDate: '2005-12-31');
+
+        $outcome = $calculator->calculate($candidate, [], new \DateTimeImmutable('2026-01-02'));
+
+        self::assertSame(ContributionCategory::IndividualSenior, $outcome->category);
+    }
+
+    public function testChildTurningTwentyOneThisYearAlreadyAgesOutOfChildPricing(): void
+    {
+        $calculator = $this->calculator();
+        $child = $this->member(birthDate: '2005-12-31', familyRole: FamilyRole::Child);
+
+        self::assertSame(FamilyRole::None, $calculator->resolveFamilyRole($child, [], new \DateTimeImmutable('2026-06-01')));
+    }
+
     public function testContributionExemptMemberIsChargedNothingRegardlessOfCategory(): void
     {
         $calculator = $this->calculator();

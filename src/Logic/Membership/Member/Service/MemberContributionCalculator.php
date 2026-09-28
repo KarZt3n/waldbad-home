@@ -34,6 +34,10 @@ use App\Logic\Membership\Member\Model\Member;
  * der Familie. Zwei Erwachsene mit derselben Hauptnummer bleiben „Familie“, erhalten aber keinen
  * Familienrabatt mehr, sobald kein Kind diese Altersspanne mehr erfüllt.
  *
+ * Alle Altersangaben sind „Beitragsalter“ (`Member::contributionAge()`): maßgeblich ist das Alter,
+ * das im Jahr von `$at` erreicht wird (Stichtag 31.12.), nicht das Alter am Tag `$at` selbst.
+ * `$at` entscheidet dagegen weiterhin tagesgenau, ob das Austrittsdatum bereits erreicht ist.
+ *
  * Welcher Beitragssatz zutrifft, wird ausschließlich über die bei jedem Beitragssatz hinterlegte
  * Altersspanne (`ContributionRate::$minAge`/`$maxAge`, siehe `appliesToAge()`) entschieden — es
  * gibt dafür keine im Code fest verdrahteten Altersgrenzen mehr. Nur die Reihenfolge-Regel „3. und
@@ -76,7 +80,7 @@ readonly class MemberContributionCalculator
                 $category->value,
             ));
 
-        $age = $candidate->age($at);
+        $age = $candidate->contributionAge((int) $at->format('Y'));
         $surchargeRate = $this->rates->findByCategory(ContributionCategory::WorkAssignmentSurcharge);
         $surchargeCents = $surchargeRate !== null && $surchargeRate->appliesToAge($age) ? $surchargeRate->annualAmountCents() : null;
 
@@ -111,7 +115,7 @@ readonly class MemberContributionCalculator
     {
         if ($candidate->familyRole === FamilyRole::Child) {
             $hasAgedOut = $this->hasAgedOutOfChildPricing(
-                $candidate->age($at),
+                $candidate->contributionAge((int) $at->format('Y')),
                 $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge,
                 $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge,
             );
@@ -134,7 +138,7 @@ readonly class MemberContributionCalculator
      */
     private function resolveCategory(Member $candidate, array $householdMembers, \DateTimeImmutable $at): ContributionCategory
     {
-        $age = $candidate->age($at);
+        $age = $candidate->contributionAge((int) $at->format('Y'));
 
         if ($candidate->familyRole === FamilyRole::None) {
             return $this->matchIndividualCategory($age)
@@ -254,7 +258,7 @@ readonly class MemberContributionCalculator
 
         foreach ($householdMembers as $member) {
             if ($member->familyRole === FamilyRole::Child
-                && !$this->hasAgedOutOfChildPricing($member->age($at), $childExemptMaxAge, $childPayingMaxAge)
+                && !$this->hasAgedOutOfChildPricing($member->contributionAge((int) $at->format('Y')), $childExemptMaxAge, $childPayingMaxAge)
             ) {
                 return true;
             }
@@ -298,7 +302,7 @@ readonly class MemberContributionCalculator
 
         foreach ($householdMembers as $member) {
             if (($member->familyRole === FamilyRole::Head || $member->familyRole === FamilyRole::Partner)
-                && $this->hasAgedOutOfChildPricing($member->age($at), $childExemptMaxAge, $childPayingMaxAge)
+                && $this->hasAgedOutOfChildPricing($member->contributionAge((int) $at->format('Y')), $childExemptMaxAge, $childPayingMaxAge)
             ) {
                 return true;
             }
@@ -337,7 +341,7 @@ readonly class MemberContributionCalculator
         $children = array_filter(
             [...$householdMembers, $candidate],
             fn (Member $member): bool => $member->familyRole === FamilyRole::Child
-                && !$this->hasAgedOutOfChildPricing($member->age($at), $childExemptMaxAge, $childPayingMaxAge),
+                && !$this->hasAgedOutOfChildPricing($member->contributionAge((int) $at->format('Y')), $childExemptMaxAge, $childPayingMaxAge),
         );
         usort($children, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate ?: $left->id <=> $right->id);
 

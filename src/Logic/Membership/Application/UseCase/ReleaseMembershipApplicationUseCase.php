@@ -31,8 +31,14 @@ use Psr\Log\LoggerInterface;
  * Vorgänge getrennt voneinander sind. Ein Antrag kann nur einmal freigegeben werden.
  *
  * Bei einer Familienmitgliedschaft wird die erste Person als Hauptmitglied geführt, weitere
- * Personen ab 21 Jahren als Partner, jüngere als Kind (eine im Antrag nicht erfasste Zuordnung,
- * die später im Freigabeprozess verfeinert werden kann).
+ * Personen mit einem Beitragsalter (Stichtag 31.12., siehe `Member::contributionAge()`) ab 21
+ * Jahren als Partner, jüngere als Kind (eine im Antrag nicht erfasste Zuordnung, die später im
+ * Freigabeprozess verfeinert werden kann) — dieselbe Altersdefinition wie bei der anschließenden
+ * Beitragsberechnung, damit ein Kind, das im laufenden Jahr noch 21 wird, nicht erst als Kind
+ * angelegt und direkt danach zur Einzelperson umgestuft wird.
+ *
+ * Eintrittsdatum ist der Eingang des Antrags (`submittedAt`), nicht der Tag der Freigabe. Beitrag
+ * und nächste Abbuchung (März des Folgejahres) ergeben sich daraus in `MemberOnboardingOrchestrator`.
  *
  * Verschickt zum Abschluss eine Bestätigungsmail (Mailvorlage
  * `MailTemplateKey::MembershipApplicationApproved`) an die E-Mail-Adresse der ersten Person — die
@@ -73,11 +79,11 @@ readonly class ReleaseMembershipApplicationUseCase
         foreach ($application->applicants as $index => $applicant) {
             $isHead = $index === 0;
             $isFamily = $application->membershipType === MembershipType::Family;
-            $age = (int) $applicant->birthDate->diff($now)->y;
+            $contributionAge = (int) $now->format('Y') - (int) $applicant->birthDate->format('Y');
             $familyRole = match (true) {
                 !$isFamily => FamilyRole::None,
                 $isHead => FamilyRole::Head,
-                $age >= 21 => FamilyRole::Partner,
+                $contributionAge >= 21 => FamilyRole::Partner,
                 default => FamilyRole::Child,
             };
 
@@ -94,7 +100,7 @@ readonly class ReleaseMembershipApplicationUseCase
                 email: $applicant->email,
                 phone: $applicant->phone,
                 familyRole: $familyRole,
-                joinedAt: $now,
+                joinedAt: $application->submittedAt,
                 leftAt: null,
                 function: MemberFunction::Member,
                 accountHolder: $application->accountHolder,
@@ -124,7 +130,7 @@ readonly class ReleaseMembershipApplicationUseCase
             $now,
         ));
 
-        $this->sendApprovalConfirmation($application->applicants[0]->email, $members, $now);
+        $this->sendApprovalConfirmation($application->applicants[0]->email, $members, $application->submittedAt, $now);
 
         return MembershipApplicationResponse::fromApplication($released);
     }
@@ -132,7 +138,7 @@ readonly class ReleaseMembershipApplicationUseCase
     /**
      * @param list<Member> $members
      */
-    private function sendApprovalConfirmation(?string $applicantEmail, array $members, \DateTimeImmutable $now): void
+    private function sendApprovalConfirmation(?string $applicantEmail, array $members, \DateTimeImmutable $joinedAt, \DateTimeImmutable $now): void
     {
         if ($applicantEmail === null || $members === []) {
             // $applicantEmail ist laut MembershipApplication für die erste Person zwingend gesetzt
@@ -168,8 +174,8 @@ readonly class ReleaseMembershipApplicationUseCase
                     'vorname' => $head->firstName,
                     'nachname' => $head->lastName,
                     'mitgliedsnummer' => $head->memberNumber,
-                    'beitrittsdatum' => $now->format('d.m.Y'),
-                    'personen' => $this->formatMembers($members),
+                    'beitrittsdatum' => $joinedAt->format('d.m.Y'),
+                    'personen' => $this->formatMembers($members, (int) $now->format('Y')),
                     'beitraege' => $this->formatContributionsAsText($members, $workAssignmentRequiredHours),
                     'vereinsname' => AssociationName::CURRENT,
                 ],
@@ -186,13 +192,17 @@ readonly class ReleaseMembershipApplicationUseCase
     }
 
     /**
+     * Je Person zusätzlich das Beitragsalter (Stichtag 31.12., siehe `Member::contributionAge()`),
+     * damit nachvollziehbar ist, warum z. B. ein erst im Dezember 21-Jähriger schon den
+     * Erwachsenenbeitrag zahlt.
+     *
      * @param list<Member> $members
      */
-    private function formatMembers(array $members): string
+    private function formatMembers(array $members, int $contributionYear): string
     {
         return implode("\n", array_map(
             static fn (Member $member): string => sprintf(
-                '- %s %s (%s), geb. %s',
+                '- %s %s (%s), geb. %s (Beitragsalter %d: %d)',
                 $member->firstName,
                 $member->lastName,
                 match ($member->familyRole) {
@@ -202,6 +212,8 @@ readonly class ReleaseMembershipApplicationUseCase
                     FamilyRole::Child => 'Kind',
                 },
                 $member->birthDate->format('d.m.Y'),
+                $contributionYear,
+                $member->contributionAge($contributionYear),
             ),
             $members,
         ));

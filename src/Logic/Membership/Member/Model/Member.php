@@ -123,9 +123,14 @@ readonly class Member
         }
     }
 
-    public function age(\DateTimeImmutable $at): int
+    /**
+     * „Beitragsalter“: Laut Beitragsordnung zählt für den Beitrag das Alter, das im Beitragsjahr
+     * erreicht wird (Stichtag 31.12.) — wer im laufenden Jahr noch Geburtstag hat, gilt also
+     * bereits ab Jahresbeginn als ein Jahr älter.
+     */
+    public function contributionAge(int $year): int
     {
-        return (int) $this->birthDate->diff($at)->y;
+        return $year - (int) $this->birthDate->format('Y');
     }
 
     /**
