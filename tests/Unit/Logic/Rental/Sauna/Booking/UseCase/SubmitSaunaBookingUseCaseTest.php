@@ -11,6 +11,7 @@ use App\Logic\Rental\Sauna\Booking\Mapping\SaunaBookingModelFactory;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaGuestMatch;
+use App\Logic\Rental\Sauna\Booking\SaunaBookingNotifierInterface;
 use App\Logic\Rental\Sauna\Booking\SaunaGuestMatcherInterface;
 use App\Logic\Rental\Sauna\Booking\Service\SaunaSlotAvailability;
 use App\Logic\Rental\Sauna\Booking\UseCase\SubmitSaunaBookingUseCase;
@@ -37,6 +38,28 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $response = $this->useCase($bookings)->execute($this->request(personCount: 4, endTime: '21:00'));
 
         self::assertSame(3000, $response->priceCents);
+    }
+
+    public function testNotifiesAboutTheSavedBooking(): void
+    {
+        $bookings = $this->createStub(SaunaBookingManagerInterface::class);
+        $bookings->method('findBetween')->willReturn([]);
+        $bookings->method('save')->willReturnArgument(0);
+        $notifier = $this->createMock(SaunaBookingNotifierInterface::class);
+        $notifier->expects(self::once())->method('bookingSubmitted')
+            ->with(self::callback(static fn (SaunaBooking $booking): bool => $booking->id === 'booking-1' && $booking->personCount === 4));
+
+        $this->useCase($bookings, $notifier)->execute($this->request(personCount: 4, endTime: '21:00'));
+    }
+
+    public function testRejectedRequestSendsNoNotification(): void
+    {
+        $bookings = $this->createStub(SaunaBookingManagerInterface::class);
+        $notifier = $this->createMock(SaunaBookingNotifierInterface::class);
+        $notifier->expects(self::never())->method('bookingSubmitted');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->useCase($bookings, $notifier)->execute($this->request(personCount: 1, endTime: '19:00'));
     }
 
     public function testRejectsSinglePerson(): void
@@ -110,7 +133,7 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $this->useCase($bookings)->execute($this->request(personCount: 3, endTime: '15:00', date: '2026-10-06', startTime: '13:15'));
     }
 
-    private function useCase(SaunaBookingManagerInterface $bookings): SubmitSaunaBookingUseCase
+    private function useCase(SaunaBookingManagerInterface $bookings, ?SaunaBookingNotifierInterface $notifier = null): SubmitSaunaBookingUseCase
     {
         $now = new \DateTimeImmutable('2026-09-25T10:00:00');
         $season = new SaunaSeason(
@@ -140,6 +163,7 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
             new SaunaSlotAvailability($seasons, $bookings),
             $terms,
             $bookings,
+            $notifier ?? $this->createStub(SaunaBookingNotifierInterface::class),
         );
     }
 

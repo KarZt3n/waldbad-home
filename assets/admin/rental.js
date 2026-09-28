@@ -212,6 +212,26 @@ const openSeasonDialog = (season, onSaved) => {
         });
         actions.unshift(closeButton);
     }
+    if (season?.closedOn) {
+        const reopenButton = element('button', {className: 'secondary-button', text: 'Saison wieder eröffnen', attributes: {type: 'button'}});
+        reopenButton.addEventListener('click', async () => {
+            const confirmed = await confirmAction(
+                `${seasonLabel(season)} wieder eröffnen?`,
+                'Der Abschluss wird aufgehoben, die Sauna ist in dieser Saison wieder buchbar (bis zum geplanten Enddatum, sofern gesetzt). Es darf nur eine Saison gleichzeitig offen sein.',
+                'Wieder eröffnen',
+            );
+            if (!confirmed) return;
+            try {
+                await request(`/api/admin/v1/sauna-seasons/${season.id}/reopen`, {method: 'POST'});
+                toast('Saison wurde wieder eröffnet.');
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                toast(error.message, 'error');
+            }
+        });
+        actions.unshift(reopenButton);
+    }
     if (season) {
         const deleteButton = element('button', {className: 'button danger-button', text: 'Löschen', attributes: {type: 'button'}});
         deleteButton.addEventListener('click', async () => {

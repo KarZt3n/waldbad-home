@@ -14,6 +14,7 @@ enum ProtectedAction: string
     case MembersModuleAccess = 'members.module_access';
     case MembersDelete = 'members.delete';
     case MembersExport = 'members.export';
+    case MembersDirectDebitExport = 'members.direct_debit_export';
 
     public function label(): string
     {
@@ -23,6 +24,7 @@ enum ProtectedAction: string
             // Ein PIN für beide Richtungen: das Export-ZIP wird damit verschlüsselt, derselbe PIN
             // wird beim Import zum Entschlüsseln gebraucht (siehe `AdminMemberController`).
             self::MembersExport => 'Mitgliederexport/-import (ZIP-Passwort)',
+            self::MembersDirectDebitExport => 'SEPA-Lastschrift exportieren',
         };
     }
 
@@ -34,7 +36,7 @@ enum ProtectedAction: string
     {
         return match ($this) {
             self::MembersModuleAccess => 'Modul',
-            self::MembersDelete, self::MembersExport => 'Funktion',
+            self::MembersDelete, self::MembersExport, self::MembersDirectDebitExport => 'Funktion',
         };
     }
 }

@@ -165,7 +165,27 @@ final class ImportMembersUseCaseTest extends TestCase
         self::assertSame(1, $result->updated);
     }
 
-    private function row(string $number, ?string $payerMemberNumber = null): CreateMemberRequest
+    public function testUpdateTakesOverMandateDatesFromTheFile(): void
+    {
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByMemberNumber')->willReturn($this->member('PAYER-1'));
+        $saved = null;
+        $members->method('save')->willReturnCallback(static function (Member $member) use (&$saved): Member {
+            $saved = $member;
+
+            return $member;
+        });
+
+        $row = $this->row('PAYER-1', mandateValidFrom: '2013-11-05', mandateValidUntil: '2030-12-31');
+        (new ImportMembersUseCase($members, $this->createStub(MemberOnboardingOrchestrator::class), new MemberModelFactory()))
+            ->execute(new ImportMembersRequest([$row]));
+
+        self::assertInstanceOf(Member::class, $saved);
+        self::assertSame('2013-11-05', $saved->mandateValidFrom?->format('Y-m-d'));
+        self::assertSame('2030-12-31', $saved->mandateValidUntil?->format('Y-m-d'));
+    }
+
+    private function row(string $number, ?string $payerMemberNumber = null, ?string $mandateValidFrom = null, ?string $mandateValidUntil = null): CreateMemberRequest
     {
         return new CreateMemberRequest(
             memberNumber: $number,
@@ -195,6 +215,8 @@ final class ImportMembersUseCaseTest extends TestCase
             payerMemberNumber: $payerMemberNumber,
             nextBookingMonth: 3,
             nextBookingYear: 2027,
+            mandateValidFrom: $mandateValidFrom === null ? null : new \DateTimeImmutable($mandateValidFrom),
+            mandateValidUntil: $mandateValidUntil === null ? null : new \DateTimeImmutable($mandateValidUntil),
         );
     }
 

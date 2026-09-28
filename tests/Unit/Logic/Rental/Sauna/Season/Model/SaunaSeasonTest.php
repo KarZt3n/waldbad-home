@@ -76,6 +76,21 @@ final class SaunaSeasonTest extends TestCase
         $closed->close($now, $now);
     }
 
+    public function testReopenedSeasonIsBookableAgain(): void
+    {
+        $now = new \DateTimeImmutable('2026-11-20T10:00:00');
+        $reopened = $this->season(startsOn: '2026-10-01', endsOn: null)->close($now, $now)->reopen($now);
+
+        self::assertFalse($reopened->isClosed());
+        self::assertTrue($reopened->covers(new \DateTimeImmutable('2026-12-01')));
+    }
+
+    public function testReopeningAnOpenSeasonIsRejected(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->season()->reopen(new \DateTimeImmutable('2026-11-20T10:00:00'));
+    }
+
     public function testBookableRangeMustBeContiguousSlotsWithinOneWindow(): void
     {
         $season = $this->season(openingHours: [

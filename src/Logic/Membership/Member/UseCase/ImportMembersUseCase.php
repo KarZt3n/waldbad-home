@@ -123,6 +123,8 @@ readonly class ImportMembersUseCase
             nextBookingMonth: $row->nextBookingMonth ?? 3,
             nextBookingYear: $row->nextBookingYear ?? ((int) $row->joinedAt->format('Y') + 1),
             contributionLiable: $row->contributionLiable,
+            mandateValidFrom: $row->mandateValidFrom,
+            mandateValidUntil: $row->mandateValidUntil,
         );
     }
 

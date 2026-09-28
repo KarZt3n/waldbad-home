@@ -16,6 +16,7 @@ use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
+use App\Logic\Settings\Pin\Exception\PinRequiredException;
 use App\Logic\Settings\Pin\Model\ProtectedAction;
 use App\Logic\Settings\Pin\Query\GetPinSettingsQuery;
 use App\Logic\Settings\Pin\UseCase\VerifyPinUseCase;
@@ -141,24 +142,25 @@ class AdminMemberController extends AbstractController
         if (!$file instanceof UploadedFile) {
             throw new BadRequestHttpException('Es wurde keine Datei übermittelt.');
         }
-        $zipContent = file_get_contents($file->getPathname());
-        if ($zipContent === false) {
+        $fileContent = file_get_contents($file->getPathname());
+        if ($fileContent === false) {
             throw new BadRequestHttpException('Die Datei konnte nicht gelesen werden.');
         }
 
-        // Derselbe PIN, mit dem das Export-ZIP verschlüsselt wurde (siehe `export()` oben) — bei
-        // aktiviertem Schutz erst hier verifiziert, bevor überhaupt versucht wird, das Archiv damit
-        // zu entpacken.
-        $submittedPin = (string) $request->request->get('pin', '');
-        $submittedPin = $submittedPin === '' ? null : $submittedPin;
-        $verifyPin->execute(ProtectedAction::MembersExport, $submittedPin);
-        $isProtected = $this->memberExportIsPinProtected($pinSettingsQuery);
-
-        ['content' => $content, 'format' => $format] = $this->zipArchive->extract(
-            $zipContent,
-            $isProtected ? $submittedPin : null,
-            self::EXPORT_FORMATS,
-        );
+        $extension = strtolower($file->getClientOriginalExtension());
+        if (in_array($extension, self::EXPORT_FORMATS, true)) {
+            // Eine unverpackte CSV-/JSON-/XML-Datei hat kein Passwort — kein PIN nötig.
+            $content = $fileContent;
+            $format = $extension;
+        } elseif ($extension === 'zip') {
+            ['content' => $content, 'format' => $format] = $this->zipArchive->extract(
+                $fileContent,
+                $this->zipPassword($fileContent, $request, $verifyPin, $pinSettingsQuery),
+                self::EXPORT_FORMATS,
+            );
+        } else {
+            throw new BadRequestHttpException('Bitte eine ZIP-, JSON-, CSV- oder XML-Datei hochladen.');
+        }
 
         $rawRows = $this->importFileParser->parse($content, $format);
         $rows = [];
@@ -181,6 +183,26 @@ class AdminMemberController extends AbstractController
                 [...$parseErrors, ...$result->errors],
             ),
         ]);
+    }
+
+    /**
+     * Passwort zum Entpacken eines Import-ZIPs — nur bei verschlüsseltem Archiv. Das Passwort ist der
+     * PIN, mit dem das Archiv exportiert wurde (siehe `export()`): Ist der PIN-Schutz aktiv, wird er
+     * vorab geprüft; sonst wird das eingegebene Passwort direkt zum Entpacken verwendet. Fehlt es,
+     * fragt die Oberfläche es per `PinRequiredException` nach.
+     */
+    private function zipPassword(string $zipContent, Request $request, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): ?string
+    {
+        if (!$this->zipArchive->isEncrypted($zipContent)) {
+            return null;
+        }
+        $submittedPin = $request->request->getString('pin');
+        $submittedPin = $submittedPin === '' ? null : $submittedPin;
+        if ($this->memberExportIsPinProtected($pinSettingsQuery)) {
+            $verifyPin->execute(ProtectedAction::MembersExport, $submittedPin);
+        }
+
+        return $submittedPin ?? throw new PinRequiredException('Das Archiv ist verschlüsselt. Bitte das Passwort (PIN beim Export) eingeben.');
     }
 
     #[Route('', name: 'api_admin_member_create', methods: ['POST'])]

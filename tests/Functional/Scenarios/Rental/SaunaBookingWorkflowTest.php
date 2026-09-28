@@ -75,6 +75,18 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$successorId.'/close', [], $headers);
         self::assertResponseStatusCodeSame(422);
 
+        // Eine abgeschlossene Saison lässt sich wieder eröffnen, solange keine andere offen ist.
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$successorId.'/reopen', [], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertNull($this->responseData()['closedOn']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$successorId.'/reopen', [], $headers);
+        self::assertResponseStatusCodeSame(422);
+        self::assertIsString($firstSeasonId);
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$firstSeasonId.'/reopen', [], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$successorId.'/close', [], $headers);
+        self::assertResponseIsSuccessful();
+
         self::assertSame(['10:00 free', '11:00 free', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
 
         $this->client->jsonRequest('PUT', '/api/admin/v1/sauna-terms', [
@@ -109,6 +121,11 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         ]);
         self::assertResponseStatusCodeSame(422);
 
+        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/sauna_booking_submitted', [
+            'recipients' => ['sauna-team@example.test'],
+        ], $headers);
+        self::assertResponseIsSuccessful();
+
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,
             'startTime' => '10:00',
@@ -124,6 +141,12 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
         $bookingId = $this->responseData()['id'];
         self::assertIsString($bookingId);
+        // Die neue Anmeldung geht an die unter „Benachrichtigungen“ hinterlegten Empfänger.
+        self::assertQueuedEmailCount(1);
+        $notification = self::getMailerMessage();
+        self::assertNotNull($notification);
+        self::assertEmailAddressContains($notification, 'To', 'sauna-team@example.test');
+        self::assertEmailTextBodyContains($notification, 'Erika Musterfrau hat die Sauna angefragt');
 
         self::assertSame(['10:00 booked', '11:00 booked', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
         self::assertStringNotContainsString('Musterfrau', (string) $this->client->getResponse()->getContent());

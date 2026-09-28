@@ -213,6 +213,34 @@ final class SettingsPinManagementWorkflowTest extends WebTestCase
         $importResult = $this->responseData();
         self::assertSame(0, $importResult['created']);
         self::assertSame(1, $importResult['updated']);
+
+        // Nur ein verschlüsseltes ZIP braucht ein Passwort: Dieselben Daten als unverpackte
+        // JSON-Datei oder als unverschlüsseltes ZIP lassen sich trotz aktivem Schutz ohne PIN importieren.
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($zipPath) === true);
+        $zip->setPassword('4321');
+        $json = $zip->getFromIndex(0);
+        $zip->close();
+        self::assertIsString($json);
+        $jsonPath = tempnam(sys_get_temp_dir(), 'pin-import-json');
+        self::assertIsString($jsonPath);
+        file_put_contents($jsonPath, $json);
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($jsonPath, 'mitglieder 4.json', 'application/json', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['updated']);
+
+        $plainZipPath = tempnam(sys_get_temp_dir(), 'pin-import-plain-zip');
+        self::assertIsString($plainZipPath);
+        $plainZip = new \ZipArchive();
+        self::assertTrue($plainZip->open($plainZipPath, \ZipArchive::OVERWRITE) === true);
+        $plainZip->addFromString('mitglieder.json', $json);
+        $plainZip->close();
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($plainZipPath, 'mitglieder.zip', 'application/zip', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['updated']);
+
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($jsonPath, 'mitglieder.pdf', 'application/pdf', null, true)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(400);
     }
 
     /**

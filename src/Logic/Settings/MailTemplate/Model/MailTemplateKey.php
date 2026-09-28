@@ -25,6 +25,7 @@ enum MailTemplateKey: string
     case EventHelpRequestConfirmation = 'event_help_request_confirmation';
     case MemberEmailConsentRequest = 'member_email_consent_request';
     case MemberEmailConsentOptOutRegret = 'member_email_consent_opt_out_regret';
+    case SaunaBookingSubmittedNotification = 'sauna_booking_submitted_notification';
 
     public function label(): string
     {
@@ -37,6 +38,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => 'Bestätigung: Helferanmeldung',
             self::MemberEmailConsentRequest => 'Bestätigungslink: E-Mail-Einwilligung',
             self::MemberEmailConsentOptOutRegret => 'Rückmeldung: E-Mail-Einwilligung widerrufen',
+            self::SaunaBookingSubmittedNotification => 'Benachrichtigung: neue Sauna-Anmeldung',
         };
     }
 
@@ -51,6 +53,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
             self::MemberEmailConsentRequest => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald die Redaktion unter „Mitgliederverwaltung“ → Mitglied → Kontaktdaten die E-Mail-Einwilligung anfordert — der Erhalt von Vereinsinformationen per E-Mail gilt erst als zugestimmt, wenn der enthaltene Link angeklickt wird.',
             self::MemberEmailConsentOptOutRegret => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald es unter „Meine Mitgliedschaft“ die E-Mail-Einwilligung selbst abbestellt — enthält einen Link, um das rückgängig zu machen, falls es ein Versehen war.',
+            self::SaunaBookingSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über den Sauna-Kalender eine Anmeldung eingeht.',
         };
     }
 
@@ -68,6 +71,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
             self::MemberEmailConsentRequest => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
             self::MemberEmailConsentOptOutRegret => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
+            self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht'],
         };
     }
 
@@ -82,6 +86,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => 'Danke für deine Helferanmeldung – {{veranstaltung}}',
             self::MemberEmailConsentRequest => 'Möchtest du per E-Mail auf dem Laufenden bleiben?',
             self::MemberEmailConsentOptOutRegret => 'Schade, dass du keine Neuigkeiten mehr erhalten möchtest',
+            self::SaunaBookingSubmittedNotification => 'Neue Sauna-Anmeldung am {{datum}}',
         };
     }
 
@@ -187,6 +192,20 @@ enum MailTemplateKey: string
                 Viele Grüße
                 Dein {{vereinsname}}
                 TEXT,
+            self::SaunaBookingSubmittedNotification => <<<'TEXT'
+                {{vorname}} {{nachname}} hat die Sauna angefragt:
+
+                Termin: {{datum}}, {{uhrzeit}} Uhr ({{anfrageart}})
+                Personen: {{personenzahl}}
+                Preis: {{preis}}
+                E-Mail: {{email}}
+                Mitglied: {{mitglied}}
+
+                Nachricht:
+                {{nachricht}}
+
+                Bitte im Admin-Bereich unter „Vermietung“ → „Sauna“ → „Anmeldungen“ annehmen oder ablehnen.
+                TEXT,
         };
     }
 
@@ -260,6 +279,18 @@ enum MailTemplateKey: string
                 'gueltig_tage' => '7',
                 'vereinsname' => AssociationName::CURRENT,
             ],
+            self::SaunaBookingSubmittedNotification => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'datum' => '05.10.2026',
+                'uhrzeit' => '18:00–20:00',
+                'anfrageart' => 'Zeitfenster aus dem Kalender',
+                'personenzahl' => '4',
+                'preis' => '20,00 €',
+                'email' => 'erika@example.com',
+                'mitglied' => 'Bad-01234',
+                'nachricht' => 'Wir bringen eigene Handtücher mit.',
+            ],
         };
     }
 
@@ -280,7 +311,8 @@ enum MailTemplateKey: string
             self::MemberMessageSubmittedNotification,
             self::EventHelpRequestConfirmation,
             self::MemberEmailConsentRequest,
-            self::MemberEmailConsentOptOutRegret => [],
+            self::MemberEmailConsentOptOutRegret,
+            self::SaunaBookingSubmittedNotification => [],
             self::MembershipApplicationApproved => [
                 'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
                     .'<li style="margin-bottom:8px;font-weight:bold;">Erika Musterfrau: 50,00 € pro Jahr'

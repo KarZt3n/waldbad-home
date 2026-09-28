@@ -100,6 +100,27 @@ readonly class SaunaSeason
         );
     }
 
+    /**
+     * Hebt einen Abschluss wieder auf, damit eine Saison weiterläuft, statt eine neue anlegen zu
+     * müssen. Dass dabei keine zweite offene Saison entsteht, prüft `ReopenSaunaSeasonUseCase`.
+     */
+    public function reopen(\DateTimeImmutable $updatedAt): self
+    {
+        if (!$this->isClosed()) {
+            throw new BusinessRuleViolationException('Die Saison ist nicht abgeschlossen.');
+        }
+
+        return new self(
+            id: $this->id,
+            startsOn: $this->startsOn,
+            endsOn: $this->endsOn,
+            slotDurationMinutes: $this->slotDurationMinutes,
+            openingHours: $this->openingHours,
+            createdAt: $this->createdAt,
+            updatedAt: $updatedAt,
+        );
+    }
+
     /** Beginnt nach `$date` und wird vor ihrem Beginn weder beendet noch abgeschlossen. */
     public function isUpcoming(\DateTimeImmutable $date): bool
     {

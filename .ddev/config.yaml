@@ -9,6 +9,8 @@ additional_fqdns: []
 database:
     type: mariadb
     version: "11.8"
+# Fester Host-Port, damit externe DB-Clients (z. B. DataGrip) nach einem Neustart nicht neu konfiguriert werden müssen.
+host_db_port: "33306"
 use_dns_when_possible: true
 composer_version: "2"
 web_environment:

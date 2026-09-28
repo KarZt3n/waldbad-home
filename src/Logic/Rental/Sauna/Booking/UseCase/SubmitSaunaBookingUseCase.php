@@ -6,6 +6,7 @@ use App\Logic\Rental\Sauna\Booking\Dto\SaunaBookingResponse;
 use App\Logic\Rental\Sauna\Booking\Dto\SubmitSaunaBookingRequest;
 use App\Logic\Rental\Sauna\Booking\Manager\SaunaBookingManagerInterface;
 use App\Logic\Rental\Sauna\Booking\Mapping\SaunaBookingModelFactory;
+use App\Logic\Rental\Sauna\Booking\SaunaBookingNotifierInterface;
 use App\Logic\Rental\Sauna\Booking\Service\SaunaSlotAvailability;
 use App\Logic\Rental\Sauna\Terms\Manager\SaunaTermsManagerInterface;
 
@@ -16,6 +17,7 @@ readonly class SubmitSaunaBookingUseCase
         private SaunaSlotAvailability $availability,
         private SaunaTermsManagerInterface $terms,
         private SaunaBookingManagerInterface $manager,
+        private SaunaBookingNotifierInterface $notifier,
     ) {
     }
 
@@ -30,6 +32,9 @@ readonly class SubmitSaunaBookingUseCase
             $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
         }
 
-        return SaunaBookingResponse::fromBooking($this->manager->save($booking));
+        $saved = $this->manager->save($booking);
+        $this->notifier->bookingSubmitted($saved);
+
+        return SaunaBookingResponse::fromBooking($saved);
     }
 }

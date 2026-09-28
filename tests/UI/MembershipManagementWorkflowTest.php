@@ -681,6 +681,68 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(400);
     }
 
+    public function testDirectDebitPreviewAndExportForAPayer(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/direct-debit-creditor', [
+            'name' => 'Waldbad Borkheide e.V.', 'creditorId' => 'DE97ZZZ09999999999', 'iban' => 'DE02120300000000202051', 'bic' => '',
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $memberId = $this->string($this->responseData(), 'id');
+
+        // Ohne Gläubigerdaten zeigt die Vorschau den Hinderungsgrund, der Export scheitert.
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview', server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertCount(1, $this->arrayList($this->responseData(), 'blockers'));
+
+        $this->client->jsonRequest('PUT', '/api/admin/v1/direct-debit-creditor', [
+            'name' => 'Waldbad Borkheide e.V.', 'creditorId' => 'DE98 ZZZ0 9999 9999 99', 'iban' => 'DE02 1203 0000 0000 2020 51', 'bic' => '',
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->responseData()['complete']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview', server: $headers);
+        self::assertResponseIsSuccessful();
+        $preview = $this->responseData();
+        self::assertSame([], $preview['blockers']);
+        $positionIds = [];
+        foreach ($this->arrayList($preview, 'positions') as $position) {
+            self::assertIsArray($position);
+            $positionIds[] = $this->string($position, 'id');
+        }
+        // Beitrag, Arbeitseinsatz-Zuschlag und die bei der Anlage berechnete Beitrittsgebühr.
+        self::assertCount(3, $positionIds);
+        self::assertSame([$memberId.':contribution', $memberId.':work_assignment_surcharge'], array_slice($positionIds, 0, 2));
+        self::assertStringStartsWith($memberId.':charge:', $positionIds[2]);
+
+        $collectionDate = (new \DateTimeImmutable('+10 days'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
+            'collectionDate' => $collectionDate,
+            'sequenceType' => 'RCUR',
+            'remittanceInformation' => 'Mitgliedsbeitrag 2026',
+            'positionIds' => $positionIds,
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Content-Type', 'application/xml; charset=UTF-8');
+        $xml = (string) $this->client->getResponse()->getContent();
+        self::assertStringContainsString('<InstdAmt Ccy="EUR">75.00</InstdAmt>', $xml);
+        self::assertStringContainsString('<ReqdColltnDt>'.$collectionDate.'</ReqdColltnDt>', $xml);
+        self::assertStringContainsString('<IBAN>DE89370400440532013000</IBAN>', $xml);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
+            'collectionDate' => (new \DateTimeImmutable('yesterday'))->format('Y-m-d'),
+            'sequenceType' => 'RCUR',
+            'remittanceInformation' => 'Mitgliedsbeitrag 2026',
+            'positionIds' => $positionIds,
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+    }
+
     /**
      * @return array<string, mixed>
      */

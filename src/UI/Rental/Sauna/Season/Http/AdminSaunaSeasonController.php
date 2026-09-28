@@ -6,6 +6,7 @@ use App\Logic\Rental\Sauna\Season\Query\ListSaunaSeasonsQuery;
 use App\Logic\Rental\Sauna\Season\UseCase\CloseSaunaSeasonUseCase;
 use App\Logic\Rental\Sauna\Season\UseCase\CreateSaunaSeasonUseCase;
 use App\Logic\Rental\Sauna\Season\UseCase\DeleteSaunaSeasonUseCase;
+use App\Logic\Rental\Sauna\Season\UseCase\ReopenSaunaSeasonUseCase;
 use App\Logic\Rental\Sauna\Season\UseCase\UpdateSaunaSeasonUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -51,6 +52,14 @@ final class AdminSaunaSeasonController extends AbstractController
 
     #[Route('/{id}/close', name: 'api_admin_sauna_season_close', methods: ['POST'])]
     public function close(string $id, CloseSaunaSeasonUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
+
+        return new JsonResponse($this->responseFactory->season($useCase->execute($id)));
+    }
+
+    #[Route('/{id}/reopen', name: 'api_admin_sauna_season_reopen', methods: ['POST'])]
+    public function reopen(string $id, ReopenSaunaSeasonUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
 

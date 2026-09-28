@@ -671,10 +671,20 @@ const openMemberDialog = async (member, onSaved) => {
 
     // Ebenfalls ausgelagert, damit „Beitrag neu berechnen“ diesen Ausschnitt austauschen kann,
     // ohne den Dialog zu schließen (siehe Klick-Handler oben bei `recalculate`).
+    const directDebitButton = (currentMember) => {
+        if (!canEditModule('members')) return [];
+        const button = element('button', {className: 'secondary-button', text: 'SEPA-Lastschrift…', attributes: {type: 'button'}});
+        button.addEventListener('click', () => openDirectDebitDialog(currentMember.id));
+
+        return [button];
+    };
     const payerContent = (currentHousehold, currentMember) => [
-        element('p', {className: 'field-hint', text: currentHousehold.payer.id === currentMember.id
-            ? 'Dieses Mitglied zahlt selbst, zusammen für:'
-            : `Der Beitrag wird gezahlt von ${currentHousehold.payer.firstName} ${currentHousehold.payer.lastName} (${currentHousehold.payer.memberNumber}), zusammen für:`}),
+        element('div', {className: 'member-payer-heading', children: [
+            element('p', {className: 'field-hint', text: currentHousehold.payer.id === currentMember.id
+                ? 'Dieses Mitglied zahlt selbst, zusammen für:'
+                : `Der Beitrag wird gezahlt von ${currentHousehold.payer.firstName} ${currentHousehold.payer.lastName} (${currentHousehold.payer.memberNumber}), zusammen für:`}),
+            ...directDebitButton(currentMember),
+        ]}),
         element('ul', {className: 'member-payer-list', children: sortedPayerEntries(currentHousehold).map((entry) => payerListItem(entry, currentMember.id, openOther))}),
         element('div', {className: 'member-payer-total', children: [
             element('span', {text: 'Gesamtbeitrag pro Jahr'}),
@@ -872,15 +882,14 @@ const openMemberDialog = async (member, onSaved) => {
     dialog.showModal();
 };
 
-// Das Dateiformat steckt nicht mehr in einem eigenen Feld, sondern wird beim Import serverseitig
-// aus dem Namen des einzigen Eintrags im ZIP-Archiv erkannt (siehe `MemberExportZipArchive`) —
-// das Archiv beschreibt sich damit selbst, ein Format/Inhalt-Mismatch ist so ausgeschlossen.
+// Importiert wird eine CSV-/JSON-/XML-Datei direkt oder ein ZIP-Archiv aus „Mitglieder
+// exportieren“; das Format ergibt sich aus der Dateiendung bzw. dem Namen des einzigen
+// ZIP-Eintrags (siehe `MemberExportZipArchive`).
 //
-// Ist "Mitgliederexport/-import" (ProtectedAction::MembersExport) gerade per PIN geschützt, dient
-// derselbe PIN als ZIP-Passwort in beide Richtungen: Export/Import versuchen deshalb zunächst ohne
-// PIN, fragen ihn per promptForPin erst nach - und nur - wenn der Server mit
-// error.code === 'pinrequiredexception' antwortet (analog deleteMemberWithOptionalPin). Liefert
-// null bei "Abbrechen" im PIN-Dialog.
+// Ein Passwort ist nur bei einem verschlüsselten ZIP nötig — es ist der PIN, mit dem das Archiv
+// exportiert wurde. Der Import versucht es deshalb zunächst ohne und fragt erst nach, wenn der
+// Server mit error.code === 'pinrequiredexception' antwortet (analog deleteMemberWithOptionalPin).
+// Liefert null bei "Abbrechen" im PIN-Dialog.
 const importMembersWithOptionalPin = async (file) => {
     const buildFormData = (pin) => {
         const formData = new FormData();
@@ -897,7 +906,7 @@ const importMembersWithOptionalPin = async (file) => {
     let result = null;
     const unlocked = await promptForPin(
         'Mitglieder importieren',
-        'Für diese Funktion ist zusätzlich der PIN erforderlich, mit dem das Archiv verschlüsselt wurde.',
+        'Das ZIP-Archiv ist verschlüsselt. Bitte den PIN eingeben, mit dem es exportiert wurde.',
         async (pin) => { result = await request('/api/admin/v1/members/import', {method: 'POST', body: buildFormData(pin)}); },
     );
 
@@ -906,9 +915,9 @@ const importMembersWithOptionalPin = async (file) => {
 
 const openMemberImportDialog = (onImported) => {
     const dialog = element('dialog', {className: 'activity-dialog'});
-    const fileInput = element('input', {attributes: {type: 'file', accept: '.zip'}});
-    const fileField = element('label', {className: 'field', children: [element('span', {text: 'ZIP-Archiv'}), fileInput]});
-    const hint = element('small', {text: 'Ein mit "Mitglieder exportieren" erzeugtes Archiv (CSV, JSON oder XML).'});
+    const fileInput = element('input', {attributes: {type: 'file', accept: '.zip,.json,.csv,.xml'}});
+    const fileField = element('label', {className: 'field', children: [element('span', {text: 'Datei'}), fileInput]});
+    const hint = element('small', {text: 'Eine JSON-, CSV- oder XML-Datei oder ein mit "Mitglieder exportieren" erzeugtes ZIP-Archiv. Ein Passwort wird nur bei einem verschlüsselten ZIP abgefragt.'});
     const message = formMessage();
     const submit = element('button', {className: 'button', text: 'Importieren', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -1077,6 +1086,221 @@ const openRecalculationErrorsDialog = (errors) => {
     dialog.append(close, content);
     document.body.append(dialog);
     dialog.showModal();
+};
+
+// SEPA-Lastschrift für den Zahler eines Mitglieds (siehe `PayerDirectDebitPlanner`): Vorschau mit
+// Zahlungsdaten, an-/abwählbaren Positionen, Fälligkeitsdatum, Lastschrifttyp und
+// Verwendungszweck; der Export liefert die bei der Bank einzureichende XML-Datei (pain.008).
+const formatIban = (iban) => iban ? iban.replace(/(.{4})/g, '$1 ').trim() : '–';
+
+// Wie `postMemberExport`: bei Erfolg eine Datei statt JSON, daher fetch() statt request().
+const postDirectDebitExport = async (memberId, body) => {
+    const response = await fetch(`/api/admin/v1/members/${memberId}/direct-debit-export`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...(csrfToken ? {'X-CSRF-Token': csrfToken} : {}),
+        },
+        body: JSON.stringify(body),
+    });
+    if (response.ok) {
+        const disposition = response.headers.get('content-disposition') || '';
+        const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] || 'sepa-lastschrift.xml';
+
+        return {blob: await response.blob(), fileName};
+    }
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json() : null;
+    const error = new Error(data?.error?.message || data?.detail || data?.message || 'Der Export ist fehlgeschlagen.');
+    error.code = data?.error?.code || null;
+    throw error;
+};
+
+const exportDirectDebitWithOptionalPin = async (memberId, body) => {
+    try {
+        return await postDirectDebitExport(memberId, body);
+    } catch (error) {
+        if (error.code !== 'pinrequiredexception') throw error;
+    }
+    let file = null;
+    const unlocked = await promptForPin(
+        'SEPA-Lastschrift exportieren',
+        'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
+        async (pin) => { file = await postDirectDebitExport(memberId, {...body, pin}); },
+    );
+
+    return unlocked ? file : null;
+};
+
+const directDebitDataRow = (label, value) => element('div', {className: 'member-data-row', children: [
+    element('span', {className: 'member-data-label', text: label}),
+    element('span', {className: 'member-data-value', text: value || '–'}),
+]});
+
+const openDirectDebitDialog = async (memberId) => {
+    let preview;
+    try {
+        preview = await request(`/api/admin/v1/members/${memberId}/direct-debit-preview`);
+    } catch (error) {
+        toast(error.message, 'error');
+        return;
+    }
+
+    const dialog = element('dialog', {className: 'confirm-dialog direct-debit-dialog'});
+    const message = formMessage();
+    const blocked = preview.blockers.length > 0;
+    const checkboxes = preview.positions.map((position) => {
+        const checkbox = element('input', {attributes: {type: 'checkbox', value: position.id}});
+        checkbox.checked = position.selectedByDefault;
+
+        return {position, checkbox};
+    });
+    const totalValue = element('span');
+    const selectedIds = () => checkboxes.filter(({checkbox}) => checkbox.checked).map(({position}) => position.id);
+    const updateTotal = () => {
+        const cents = checkboxes.filter(({checkbox}) => checkbox.checked).reduce((sum, {position}) => sum + position.amountCents, 0);
+        totalValue.textContent = formatEuro(cents);
+    };
+    checkboxes.forEach(({checkbox}) => checkbox.addEventListener('change', updateTotal));
+    updateTotal();
+
+    const byMember = new Map();
+    checkboxes.forEach((entry) => {
+        const key = entry.position.memberId;
+        if (!byMember.has(key)) byMember.set(key, []);
+        byMember.get(key).push(entry);
+    });
+    const positionList = element('ul', {className: 'direct-debit-positions', children: [...byMember.values()].map((entries) => element('li', {children: [
+        element('strong', {text: `${entries[0].position.memberName} · ${entries[0].position.memberNumber}`}),
+        ...entries.map(({position, checkbox}) => element('label', {className: 'direct-debit-position', children: [
+            checkbox,
+            element('span', {text: position.label}),
+            element('span', {className: 'direct-debit-position-amount', text: position.annualAmountCents !== null && position.annualAmountCents !== position.amountCents
+                ? `${formatEuro(position.amountCents)} (Jahr: ${formatEuro(position.annualAmountCents)})`
+                : formatEuro(position.amountCents)}),
+        ]})),
+    ]}))});
+
+    const collectionDate = field('Fälligkeitsdatum', 'direct-debit-collection-date', preview.defaultCollectionDate, 'date');
+    const sequenceType = selectField('Lastschrifttyp', 'direct-debit-sequence-type', preview.sequenceTypes.map((type) => [type.value, type.label]), preview.defaultSequenceType);
+    const remittance = field('Verwendungszweck', 'direct-debit-remittance', preview.defaultRemittanceInformation);
+    const remittanceInput = remittance.querySelector('input');
+    remittanceInput.maxLength = 140;
+
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'XML exportieren', attributes: {type: 'submit'}});
+    submit.disabled = blocked;
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'SEPA-Lastschrift'}),
+        element('h2', {text: `Lastschrift für ${preview.payerName} (${preview.payerMemberNumber})`}),
+        ...preview.blockers.map((text) => element('p', {className: 'failure-message', text})),
+        ...preview.warnings.map((text) => element('p', {className: 'field-hint', text: `⚠ ${text}`})),
+        element('div', {className: 'direct-debit-columns', children: [
+            element('section', {children: [
+                element('h3', {text: 'Zahlungspflichtiger'}),
+                directDebitDataRow('Kontoinhaber', preview.debtorName),
+                directDebitDataRow('IBAN', formatIban(preview.iban)),
+                directDebitDataRow('Bank', preview.bankName),
+                directDebitDataRow('Mandatsreferenz', preview.mandateReference),
+                directDebitDataRow('Mandat unterschrieben am', formatDateDE(preview.mandateSignedOn)),
+                directDebitDataRow('Zahlintervall', PAYMENT_INTERVAL_LABELS[preview.paymentInterval] || preview.paymentInterval),
+            ]}),
+            element('section', {children: [
+                element('h3', {text: 'Zahlungsempfänger'}),
+                directDebitDataRow('Name', preview.creditor.name),
+                directDebitDataRow('Gläubiger-ID', preview.creditor.creditorId),
+                directDebitDataRow('IBAN', formatIban(preview.creditor.iban)),
+                directDebitDataRow('BIC', preview.creditor.bic),
+            ]}),
+        ]}),
+        element('h3', {text: 'Positionen'}),
+        preview.positions.length ? positionList : element('p', {className: 'empty-copy', text: 'Keine abbuchbaren Positionen.'}),
+        element('div', {className: 'member-payer-total', children: [element('span', {text: 'Betrag der Lastschrift'}), totalValue]}),
+        fieldRow([collectionDate, sequenceType]),
+        remittance,
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        message.textContent = '';
+        submit.disabled = true;
+        try {
+            const file = await exportDirectDebitWithOptionalPin(memberId, {
+                collectionDate: collectionDate.querySelector('input').value,
+                sequenceType: sequenceType.querySelector('select').value,
+                remittanceInformation: remittanceInput.value,
+                positionIds: selectedIds(),
+            });
+            if (!file) return;
+            const url = URL.createObjectURL(file.blob);
+            const link = element('a', {attributes: {href: url, download: file.fileName}});
+            document.body.append(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            toast('Die SEPA-Lastschriftdatei wurde erstellt.');
+            dialog.close();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            submit.disabled = blocked;
+        }
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+};
+
+/** SEPA-Gläubigerdaten des Vereins (siehe `DirectDebitCreditor`) — Voraussetzung für jeden Lastschrift-Export. */
+const renderDirectDebitCreditorCard = (creditor, onSaved) => {
+    const message = formMessage();
+    const name = field('Name des Zahlungsempfängers', 'direct-debit-creditor-name', creditor.name || '');
+    const creditorId = field('Gläubiger-Identifikationsnummer', 'direct-debit-creditor-id', creditor.creditorId || '');
+    const iban = field('IBAN des Vereinskontos', 'direct-debit-creditor-iban', formatIban(creditor.iban) === '–' ? '' : formatIban(creditor.iban));
+    const bic = field('BIC (optional)', 'direct-debit-creditor-bic', creditor.bic || '');
+    const inputs = [name, creditorId, iban, bic].map((wrapper) => wrapper.querySelector('input'));
+    const form = element('form', {className: 'compact-form contribution-rate-settings-card', children: [
+        element('h3', {text: 'SEPA-Gläubigerdaten'}),
+        element('p', {className: 'field-hint', text: creditor.complete
+            ? 'Werden als Zahlungsempfänger in jede SEPA-Lastschriftdatei übernommen.'
+            : 'Noch nicht vollständig — ohne Name, Gläubiger-ID und IBAN ist kein Lastschrift-Export möglich.'}),
+        fieldRow([name, creditorId]),
+        fieldRow([iban, bic]),
+        message,
+        element('button', {className: 'button', text: 'Speichern', attributes: {type: 'submit'}}),
+    ]});
+    if (!canEditModule('contribution_rates')) {
+        inputs.forEach((input) => { input.disabled = true; });
+        form.querySelector('button').hidden = true;
+    }
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const button = form.querySelector('button');
+        button.disabled = true;
+        message.textContent = '';
+        try {
+            const [nameValue, creditorIdValue, ibanValue, bicValue] = inputs.map((input) => input.value);
+            await request('/api/admin/v1/direct-debit-creditor', {
+                method: 'PUT',
+                body: JSON.stringify({name: nameValue, creditorId: creditorIdValue, iban: ibanValue, bic: bicValue}),
+            });
+            toast('Gespeichert.');
+            await onSaved();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    return form;
 };
 
 // Fragt vor der Sammel-Neuberechnung das Beitragsjahr ab (Default: laufendes Jahr) — Alter und
@@ -1520,6 +1744,7 @@ const renderContributionRateSettingsCard = (settings, onSaved) => {
 const showContributionRates = async () => {
     const data = await request('/api/admin/v1/contribution-rates');
     const settings = await request('/api/admin/v1/contribution-rate-settings');
+    const creditor = await request('/api/admin/v1/direct-debit-creditor');
     const heading = sectionHeading('Beitragssätze', 'Bezeichnung, Betrag, Zeitraum und Altersspanne je Beitragssatz pflegen');
     if (canEditModule('contribution_rates')) {
         const create = element('button', {className: 'button', text: '＋ Neuer Beitragssatz', attributes: {type: 'button'}});
@@ -1558,6 +1783,7 @@ const showContributionRates = async () => {
         heading,
         element('div', {className: 'activity-list', children: rows.length ? rows : [emptyState('Keine Beitragssätze vorhanden.')]}),
         renderContributionRateSettingsCard(settings, showContributionRates),
+        renderDirectDebitCreditorCard(creditor, showContributionRates),
     );
 };
 

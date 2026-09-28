@@ -3,6 +3,7 @@
 namespace App\Logic\Membership\Member\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Common\Iban;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\PaymentInterval;
 
@@ -560,21 +561,6 @@ readonly class Member
 
     private function isValidIban(string $iban): bool
     {
-        $normalized = strtoupper((string) preg_replace('/\s+/', '', $iban));
-        if (preg_match('/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/', $normalized) !== 1) {
-            return false;
-        }
-
-        $rearranged = substr($normalized, 4).substr($normalized, 0, 4);
-        $numeric = '';
-        foreach (str_split($rearranged) as $character) {
-            $numeric .= ctype_alpha($character) ? (string) (ord($character) - 55) : $character;
-        }
-        $remainder = 0;
-        foreach (str_split($numeric) as $digit) {
-            $remainder = ($remainder * 10 + (int) $digit) % 97;
-        }
-
-        return $remainder === 1;
+        return Iban::isValid($iban);
     }
 }

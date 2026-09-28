@@ -42,10 +42,46 @@ readonly class MemberExportZipArchive
     }
 
     /**
+     * Ob der Archiv-Eintrag verschlüsselt ist — nur dann braucht der Import ein Passwort.
+     */
+    public function isEncrypted(string $zipContent): bool
+    {
+        return $this->withArchive($zipContent, static function (\ZipArchive $zip): bool {
+            $stat = $zip->statIndex(0);
+
+            return $stat !== false && $stat['encryption_method'] !== \ZipArchive::EM_NONE;
+        });
+    }
+
+    /**
      * @param list<string> $allowedFormats
      * @return array{content: string, format: string}
      */
     public function extract(string $zipContent, ?string $password, array $allowedFormats): array
+    {
+        return $this->withArchive($zipContent, static function (\ZipArchive $zip) use ($password, $allowedFormats): array {
+            $format = strtolower(pathinfo($zip->getNameIndex(0) ?: '', PATHINFO_EXTENSION));
+            if (!in_array($format, $allowedFormats, true)) {
+                throw new BadRequestHttpException('Das Archiv enthält kein unterstütztes Dateiformat.');
+            }
+            if ($password !== null) {
+                $zip->setPassword($password);
+            }
+            $content = $zip->getFromIndex(0);
+            if ($content === false) {
+                throw new BadRequestHttpException('Das Passwort ist falsch oder die Datei ist beschädigt.');
+            }
+
+            return ['content' => $content, 'format' => $format];
+        });
+    }
+
+    /**
+     * @template T
+     * @param callable(\ZipArchive): T $callback
+     * @return T
+     */
+    private function withArchive(string $zipContent, callable $callback): mixed
     {
         $path = tempnam(sys_get_temp_dir(), 'member-import-');
         if ($path === false) {
@@ -59,20 +95,11 @@ readonly class MemberExportZipArchive
             if ($zip->open($path) !== true || $zip->numFiles !== 1) {
                 throw new BadRequestHttpException('Die Datei ist kein gültiges Mitglieder-Export-Archiv.');
             }
-            $format = strtolower(pathinfo($zip->getNameIndex(0) ?: '', PATHINFO_EXTENSION));
-            if (!in_array($format, $allowedFormats, true)) {
-                throw new BadRequestHttpException('Das Archiv enthält kein unterstütztes Dateiformat.');
+            try {
+                return $callback($zip);
+            } finally {
+                $zip->close();
             }
-            if ($password !== null) {
-                $zip->setPassword($password);
-            }
-            $content = $zip->getFromIndex(0);
-            $zip->close();
-            if ($content === false) {
-                throw new BadRequestHttpException('Das Passwort ist falsch oder die Datei ist beschädigt.');
-            }
-
-            return ['content' => $content, 'format' => $format];
         } finally {
             @unlink($path);
         }
