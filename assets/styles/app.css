@@ -1778,7 +1778,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .member-dialog-panel { display: grid; gap: 1rem; }
 .member-dialog-panel[hidden] { display: none; }
 
-.member-household-list, .member-payer-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.member-household-list, .member-payer-list { margin-top: 20px; display: grid; gap: .6rem; padding: 0; list-style: none; }
 
 /* Familienzugehörigkeit: Der Rahmen umschließt nur die Personen-Info, der Öffnen-Button steht
    als eigenes Element rechts daneben, außerhalb des Rahmens. Als Baum nach Zahler gruppiert (siehe
@@ -1820,7 +1820,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .direct-debit-columns { grid-template-columns: 1fr; }
 }
 
-.member-payer-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: 1rem 1.1rem; border-radius: .75rem; background: var(--forest-100); font-weight: 800; color: var(--forest-900); }
+.member-payer-total { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: 1rem 1.1rem; border-radius: .75rem; background: var(--forest-100); font-weight: 800; color: var(--forest-900); }
 .member-payer-total span:last-child { font-size: 1.15rem; }
 
 @media (max-width: 640px) {

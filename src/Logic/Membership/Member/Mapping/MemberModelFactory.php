@@ -5,13 +5,24 @@ namespace App\Logic\Membership\Member\Mapping;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Dto\UpdateMemberRequest;
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\PayerType;
+use App\Logic\Membership\Member\Model\PaymentMethod;
 
+/**
+ * Zahlt ein anderes Mitglied den Beitrag, hat das Mitglied weder eine eigene Zahlart noch eine
+ * eigene Buchung oder Kontodaten: Die Zahlart wird „Keine Angabe“, nächste Buchung, Kontoinhaber,
+ * IBAN, Bank, Mandatsreferenz und Mandatszeitraum werden beim Anlegen und Aktualisieren geleert —
+ * unabhängig davon, was Formular oder Importdatei mitliefern. Selbstzahler ohne Angabe erhalten als nächste Buchung März des Folgejahres ihres
+ * Eintritts.
+ */
 readonly class MemberModelFactory
 {
+    private const int DEFAULT_BOOKING_MONTH = 3;
+
     /**
-     * Baut ein neues Mitglied. Mitgliedsnummer, Hauptnummer, Mandatsreferenz und die nächste
-     * Buchung werden vom `CreateMemberUseCase` aufgelöst (Default-Werte, Nummerngenerierung) und
-     * hier nur noch übernommen.
+     * Baut ein neues Mitglied. Mitgliedsnummer, Hauptnummer und Mandatsreferenz werden vom
+     * `CreateMemberUseCase` aufgelöst (Default-Werte, Nummerngenerierung) und hier nur noch
+     * übernommen.
      */
     public function createFromRequest(
         CreateMemberRequest $request,
@@ -20,9 +31,11 @@ readonly class MemberModelFactory
         string $primaryMemberNumber,
         ?string $mandateReference,
         ?string $payerMemberId,
-        int $nextBookingMonth,
-        int $nextBookingYear,
+        ?int $nextBookingMonth,
+        ?int $nextBookingYear,
     ): Member {
+        $selfPayer = $request->payerType === PayerType::SelfPayer;
+
         return new Member(
             id: $id,
             memberNumber: $memberNumber,
@@ -40,18 +53,18 @@ readonly class MemberModelFactory
             joinedAt: $request->joinedAt,
             leftAt: $request->leftAt,
             function: $request->function,
-            accountHolder: $request->accountHolder,
-            iban: $request->iban,
-            bankName: $request->bankName,
+            accountHolder: $selfPayer ? $request->accountHolder : null,
+            iban: $selfPayer ? $request->iban : null,
+            bankName: $selfPayer ? $request->bankName : null,
             emailConsent: $request->emailConsent,
-            mandateReference: $mandateReference,
-            paymentMethod: $request->paymentMethod,
+            mandateReference: $selfPayer ? $mandateReference : null,
+            paymentMethod: $selfPayer ? $request->paymentMethod : PaymentMethod::NotSpecified,
             paymentInterval: $request->paymentInterval,
             paymentDay: $request->paymentDay,
             payerType: $request->payerType,
             payerMemberId: $payerMemberId,
-            nextBookingMonth: $nextBookingMonth,
-            nextBookingYear: $nextBookingYear,
+            nextBookingMonth: $selfPayer ? $nextBookingMonth ?? self::DEFAULT_BOOKING_MONTH : null,
+            nextBookingYear: $selfPayer ? $nextBookingYear ?? $this->defaultBookingYear($request->joinedAt) : null,
             contributionCategory: null,
             contributionAmountCents: null,
             workAssignmentSurchargeCents: null,
@@ -59,8 +72,8 @@ readonly class MemberModelFactory
             oneTimeCharges: [],
             version: 0,
             contributionLiable: $request->contributionLiable,
-            mandateValidFrom: $request->mandateValidFrom,
-            mandateValidUntil: $request->mandateValidUntil,
+            mandateValidFrom: $selfPayer ? $request->mandateValidFrom : null,
+            mandateValidUntil: $selfPayer ? $request->mandateValidUntil : null,
         );
     }
 
@@ -71,6 +84,8 @@ readonly class MemberModelFactory
      */
     public function rebuildFromRequest(UpdateMemberRequest $request, Member $current): Member
     {
+        $selfPayer = $request->payerType === PayerType::SelfPayer;
+
         return new Member(
             id: $request->id,
             memberNumber: $request->memberNumber,
@@ -88,18 +103,18 @@ readonly class MemberModelFactory
             joinedAt: $request->joinedAt,
             leftAt: $request->leftAt,
             function: $request->function,
-            accountHolder: $request->accountHolder,
-            iban: $request->iban,
-            bankName: $request->bankName,
+            accountHolder: $selfPayer ? $request->accountHolder : null,
+            iban: $selfPayer ? $request->iban : null,
+            bankName: $selfPayer ? $request->bankName : null,
             emailConsent: $current->emailConsent,
-            mandateReference: $request->mandateReference,
-            paymentMethod: $request->paymentMethod,
+            mandateReference: $selfPayer ? $request->mandateReference : null,
+            paymentMethod: $selfPayer ? $request->paymentMethod : PaymentMethod::NotSpecified,
             paymentInterval: $request->paymentInterval,
             paymentDay: $request->paymentDay,
             payerType: $request->payerType,
             payerMemberId: $request->payerMemberId,
-            nextBookingMonth: $request->nextBookingMonth,
-            nextBookingYear: $request->nextBookingYear,
+            nextBookingMonth: $selfPayer ? $request->nextBookingMonth ?? self::DEFAULT_BOOKING_MONTH : null,
+            nextBookingYear: $selfPayer ? $request->nextBookingYear ?? $this->defaultBookingYear($request->joinedAt) : null,
             contributionCategory: $current->contributionCategory,
             contributionAmountCents: $current->contributionAmountCents,
             workAssignmentSurchargeCents: $current->workAssignmentSurchargeCents,
@@ -107,8 +122,13 @@ readonly class MemberModelFactory
             oneTimeCharges: $current->oneTimeCharges,
             version: $request->version,
             contributionLiable: $request->contributionLiable,
-            mandateValidFrom: $request->mandateValidFrom,
-            mandateValidUntil: $request->mandateValidUntil,
+            mandateValidFrom: $selfPayer ? $request->mandateValidFrom : null,
+            mandateValidUntil: $selfPayer ? $request->mandateValidUntil : null,
         );
+    }
+
+    private function defaultBookingYear(\DateTimeImmutable $joinedAt): int
+    {
+        return (int) $joinedAt->format('Y') + 1;
     }
 }

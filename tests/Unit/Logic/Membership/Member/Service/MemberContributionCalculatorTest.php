@@ -290,6 +290,71 @@ final class MemberContributionCalculatorTest extends TestCase
     }
 
     /**
+     * Umkehrung zum Herauswachsen: Eine Einzelperson bzw. ein Familienangehöriger unter einem
+     * erwachsenen Hauptmitglied, die/der noch innerhalb der Kinder-Altersspanne liegt, wird Kind.
+     */
+    #[DataProvider('noneOrPartnerProvider')]
+    public function testResolveFamilyRoleTurnsYoungNoneOrPartnerUnderAnAdultHeadIntoAChild(FamilyRole $familyRole): void
+    {
+        $calculator = $this->calculator();
+        $young = $this->member(birthDate: '2009-03-01', familyRole: $familyRole, id: 'young'); // Beitragsalter 17
+        $head = $this->member(birthDate: '1980-01-01', familyRole: FamilyRole::Head, id: 'head');
+
+        self::assertSame(FamilyRole::Child, $calculator->resolveFamilyRole($young, [$head], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    public function testResolveFamilyRoleKeepsYoungNoneWithoutAnAdultHead(): void
+    {
+        $calculator = $this->calculator();
+        $young = $this->member(birthDate: '2009-03-01', familyRole: FamilyRole::None, id: 'young');
+        $minorHead = $this->member(birthDate: '2008-01-01', familyRole: FamilyRole::Head, id: 'minor-head');
+
+        self::assertSame(FamilyRole::None, $calculator->resolveFamilyRole($young, [$minorHead], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    public function testResolveFamilyRoleKeepsAdultPartnerUnderAHead(): void
+    {
+        $calculator = $this->calculator();
+        $partner = $this->member(birthDate: '2005-12-31', familyRole: FamilyRole::Partner, id: 'partner'); // Beitragsalter 21
+        $head = $this->member(birthDate: '1980-01-01', familyRole: FamilyRole::Head, id: 'head');
+        $child = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Child, id: 'child');
+
+        self::assertSame(FamilyRole::Partner, $calculator->resolveFamilyRole($partner, [$head, $child], new \DateTimeImmutable('2026-06-01')));
+    }
+
+    /**
+     * Alle Rollen eines Haushalts werden geklärt, bevor gerechnet wird: Das herausgewachsene Kind
+     * wird Einzelperson, die junge Einzelperson Kind — und das Hauptmitglied bleibt Hauptmitglied
+     * mit Familienrabatt, weil es nach dem Wechsel wieder ein qualifizierendes Kind gibt.
+     */
+    public function testResolveHouseholdRolesAppliesBothDirectionsBeforeTheParentsStatusIsDecided(): void
+    {
+        $calculator = $this->calculator();
+        $at = new \DateTimeImmutable('2026-06-01');
+        $head = $this->member(birthDate: '1976-01-01', familyRole: FamilyRole::Head, id: 'head');
+        $formerChild = $this->member(birthDate: '2001-01-01', familyRole: FamilyRole::Child, id: 'former-child'); // 25
+        $young = $this->member(birthDate: '2007-05-05', familyRole: FamilyRole::None, id: 'young'); // 19
+
+        $resolved = $calculator->resolveHouseholdRoles([$head, $formerChild, $young], $at);
+
+        self::assertSame(
+            [FamilyRole::Head, FamilyRole::None, FamilyRole::Child],
+            array_map(static fn (Member $member): FamilyRole => $member->familyRole, $resolved),
+        );
+        self::assertSame(ContributionCategory::FamilyAdult, $calculator->calculate($resolved[0], [$resolved[1], $resolved[2]], $at)->category);
+        self::assertSame(ContributionCategory::FamilyChildPaying, $calculator->calculate($resolved[2], [$resolved[0], $resolved[1]], $at)->category);
+    }
+
+    /**
+     * @return iterable<string, array{FamilyRole}>
+     */
+    public static function noneOrPartnerProvider(): iterable
+    {
+        yield 'None' => [FamilyRole::None];
+        yield 'Partner' => [FamilyRole::Partner];
+    }
+
+    /**
      * @return iterable<string, array{FamilyRole}>
      */
     public static function headOrPartnerProvider(): iterable

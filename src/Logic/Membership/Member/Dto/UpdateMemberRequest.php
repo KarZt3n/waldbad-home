@@ -39,8 +39,8 @@ readonly class UpdateMemberRequest
         public PaymentDay $paymentDay,
         public PayerType $payerType,
         public ?string $payerMemberId,
-        public int $nextBookingMonth,
-        public int $nextBookingYear,
+        public ?int $nextBookingMonth,
+        public ?int $nextBookingYear,
         /** Vorstandsmitglieder sind laut Satzung beitragsfrei (siehe Member::$contributionLiable). */
         public bool $contributionLiable = true,
         public ?\DateTimeImmutable $mandateValidFrom = null,

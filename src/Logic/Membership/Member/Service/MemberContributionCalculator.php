@@ -28,10 +28,10 @@ use App\Logic\Membership\Member\Model\Member;
  * Kinder-Beitragssätze (`family_child_exempt`/`family_child_paying`) konfigurierte Altersspanne
  * hinaus, wechselt seine eigene Beitragsberechnung automatisch auf den Einzelpersonen-Satz — und
  * dasselbe Kind zählt ab diesem Zeitpunkt auch nicht mehr als Grund für den Familienrabatt der
- * Eltern. Die aufrufende Stelle (siehe `resolveFamilyRole()`) setzt bei derselben Gelegenheit auch
- * die `familyRole` von `Child` auf `None` („Einzelperson") — die Hauptnummer bleibt unverändert,
- * die Person bleibt also weiter unter demselben Haushalt geführt, gilt aber nicht mehr als „Kind"
- * der Familie. Zwei Erwachsene mit derselben Hauptnummer bleiben „Familie“, erhalten aber keinen
+ * Eltern. Die aufrufende Stelle (siehe `resolveHouseholdRoles()`) setzt bei derselben Gelegenheit
+ * auch die `familyRole` von `Child` auf `None` („Einzelperson") — und umgekehrt eine Einzelperson
+ * bzw. einen Familienangehörigen unter einem erwachsenen Hauptmitglied, die/der noch innerhalb der
+ * Kinder-Altersspanne liegt, auf `Child`. Die Hauptnummer bleibt dabei unverändert. Zwei Erwachsene mit derselben Hauptnummer bleiben „Familie“, erhalten aber keinen
  * Familienrabatt mehr, sobald kein Kind diese Altersspanne mehr erfüllt.
  *
  * Alle Altersangaben sind „Beitragsalter“ (`Member::contributionAge()`): maßgeblich ist das Alter,
@@ -88,49 +88,86 @@ readonly class MemberContributionCalculator
     }
 
     /**
-     * Die laut Beitragsordnung passende Familienzugehörigkeit zu `$at`, in beide Richtungen:
+     * Die laut Beitragsordnung passende Familienzugehörigkeit aller Mitglieder eines Haushalts zu
+     * `$at` (Beitragsalter, siehe `Member::contributionAge()`), in zwei Schritten:
      *
-     * - Ist `$candidate` aktuell `familyRole: Child`, aber bereits aus der Familien-Kinderpreisung
-     *   „herausgewachsen" (`hasAgedOutOfChildPricing()`), gilt sie/er automatisch als
-     *   „Einzelperson" (`FamilyRole::None`).
-     * - Ist `$candidate` `Head`/`Partner`, gibt es im Haushalt (noch) mindestens ein Mitglied mit
-     *   `familyRole: Child`, aber keines davon qualifiziert mehr (`hasQualifyingChild()` liefert
-     *   `false`) — die Kinder sind also alle aus der Kinderpreisung herausgewachsen, nicht bloß nie
-     *   vorhanden gewesen —, gilt sie/er ebenfalls automatisch als „Einzelperson": Ohne verbleibendes
-     *   Kind ist es laut Beitragsordnung keine „Familie" mehr. Eine frisch angelegte Familie ganz
-     *   ohne jemals ein Kind (z. B. ein junges Ehepaar bei Beitritt) bleibt davon unberührt — dafür
-     *   muss mindestens ein `familyRole: Child`-Mitglied im Haushalt (egal welchen Alters) stehen.
+     * 1. Nach Alter, je Person — die Grenze ist die höchste Altersgrenze der beiden
+     *    Kinder-Beitragssätze (`family_child_exempt`/`family_child_paying`):
+     *    - `Child` jenseits dieser Grenze („herausgewachsen“) wird zur Einzelperson (`None`).
+     *    - `None` („Einzelperson“) oder `Partner` („Familienangehöriger“) innerhalb dieser Grenze
+     *      wird zum `Child`, sofern im Haushalt ein erwachsenes Hauptmitglied (`Head`) geführt wird.
+     * 2. `Head`/`Partner` werden zur Einzelperson, wenn der Haushalt Kinder hatte, nach Schritt 1
+     *    aber keines mehr qualifiziert (alle herausgewachsen) — ohne verbleibendes Kind ist es laut
+     *    Beitragsordnung keine „Familie" mehr. Eine Familie, die nie ein Kind hatte (z. B. ein
+     *    junges Ehepaar bei Beitritt), bleibt unberührt.
      *
-     * Beides unabhängig von Austritt oder Beitragsbefreiung, da es sich um den Familienstatus und
-     * nicht um die Beitragspflicht handelt; bereits `None` bleibt unverändert (keine automatische
-     * Rückstufung in die andere Richtung, etwa nach der Geburt eines neuen Kindes — das entscheidet
-     * weiterhin die Verwaltung manuell). Die Hauptnummer selbst ändert sich dadurch nie — die
-     * Person bleibt im selben Haushalt geführt. Aufrufende Stellen wenden das Ergebnis per
-     * `Member::withFamilyRole()` an, bevor sie `calculate()` für denselben Kandidaten aufrufen
-     * (siehe `RecalculateAllMemberContributionsUseCase`, `HouseholdContributionRecalculator`).
+     * Schritt 2 sieht bereits das Ergebnis von Schritt 1, damit z. B. ein gerade erst zum Kind
+     * gewordenes Mitglied den Familienstatus der Eltern erhält. Unabhängig von Austritt oder
+     * Beitragsbefreiung, da es um den Familienstatus und nicht um die Beitragspflicht geht; die
+     * Hauptnummer ändert sich nie. Aufrufende Stellen berechnen den Beitrag anschließend mit den
+     * hier gelieferten Mitgliedern (siehe `RecalculateAllMemberContributionsUseCase`,
+     * `HouseholdContributionRecalculator`).
+     *
+     * @param list<Member> $household Alle Mitglieder mit derselben Hauptnummer.
+     * @return list<Member> dieselben Mitglieder in derselben Reihenfolge, ggf. mit geänderter `familyRole`
+     */
+    public function resolveHouseholdRoles(array $household, \DateTimeImmutable $at): array
+    {
+        $ageResolved = array_map(
+            fn (Member $member): Member => $member->withFamilyRole($this->resolveAgeBasedRole($member, $this->others($household, $member), $at)),
+            $household,
+        );
+
+        return array_map(
+            fn (Member $member): Member => ($member->familyRole === FamilyRole::Head || $member->familyRole === FamilyRole::Partner)
+                && $this->hasAnyChildRole($this->others($household, $member))
+                && !$this->hasQualifyingChild($this->others($ageResolved, $member), $at)
+                    ? $member->withFamilyRole(FamilyRole::None)
+                    : $member,
+            $ageResolved,
+        );
+    }
+
+    /**
+     * Die Familienzugehörigkeit eines einzelnen Mitglieds nach denselben Regeln wie
+     * `resolveHouseholdRoles()`.
      *
      * @param list<Member> $householdMembers Andere Mitglieder mit derselben Hauptnummer wie $candidate (ohne $candidate selbst).
      */
     public function resolveFamilyRole(Member $candidate, array $householdMembers, \DateTimeImmutable $at): FamilyRole
     {
+        return $this->resolveHouseholdRoles([$candidate, ...$householdMembers], $at)[0]->familyRole;
+    }
+
+    /**
+     * @param list<Member> $householdMembers
+     */
+    private function resolveAgeBasedRole(Member $candidate, array $householdMembers, \DateTimeImmutable $at): FamilyRole
+    {
+        $age = $candidate->contributionAge((int) $at->format('Y'));
+        $childExemptMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge;
+        $childPayingMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge;
+
         if ($candidate->familyRole === FamilyRole::Child) {
-            $hasAgedOut = $this->hasAgedOutOfChildPricing(
-                $candidate->contributionAge((int) $at->format('Y')),
-                $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge,
-                $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge,
-            );
-
-            return $hasAgedOut ? FamilyRole::None : FamilyRole::Child;
+            return $this->hasAgedOutOfChildPricing($age, $childExemptMaxAge, $childPayingMaxAge) ? FamilyRole::None : FamilyRole::Child;
         }
-
-        if (($candidate->familyRole === FamilyRole::Head || $candidate->familyRole === FamilyRole::Partner)
-            && $this->hasAnyChildRole($householdMembers)
-            && !$this->hasQualifyingChild($householdMembers, $at)
+        if (($candidate->familyRole === FamilyRole::None || $candidate->familyRole === FamilyRole::Partner)
+            && $this->isWithinChildPricing($age, $childExemptMaxAge, $childPayingMaxAge)
+            && $this->hasGrownUpHead($householdMembers, $at)
         ) {
-            return FamilyRole::None;
+            return FamilyRole::Child;
         }
 
         return $candidate->familyRole;
+    }
+
+    /**
+     * @param list<Member> $household
+     * @return list<Member>
+     */
+    private function others(array $household, Member $member): array
+    {
+        return array_values(array_filter($household, static fn (Member $other): bool => $other->id !== $member->id));
     }
 
     /**
@@ -229,6 +266,38 @@ readonly class MemberContributionCalculator
         }
 
         return $age > max($ceilings);
+    }
+
+    /**
+     * Gegenstück zu `hasAgedOutOfChildPricing()`: ob eine Person noch innerhalb der Kinder-
+     * Altersspanne liegt. Ohne konfigurierte Grenze lässt sich das nicht feststellen.
+     */
+    private function isWithinChildPricing(int $age, ?int $childExemptMaxAge, ?int $childPayingMaxAge): bool
+    {
+        if ($childExemptMaxAge === null && $childPayingMaxAge === null) {
+            return false;
+        }
+
+        return !$this->hasAgedOutOfChildPricing($age, $childExemptMaxAge, $childPayingMaxAge);
+    }
+
+    /**
+     * @param list<Member> $householdMembers
+     */
+    private function hasGrownUpHead(array $householdMembers, \DateTimeImmutable $at): bool
+    {
+        $childExemptMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge;
+        $childPayingMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge;
+
+        foreach ($householdMembers as $member) {
+            if ($member->familyRole === FamilyRole::Head
+                && $this->hasAgedOutOfChildPricing($member->contributionAge((int) $at->format('Y')), $childExemptMaxAge, $childPayingMaxAge)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function matchIndividualCategory(int $age): ?ContributionCategory

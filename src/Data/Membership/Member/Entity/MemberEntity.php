@@ -91,10 +91,10 @@ class MemberEntity
         private string $payerType,
         #[ORM\Column(type: Types::STRING, length: 36, nullable: true)]
         private ?string $payerMemberId,
-        #[ORM\Column(type: Types::INTEGER)]
-        private int $nextBookingMonth,
-        #[ORM\Column(type: Types::INTEGER)]
-        private int $nextBookingYear,
+        #[ORM\Column(type: Types::INTEGER, nullable: true)]
+        private ?int $nextBookingMonth,
+        #[ORM\Column(type: Types::INTEGER, nullable: true)]
+        private ?int $nextBookingYear,
         #[ORM\Column(type: Types::STRING, length: 30, nullable: true)]
         private ?string $contributionCategory,
         #[ORM\Column(type: Types::INTEGER, nullable: true)]
@@ -165,8 +165,8 @@ class MemberEntity
     public function getPaymentDay(): string { return $this->paymentDay; }
     public function getPayerType(): string { return $this->payerType; }
     public function getPayerMemberId(): ?string { return $this->payerMemberId; }
-    public function getNextBookingMonth(): int { return $this->nextBookingMonth; }
-    public function getNextBookingYear(): int { return $this->nextBookingYear; }
+    public function getNextBookingMonth(): ?int { return $this->nextBookingMonth; }
+    public function getNextBookingYear(): ?int { return $this->nextBookingYear; }
     public function getContributionCategory(): ?string { return $this->contributionCategory; }
     public function getContributionAmountCents(): ?int { return $this->contributionAmountCents; }
     public function getWorkAssignmentSurchargeCents(): ?int { return $this->workAssignmentSurchargeCents; }
@@ -203,8 +203,8 @@ class MemberEntity
         string $paymentDay,
         string $payerType,
         ?string $payerMemberId,
-        int $nextBookingMonth,
-        int $nextBookingYear,
+        ?int $nextBookingMonth,
+        ?int $nextBookingYear,
         ?string $contributionCategory,
         ?int $contributionAmountCents,
         ?int $workAssignmentSurchargeCents,

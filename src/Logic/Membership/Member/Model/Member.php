@@ -39,8 +39,9 @@ readonly class Member
         public PaymentDay $paymentDay,
         public PayerType $payerType,
         public ?string $payerMemberId,
-        public int $nextBookingMonth,
-        public int $nextBookingYear,
+        /** Nur für Selbstzahler — wer über ein anderes Mitglied zahlt, hat keine eigene Buchung (siehe `MemberModelFactory`). */
+        public ?int $nextBookingMonth,
+        public ?int $nextBookingYear,
         public ?ContributionCategory $contributionCategory,
         public ?int $contributionAmountCents,
         public ?int $workAssignmentSurchargeCents,
@@ -116,7 +117,7 @@ readonly class Member
         if ($this->payerMemberId === $this->id) {
             throw new BusinessRuleViolationException('Ein Mitglied kann nicht sein eigener abweichender Zahler sein.');
         }
-        if ($this->nextBookingMonth < 1 || $this->nextBookingMonth > 12) {
+        if ($this->nextBookingMonth !== null && ($this->nextBookingMonth < 1 || $this->nextBookingMonth > 12)) {
             throw new BusinessRuleViolationException('Der Monat der nächsten Buchung muss zwischen 1 und 12 liegen.');
         }
         if ($this->mandateValidFrom !== null && $this->mandateValidUntil !== null && $this->mandateValidUntil < $this->mandateValidFrom) {
@@ -199,7 +200,7 @@ readonly class Member
      * Wechselt die Familienzugehörigkeit — insbesondere für den automatischen Übergang „Kind" →
      * „Einzelperson" (`FamilyRole::None`), sobald ein Kind laut Beitragsordnung nach Vollendung des
      * 21. Lebensjahres aus der Familien-Kinderpreisung herausgewachsen ist (siehe
-     * `MemberContributionCalculator::resolveFamilyRole()`, angewendet bei jeder Neuberechnung).
+     * `MemberContributionCalculator::resolveHouseholdRoles()`, angewendet bei jeder Neuberechnung).
      */
     public function withFamilyRole(FamilyRole $familyRole): self
     {

@@ -63,6 +63,9 @@ readonly class RecalculateAllMemberContributionsUseCase
         $errors = [];
         foreach ($households as $household) {
             $hasBoardMember = $this->exemption->hasBoardMember($household);
+            // Erst die Familienrollen des ganzen Haushalts klären, dann rechnen (siehe
+            // `MemberContributionCalculator::resolveHouseholdRoles()`).
+            $household = $this->calculator->resolveHouseholdRoles($household, $now);
             foreach ($household as $candidate) {
                 $otherHouseholdMembers = array_values(array_filter(
                     $household,
@@ -70,7 +73,6 @@ readonly class RecalculateAllMemberContributionsUseCase
                 ));
                 try {
                     $candidate = $this->exemption->correct($candidate, $hasBoardMember);
-                    $candidate = $candidate->withFamilyRole($this->calculator->resolveFamilyRole($candidate, $otherHouseholdMembers, $now));
                     $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
                     $this->manager->save($candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents));
                     ++$updated;

@@ -57,7 +57,7 @@ readonly class GetMemberHouseholdQuery
      * `None` steht hier absichtlich hinter `Head`/`Partner`, nicht auf derselben Stufe: Ein
      * Haushaltsmitglied kann `familyRole: None` nicht nur als „echte" Einzelperson haben, sondern
      * auch, weil ein ehemaliges Kind laut Beitragsordnung automatisch dorthin gewechselt ist (siehe
-     * `MemberContributionCalculator::resolveFamilyRole()`) — es soll dann weiterhin eher bei den
+     * `MemberContributionCalculator::resolveHouseholdRoles()`) — es soll dann weiterhin eher bei den
      * (verbliebenen) Kindern als vor dem eigentlichen Hauptmitglied/Partner einsortiert werden.
      */
     private static function sortRank(Member $member): int

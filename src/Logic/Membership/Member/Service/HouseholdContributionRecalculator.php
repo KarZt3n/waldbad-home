@@ -38,6 +38,9 @@ readonly class HouseholdContributionRecalculator
         $household = $this->manager->findByPrimaryMemberNumber($member->primaryMemberNumber);
         $hasBoardMember = $this->exemption->hasBoardMember($household);
         $now = $this->clock->now();
+        // Erst die Familienrollen des ganzen Haushalts klären, dann rechnen — sonst sähe z. B. das
+        // Hauptmitglied ein gerade erst zum Kind gewordenes Mitglied noch nicht als Kind.
+        $household = $this->calculator->resolveHouseholdRoles($household, $now);
 
         $result = $member;
         foreach ($household as $candidate) {
@@ -47,7 +50,6 @@ readonly class HouseholdContributionRecalculator
             ));
             try {
                 $candidate = $this->exemption->correct($candidate, $hasBoardMember);
-                $candidate = $candidate->withFamilyRole($this->calculator->resolveFamilyRole($candidate, $otherHouseholdMembers, $now));
                 $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
                 $saved = $this->manager->save($candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents));
             } catch (BusinessRuleViolationException $exception) {

@@ -85,8 +85,8 @@ readonly class MemberOnboardingOrchestrator
             primaryMemberNumber: $primaryMemberNumber,
             mandateReference: $mandateReference,
             payerMemberId: $payerMemberId,
-            nextBookingMonth: $request->nextBookingMonth ?? 3,
-            nextBookingYear: $request->nextBookingYear ?? ((int) $request->joinedAt->format('Y') + 1),
+            nextBookingMonth: $request->nextBookingMonth,
+            nextBookingYear: $request->nextBookingYear,
         );
 
         $household = $this->members->findByPrimaryMemberNumber($primaryMemberNumber);

@@ -482,8 +482,11 @@ const openMemberDialog = async (member, onSaved) => {
     payerTypeSelect.addEventListener('change', togglePayerMember);
     togglePayerMember();
 
-    const nextBookingMonth = selectField('Nächste Buchung (Monat)', `member-next-booking-month-${suffix}`, Array.from({length: 12}, (_, index) => [String(index + 1), String(index + 1).padStart(2, '0')]), String(member?.nextBookingMonth || 3));
-    const nextBookingYear = field('Nächste Buchung (Jahr)', `member-next-booking-year-${suffix}`, String(member?.nextBookingYear || (new Date().getFullYear() + 1)), 'number');
+    // Leere Option nur für Mitglieder mit abweichendem Zahler — die haben keine eigene Buchung.
+    const nextBookingMonth = selectField('Nächste Buchung (Monat)', `member-next-booking-month-${suffix}`, [['', '–'], ...Array.from({length: 12}, (_, index) => [String(index + 1), String(index + 1).padStart(2, '0')])], member ? String(member.nextBookingMonth ?? '') : '3');
+    const nextBookingYear = field('Nächste Buchung (Jahr)', `member-next-booking-year-${suffix}`, member ? String(member.nextBookingYear ?? '') : String(new Date().getFullYear() + 1), 'number');
+    const nextBookingMonthSelect = nextBookingMonth.querySelector('select');
+    const nextBookingYearInput = nextBookingYear.querySelector('input');
 
     // Vorstandsmitglieder sind laut Satzung beitragsfrei: Ist das Mitglied nicht
     // beitragspflichtig, werden Konto-, Bank- und Zahlungsdaten gesperrt (bleiben aber
@@ -494,27 +497,51 @@ const openMemberDialog = async (member, onSaved) => {
     contributionLiable.checked = member ? member.contributionLiable !== false : true;
     // Zahlungsdaten hängen nur an „Beitragspflichtig“; Kontodaten zusätzlich daran, dass
     // überhaupt SEPA-Lastschrift als Zahlart gewählt ist — nur dafür existiert ein Mandat.
-    const paymentRestrictedFields = [paymentMethod, paymentInterval, payerType, nextBookingMonth, nextBookingYear];
+    // Zahlt ein anderes Mitglied, gibt es weder eine eigene Zahlart noch eine eigene nächste
+    // Buchung oder Kontodaten: Zahlart „Keine Angabe“, übrige Felder geleert, alles gesperrt
+    // (serverseitig ebenso, siehe `MemberModelFactory`). Zahlintervall und „Zahlung am“ richten
+    // sich dann nach dem Zahler und werden nur gesperrt.
+    const paymentRestrictedFields = [payerType];
+    const bookingFields = [nextBookingMonth, nextBookingYear];
     const accountRestrictedFields = [accountHolder, iban, bankName, mandateReference, mandateValidFrom, mandateValidUntil];
-    const applyContributionLiableState = () => {
+    const applyContributionLiableState = (payerTypeChanged = false) => {
         const left = hasMemberLeft(leftAt.querySelector('input').value);
         contributionLiable.disabled = left;
         const liable = contributionLiable.checked && !left;
+        const paidByOtherMember = payerTypeSelect.value === 'other_member';
+        if (paidByOtherMember) {
+            paymentMethodSelect.value = 'not_specified';
+            [...bookingFields, ...accountRestrictedFields].forEach((wrapper) => {
+                const control = wrapper.querySelector('input, select');
+                if (control) control.value = '';
+            });
+        } else {
+            if (paymentMethodSelect.value === 'not_specified' && payerTypeChanged) paymentMethodSelect.value = 'sepa_direct_debit';
+            if (!nextBookingMonthSelect.value) nextBookingMonthSelect.value = '3';
+            if (!nextBookingYearInput.value) nextBookingYearInput.value = String(new Date().getFullYear() + 1);
+        }
         paymentRestrictedFields.forEach((wrapper) => {
             const control = wrapper.querySelector('input, select');
             if (control) control.disabled = !liable;
         });
+        paymentMethodSelect.disabled = !liable || paidByOtherMember;
+        paymentInterval.querySelector('select').disabled = !liable || paidByOtherMember;
+        bookingFields.forEach((wrapper) => {
+            const control = wrapper.querySelector('input, select');
+            if (control) control.disabled = !liable || paidByOtherMember;
+        });
         accountRestrictedFields.forEach((wrapper) => {
             const control = wrapper.querySelector('input, select');
-            if (control) control.disabled = !liable || paymentMethodSelect.value !== 'sepa_direct_debit';
+            if (control) control.disabled = !liable || paidByOtherMember || paymentMethodSelect.value !== 'sepa_direct_debit';
         });
-        paymentDay.querySelectorAll('input').forEach((input) => { input.disabled = !liable; });
+        paymentDay.querySelectorAll('input').forEach((input) => { input.disabled = !liable || paidByOtherMember; });
         const payerSearchInput = payerMember.querySelector('input[type="text"]');
         if (payerSearchInput) payerSearchInput.disabled = !liable;
     };
-    contributionLiable.addEventListener('change', applyContributionLiableState);
-    leftAt.querySelector('input').addEventListener('input', applyContributionLiableState);
-    paymentMethodSelect.addEventListener('change', applyContributionLiableState);
+    contributionLiable.addEventListener('change', () => applyContributionLiableState());
+    leftAt.querySelector('input').addEventListener('input', () => applyContributionLiableState());
+    paymentMethodSelect.addEventListener('change', () => applyContributionLiableState());
+    payerTypeSelect.addEventListener('change', () => applyContributionLiableState(true));
     applyContributionLiableState();
 
     // Vorstandsmitglieder sind laut Satzung beitragsfrei: Beim Umstellen der Funktion auf
@@ -652,11 +679,14 @@ const openMemberDialog = async (member, onSaved) => {
         });
     }
 
+    // Ausgelagert, damit „Änderungen speichern“ die Liste bei geöffnetem Dialog austauschen kann.
+    const householdListContent = (currentHousehold, currentMember) => currentHousehold.householdMembers.length
+        ? groupHouseholdByPayer(currentHousehold.householdMembers).map((group) => householdTreeItem(group, currentMember.id, openOther))
+        : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})];
+    const householdList = member ? element('ul', {className: 'member-household-list', children: householdListContent(household, member)}) : null;
     const householdSection = member ? element('fieldset', {children: [
         element('legend', {text: 'Familienzugehörigkeit'}),
-        element('ul', {className: 'member-household-list', children: household.householdMembers.length
-            ? groupHouseholdByPayer(household.householdMembers).map((group) => householdTreeItem(group, member.id, openOther))
-            : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})]}),
+        householdList,
     ]}) : null;
 
     // Zahler immer zuoberst, danach nach Alter (älteste zuerst — dieselbe Reihenfolge wie sonst im
@@ -767,16 +797,16 @@ const openMemberDialog = async (member, onSaved) => {
             ]}),
             element('fieldset', {children: [
                 element('legend', {text: 'Zahlungsdaten'}),
+                fieldRow([payerType, payerMember]),
                 fieldRow([paymentMethod, paymentInterval]),
                 paymentDay,
-                fieldRow([payerType, payerMember]),
                 nextBookingMonth, nextBookingYear,
             ]}),
             element('fieldset', {children: [
                 element('legend', {text: 'Kontodaten'}),
                 accountHolder, iban, bankName,
                 fieldRow([mandateReference, mandateValidFrom, mandateValidUntil], 3),
-                element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich und werden nur bei dieser Zahlart bearbeitbar. „Gültig von/bis“ stammt aus dem Sage-GS-Bestand (MANDATABDATUM/MANDATBISDATUM) und kann hier gepflegt werden.'}),
+                element('small', {text: 'Kontoinhaber, IBAN und Mandatsreferenz sind nur für Selbstzahler mit SEPA-Lastschrift erforderlich und werden nur bei dieser Zahlart bearbeitbar. Zahlt ein anderes Mitglied, werden Kontodaten und nächste Buchung geleert. „Gültig von/bis“ stammt aus dem Sage-GS-Bestand (MANDATABDATUM/MANDATBISDATUM) und kann hier gepflegt werden.'}),
             ]}),
             ...(contributionSection ? [contributionSection] : []),
             ...(payerSection ? [payerSection] : []),
@@ -851,8 +881,8 @@ const openMemberDialog = async (member, onSaved) => {
         paymentDay: dialog.querySelector(`input[name="member-payment-day-${suffix}"]:checked`)?.value || 'first',
         payerType: payerTypeSelect.value,
         payerMemberId: payerTypeSelect.value === 'other_member' ? (payerMemberSelect.value || null) : null,
-        nextBookingMonth: Number.parseInt(nextBookingMonth.querySelector('select').value, 10),
-        nextBookingYear: Number.parseInt(nextBookingYear.querySelector('input').value, 10),
+        nextBookingMonth: nextBookingMonthSelect.value ? Number.parseInt(nextBookingMonthSelect.value, 10) : null,
+        nextBookingYear: nextBookingYearInput.value ? Number.parseInt(nextBookingYearInput.value, 10) : null,
         contributionLiable: contributionLiable.checked,
     });
     const persistMember = () => member
@@ -867,12 +897,31 @@ const openMemberDialog = async (member, onSaved) => {
         try {
             const wasNew = !member;
             member = await persistMember();
-            toast(wasNew ? 'Das Mitglied wurde angelegt.' : 'Das Mitglied wurde gespeichert.');
-            dialog.close();
+            message.textContent = '';
+            if (wasNew) {
+                // Ein neu angelegtes Mitglied direkt als bearbeitbaren Datensatz weiter anzeigen
+                // (mit Familie, Beitrag usw.) — dafür wird der Dialog einmal neu aufgebaut.
+                toast('Das Mitglied wurde angelegt.');
+                dialog.close();
+                await onSaved();
+                await openMemberDialog(member, onSaved);
+                return;
+            }
+            // Dialog bleibt offen: nur die serverseitig abgeleiteten Teile (Familie, Beitrag,
+            // Beitragspflicht) werden neu geladen — analog zu „Beitrag neu berechnen“.
+            household = await request(`/api/admin/v1/members/${member.id}/household`);
+            householdList.replaceChildren(...householdListContent(household, member));
+            contributionInfo.replaceChildren(...contributionInfoContent(member));
+            if (payerBody) payerBody.replaceChildren(...payerContent(household, member));
+            contributionLiable.checked = member.contributionLiable !== false;
+            applyContributionLiableState();
+            familyRole.querySelector('select').value = member.familyRole;
+            toast('Das Mitglied wurde gespeichert.');
             await onSaved();
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
+        } finally {
             submit.disabled = false;
         }
     });
