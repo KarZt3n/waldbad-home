@@ -44,8 +44,9 @@ final class GetMembershipDashboardQueryTest extends TestCase
     }
 
     /**
-     * Familie = aktives, selbstzahlendes Hauptmitglied (auch mehrere unter derselben Hauptnummer),
-     * Einzelmitgliedschaft = Hauptnummer mit genau einer aktiven Person. Ausgetretene Mitglieder
+     * Familie = aktiver Selbstzahler unter einer Hauptnummer mit mehr als einer aktiven Person (auch
+     * mehrere Selbstzahler unter derselben Hauptnummer zählen einzeln), Einzelmitgliedschaft = aktiver
+     * Selbstzahler als einzige aktive Person seiner Hauptnummer. Ausgetretene Mitglieder
      * zählen nicht mit — auch nicht als Rest eines Haushalts. Das Alter
      * ist das heutige Alter: wer am 31.12.2005 geboren ist, ist am 29.09.2026 noch 20.
      */
@@ -54,11 +55,14 @@ final class GetMembershipDashboardQueryTest extends TestCase
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([
             $this->member('f1', null, 'F', '1980-01-01', ContributionCategory::FamilyAdult, 1500, familyRole: FamilyRole::Head),
-            // Zweites selbstzahlendes Hauptmitglied unter derselben Hauptnummer → eigene Familie.
-            $this->member('g1', null, 'F', '1982-01-01', ContributionCategory::FamilyAdult, null, familyRole: FamilyRole::Head),
-            // Hauptmitglied, für das ein anderes Mitglied zahlt → keine eigene Familie.
-            $this->member('h1', null, 'H', '1985-01-01', ContributionCategory::FamilyAdult, null, familyRole: FamilyRole::Head, payerMemberId: 'f1'),
-            $this->member('f2', null, 'F', '2015-01-01', ContributionCategory::FamilyChildPaying, 1500),
+            // Zweiter Selbstzahler unter derselben Hauptnummer → eigene Familie.
+            $this->member('g1', null, 'F', '1982-01-01', ContributionCategory::FamilyAdult, null),
+            $this->member('f2', null, 'F', '2015-01-01', ContributionCategory::FamilyChildPaying, 1500, payerMemberId: 'f1'),
+            // Mehrpersonen-Hauptnummer ohne Selbstzahler → keine Familie.
+            $this->member('h1', null, 'H', '1985-01-01', ContributionCategory::FamilyAdult, null, payerMemberId: 'f1'),
+            $this->member('h2', null, 'H', '1986-01-01', ContributionCategory::FamilyAdult, null, payerMemberId: 'f1'),
+            // Allein unter eigener Hauptnummer, aber ein anderes Mitglied zahlt → keine Einzelmitgliedschaft.
+            $this->member('k1', null, 'K', '2012-01-01', ContributionCategory::FamilyChildPaying, null, payerMemberId: 'f1'),
             $this->member('e1', null, 'E', '2005-12-31', ContributionCategory::IndividualSenior, 1500),
             $this->member('e2', null, 'E2', '2010-01-01', ContributionCategory::IndividualJunior, null),
             // Ehemals Familie, eine Person ausgetreten → nur noch Einzelmitgliedschaft.
@@ -86,16 +90,18 @@ final class GetMembershipDashboardQueryTest extends TestCase
 
         $result = (new GetMembershipDashboardQuery($members, $applications, $rates, $clock))->execute();
 
+        // Selbstzahler inklusive des ausgetretenen x2: f1, g1, e1, e2, x1, y1, x2.
+        self::assertSame(7, $result->payers);
         self::assertSame(2, $result->families);
-        self::assertSame(5, $result->individualMemberships);
-        self::assertSame(5, $result->adults);
-        self::assertSame(3, $result->minors);
+        self::assertSame(4, $result->individualMemberships);
+        self::assertSame(6, $result->adults);
+        self::assertSame(4, $result->minors);
         self::assertSame(
             [
                 ['Einzel bis 21', 1],
                 ['Einzel ab 21', 1],
-                ['Familie Erwachsene', 3],
-                ['Familie Kind', 1],
+                ['Familie Erwachsene', 4],
+                ['Familie Kind', 2],
                 ['Arbeitseinsatz', 3],
                 ['Ohne Beitragssatz (nicht beitragspflichtig)', 1],
                 ['Ohne Beitragssatz', 1],

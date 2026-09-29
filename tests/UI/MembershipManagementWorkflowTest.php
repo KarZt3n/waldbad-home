@@ -600,6 +600,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
 
         // Mitgliedschaften und Beitragssätze zählen nur die drei noch aktiven Mitglieder — jedes
         // mit eigener Hauptnummer, also drei Einzelmitgliedschaften.
+        self::assertSame(4, $dashboard['payers']);
         self::assertSame(0, $dashboard['families']);
         self::assertSame(3, $dashboard['individualMemberships']);
         self::assertSame(3, $dashboard['adults']);

@@ -10,7 +10,6 @@ use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Dashboard\Dto\ContributionRateCount;
 use App\Logic\Membership\Dashboard\Dto\MembershipDashboardResponse;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
-use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\Member\Model\PayerType;
 
@@ -64,11 +63,15 @@ readonly class GetMembershipDashboardQuery
             totalContributionCents: $totalContributionCents,
             leavingAtYearEnd: $this->countLeavingAtYearEnd($members, $currentYear),
             leftLastYearEnd: $this->countLeavingAtYearEnd($members, $currentYear - 1),
+            payers: count(array_filter($members, static fn (Member $member): bool => $member->payerType === PayerType::SelfPayer)),
             families: count(array_filter(
                 $activeMembers,
-                static fn (Member $member): bool => $member->familyRole === FamilyRole::Head && $member->payerType === PayerType::SelfPayer,
+                static fn (Member $member): bool => $member->payerType === PayerType::SelfPayer && $householdSizes[$member->primaryMemberNumber] > 1,
             )),
-            individualMemberships: count(array_filter($householdSizes, static fn (int $size): bool => $size === 1)),
+            individualMemberships: count(array_filter(
+                $activeMembers,
+                static fn (Member $member): bool => $member->payerType === PayerType::SelfPayer && $householdSizes[$member->primaryMemberNumber] === 1,
+            )),
             adults: $adults,
             minors: count($activeMembers) - $adults,
             contributionRateCounts: $this->countByContributionRate($activeMembers),

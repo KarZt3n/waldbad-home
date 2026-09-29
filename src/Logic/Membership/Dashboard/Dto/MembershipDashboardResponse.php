@@ -20,13 +20,18 @@ readonly class MembershipDashboardResponse
         public int $leavingAtYearEnd,
         /** Dieselbe Auswertung wie `$leavingAtYearEnd`, aber für den 31.12. des Vorjahres. */
         public int $leftLastYearEnd,
+        /** Alle Mitglieder mit Zahlerart „Selbstzahler“ — bewusst inklusive ausgetretener (Nutzer-Vorgabe). */
+        public int $payers,
         /**
-         * Aktive Hauptmitglieder (Familienrolle „Hauptmitglied“), die selbst zahlen — jedes zählt als
-         * eigene Familie, auch wenn mehrere unter derselben Hauptnummer geführt werden. Diese und die
-         * folgenden Kennzahlen zählen nur aktive Mitglieder (siehe `Member::isActive()`).
+         * Aktive Selbstzahler, unter deren Hauptnummer mehr als eine aktive Person geführt wird — jeder
+         * zählt als eigene Familie, auch wenn mehrere Selbstzahler dieselbe Hauptnummer haben. Diese und
+         * die folgenden Kennzahlen zählen nur aktive Mitglieder (siehe `Member::isActive()`).
          */
         public int $families,
-        /** Aktive Haushalte mit genau einer Person. */
+        /**
+         * Aktive Selbstzahler, die als einzige aktive Person unter ihrer Hauptnummer geführt werden —
+         * zusammen mit `$families` also alle aktiven Selbstzahler.
+         */
         public int $individualMemberships,
         /**
          * Aktive Mitglieder, die heute tatsächlich mindestens 21 sind (siehe `Member::ageAt()`) — bewusst

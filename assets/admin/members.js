@@ -192,6 +192,7 @@ const showMembershipDashboard = async () => {
         ]}),
         section('Mitgliedschaften'),
         element('div', {className: 'stat-tile-grid', children: [
+            tile('Zahler', stats.payers),
             tile('Familien', stats.families),
             tile('Einzelmitgliedschaften', stats.individualMemberships),
             tile('21 Jahre und älter', stats.adults),

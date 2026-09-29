@@ -32,6 +32,7 @@ class AdminMembershipDashboardController extends AbstractController
             'totalContributionCents' => $response->totalContributionCents,
             'leavingAtYearEnd' => $response->leavingAtYearEnd,
             'leftLastYearEnd' => $response->leftLastYearEnd,
+            'payers' => $response->payers,
             'families' => $response->families,
             'individualMemberships' => $response->individualMemberships,
             'adults' => $response->adults,
