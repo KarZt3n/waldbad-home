@@ -37,13 +37,15 @@ final class PreviewMailTemplateUseCaseTest extends TestCase
         self::assertStringContainsString('<!doctype html>', $preview->html);
     }
 
-    public function testRendersTheNestedContributionListForItsSampleHtmlBlock(): void
+    public function testRendersTheDefaultApprovalTextWithTheMemberAccessLinkAndWithoutContributions(): void
     {
-        $preview = $this->useCase()->execute(MailTemplateKey::MembershipApplicationApproved, 'Betreff', "Beiträge:\n\n{{beitraege}}", null);
+        $key = MailTemplateKey::MembershipApplicationApproved;
+        $preview = $this->useCase()->execute($key, $key->defaultSubject(), $key->defaultBody(), null);
 
-        self::assertStringContainsString('<ul', $preview->html);
-        self::assertStringContainsString('Familienbeitrag Erwachsene', $preview->html);
-        self::assertStringNotContainsString('{{beitraege}}', $preview->html);
+        self::assertStringContainsString('https://waldbad-borkheide.de/meine-mitgliedschaft', $preview->html);
+        self::assertStringContainsString('Erika Musterfrau (Hauptmitglied)', $preview->html);
+        self::assertStringNotContainsString('{{', $preview->text);
+        self::assertStringNotContainsString('€', $preview->text);
     }
 
     /**

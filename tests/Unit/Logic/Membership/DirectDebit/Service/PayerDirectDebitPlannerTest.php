@@ -10,7 +10,10 @@ use App\Logic\Membership\DirectDebit\Manager\DirectDebitRecordManagerInterface;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitCreditor;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacle;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacleKind;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
+use App\Logic\Membership\DirectDebit\Model\PayerDirectDebitDraft;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\ContributionCharge;
@@ -90,9 +93,11 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $draft = $this->planner([$payer], DirectDebitCreditor::empty())->plan('payer', new \DateTimeImmutable(self::NOW));
 
         self::assertCount(3, $draft->blockers);
-        self::assertStringContainsString('Gläubigerdaten', $draft->blockers[0]);
-        self::assertStringContainsString('keine echte Bankverbindung', $draft->blockers[1]);
-        self::assertStringContainsString('abgelaufen', $draft->blockers[2]);
+        self::assertSame(
+            [DirectDebitObstacleKind::IncompleteCreditor, DirectDebitObstacleKind::MissingBankAccount, DirectDebitObstacleKind::ExpiredMandate],
+            array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $draft->blockers),
+        );
+        self::assertStringContainsString('abgelaufen', $draft->blockers[2]->message);
     }
 
     public function testFallsBackToJoinDateWhenMandateDateIsMissing(): void
@@ -195,6 +200,48 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertTrue($draft->lastRecord?->isLegacyImport());
     }
 
+    public function testAlreadyCollectedContributionYearIsAnObstacleForTheBulkExport(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01');
+
+        $draft = $this->planner([$payer], records: [$this->record(2027, SequenceType::Recurring)])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertTrue($draft->alreadyCollected);
+        self::assertEquals([new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, 'Für das Beitragsjahr 2027 wurde bereits eingezogen.')], $draft->bulkExportObstacles());
+        self::assertSame(5500, $draft->defaultAmountCents());
+    }
+
+    /**
+     * `planAll()` plant jeden Zahler genau einmal — dieselben Positionen wie `plan()` —, Mitglieder
+     * mit Zahler nur über diesen. Ein Mitglied ohne existierenden Zahler wird als eigener, blockierter
+     * Zahler geführt, statt stillschweigend nie eingezogen zu werden.
+     */
+    public function testPlanAllPlansEveryPayerOnceAndBlocksMembersWithoutAnExistingPayer(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2020-03-01');
+        $child = $this->member('child', payerId: 'payer', category: ContributionCategory::FamilyChildPaying, amountCents: 3000, surchargeCents: null);
+        $orphan = $this->member('orphan', payerId: 'deleted-payer', surchargeCents: null);
+        $now = new \DateTimeImmutable(self::NOW);
+        $planner = $this->planner([$payer, $child, $orphan]);
+
+        $drafts = $planner->planAll($now);
+
+        self::assertSame(['payer', 'orphan'], array_map(static fn (PayerDirectDebitDraft $draft): string => $draft->payer->id, $drafts));
+        self::assertEquals($planner->plan('child', $now)->positions, $drafts[0]->positions);
+        self::assertSame([], $drafts[0]->blockers);
+        self::assertSame(4000, $drafts[1]->defaultAmountCents());
+        self::assertSame([DirectDebitObstacleKind::MissingPayer, DirectDebitObstacleKind::MissingBankAccount, DirectDebitObstacleKind::MissingMandate], array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $drafts[1]->blockers));
+    }
+
+    public function testOtherPaymentMethodIsTheOnlyPayerObstacleEvenWithoutBankAccountAndMandate(): void
+    {
+        $payer = $this->member('payer', iban: 'DE36000000000000000000', mandateValidFrom: '2020-03-01', paymentMethod: PaymentMethod::BankTransfer);
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame([DirectDebitObstacleKind::OtherPaymentMethod], array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $draft->blockers));
+    }
+
     private function record(int $contributionYear, SequenceType $sequenceType): DirectDebitRecord
     {
         return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'));
@@ -215,6 +262,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $memberManager->method('findByPayerMemberId')->willReturnCallback(
             static fn (string $payerId): array => array_values(array_filter($members, static fn (Member $member): bool => $member->payerMemberId === $payerId)),
         );
+        $memberManager->method('search')->willReturn($members);
 
         $labels = [
             ContributionCategory::FamilyAdult->value => 'Familie: Elternteil',
@@ -226,12 +274,18 @@ final class PayerDirectDebitPlannerTest extends TestCase
                 ? new ContributionRate($category->value, $category, $labels[$category->value], 0, PaymentInterval::Yearly)
                 : null,
         );
+        $rates->method('list')->willReturn(array_map(
+            static fn (string $category, string $label): ContributionRate => new ContributionRate($category, ContributionCategory::from($category), $label, 0, PaymentInterval::Yearly),
+            array_keys($labels),
+            array_values($labels),
+        ));
 
         $creditors = $this->createStub(DirectDebitCreditorManagerInterface::class);
         $creditors->method('get')->willReturn($creditor ?? new DirectDebitCreditor('Waldbad Borkheide e.V.', 'DE98ZZZ09999999999', 'DE02120300000000202051', null));
 
         $recordManager = $this->createStub(DirectDebitRecordManagerInterface::class);
         $recordManager->method('findByPayerMemberId')->willReturn($records);
+        $recordManager->method('findAll')->willReturn($records);
 
         return new PayerDirectDebitPlanner($memberManager, $rates, $creditors, $recordManager);
     }
@@ -256,6 +310,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
         string $birthDate = '1985-05-05',
         ?int $nextBookingYear = 2027,
         string $joinedAt = '2020-01-01',
+        PaymentMethod $paymentMethod = PaymentMethod::SepaDirectDebit,
     ): Member {
         $isPayer = $payerId === null;
 
@@ -280,7 +335,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
             iban: $isPayer ? $iban : null,
             bankName: null,
             mandateReference: $isPayer ? 'MANDAT-1' : null,
-            paymentMethod: PaymentMethod::SepaDirectDebit,
+            paymentMethod: $paymentMethod,
             paymentInterval: $interval,
             paymentDay: $paymentDay,
             payerType: $isPayer ? PayerType::SelfPayer : PayerType::OtherMember,

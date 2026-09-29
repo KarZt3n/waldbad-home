@@ -9,5 +9,8 @@ interface DirectDebitRecordManagerInterface
     /** @return list<DirectDebitRecord> neueste zuerst */
     public function findByPayerMemberId(string $payerMemberId): array;
 
+    /** @return list<DirectDebitRecord> neueste zuerst */
+    public function findAll(): array;
+
     public function save(DirectDebitRecord $record): DirectDebitRecord;
 }

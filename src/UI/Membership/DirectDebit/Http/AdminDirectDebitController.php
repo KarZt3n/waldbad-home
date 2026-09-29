@@ -3,13 +3,18 @@
 namespace App\UI\Membership\DirectDebit\Http;
 
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitCreditorResponse;
+use App\Logic\Membership\DirectDebit\Dto\DirectDebitFileResponse;
+use App\Logic\Membership\DirectDebit\Dto\DirectDebitOverviewEntryResponse;
+use App\Logic\Membership\DirectDebit\Dto\ExportAllDirectDebitsRequest;
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitPositionResponse;
 use App\Logic\Membership\DirectDebit\Dto\ExportPayerDirectDebitRequest;
 use App\Logic\Membership\DirectDebit\Dto\PayerDirectDebitPreviewResponse;
 use App\Logic\Membership\DirectDebit\Dto\UpdateDirectDebitCreditorRequest;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\DirectDebit\Query\GetDirectDebitCreditorQuery;
+use App\Logic\Membership\DirectDebit\Query\GetDirectDebitOverviewQuery;
 use App\Logic\Membership\DirectDebit\Query\GetPayerDirectDebitPreviewQuery;
+use App\Logic\Membership\DirectDebit\UseCase\ExportAllDirectDebitsUseCase;
 use App\Logic\Membership\DirectDebit\UseCase\ExportPayerDirectDebitUseCase;
 use App\Logic\Membership\DirectDebit\UseCase\UpdateDirectDebitCreditorUseCase;
 use App\Logic\Settings\Pin\Model\ProtectedAction;
@@ -23,8 +28,9 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * SEPA-Lastschrift: Gläubigerdaten des Vereins (gepflegt bei den Beitragssätzen) sowie Vorschau
- * und Export der Lastschrift je Zahler (aus der „Gesamtberechnung für den Zahler“ eines Mitglieds).
+ * SEPA-Lastschrift: Gläubigerdaten des Vereins (gepflegt bei den Beitragssätzen), Vorschau und
+ * Export der Lastschrift je Zahler (aus der „Gesamtberechnung für den Zahler“ eines Mitglieds) sowie
+ * Übersicht und Sammelexport über alle Zahler.
  */
 final class AdminDirectDebitController extends AbstractController
 {
@@ -89,11 +95,69 @@ final class AdminDirectDebitController extends AbstractController
             positionIds: $positionIds,
         ));
 
+        return $this->fileResponse($file);
+    }
+
+    #[Route('/api/admin/v1/direct-debits', name: 'api_admin_direct_debit_overview', methods: ['GET'])]
+    public function overview(GetDirectDebitOverviewQuery $query): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        $overview = $query->execute();
+
+        return new JsonResponse([
+            'invalid' => array_map($this->overviewEntryToArray(...), $overview->invalid),
+            'valid' => array_map($this->overviewEntryToArray(...), $overview->valid),
+            'withoutAmount' => array_map($this->overviewEntryToArray(...), $overview->withoutAmount),
+            'obstacleCategories' => $overview->obstacleCategories,
+        ]);
+    }
+
+    // POST statt GET: der optionale PIN landet im JSON-Body statt in der Query-String.
+    #[Route('/api/admin/v1/direct-debits/export', name: 'api_admin_direct_debit_export_all', methods: ['POST'])]
+    public function exportAll(Request $request, ExportAllDirectDebitsUseCase $useCase, VerifyPinUseCase $verifyPin): Response
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        $payload = $request->getPayload();
+        $pin = $payload->getString('pin');
+        $verifyPin->execute(ProtectedAction::MembersDirectDebitExport, $pin === '' ? null : $pin);
+
+        $payerIds = [];
+        foreach ($payload->all('payerIds') as $payerId) {
+            if (!is_string($payerId)) {
+                throw new BadRequestHttpException('Die Zahlerauswahl ist ungültig.');
+            }
+            $payerIds[] = $payerId;
+        }
+
+        return $this->fileResponse($useCase->execute(new ExportAllDirectDebitsRequest($payerIds)));
+    }
+
+    private function fileResponse(DirectDebitFileResponse $file): Response
+    {
         $response = new Response($file->content);
         $response->headers->set('Content-Type', 'application/xml; charset=UTF-8');
         $response->headers->set('Content-Disposition', sprintf('attachment; filename="%s"', $file->fileName));
 
         return $response;
+    }
+
+    /**
+     * @return array<string, string|int|list<array{kind: string, message: string}>|null>
+     */
+    private function overviewEntryToArray(DirectDebitOverviewEntryResponse $entry): array
+    {
+        return [
+            'payerId' => $entry->payerId,
+            'memberNumber' => $entry->memberNumber,
+            'primaryMemberNumber' => $entry->primaryMemberNumber,
+            'lastName' => $entry->lastName,
+            'firstName' => $entry->firstName,
+            'iban' => $entry->iban,
+            'amountCents' => $entry->amountCents,
+            'collectionDate' => $entry->collectionDate,
+            'sequenceType' => $entry->sequenceType,
+            'obstacles' => $entry->obstacles,
+        ];
     }
 
     private function optionalString(string $value): ?string

@@ -44,6 +44,47 @@ final class Pain008FileWriterTest extends TestCase
         self::assertSame(0, $bic->length);
     }
 
+    /**
+     * Sammelexport: je Fälligkeit/Sequenz ein eigener Zahlungsblock, der Gruppenkopf summiert über
+     * alle Blöcke.
+     */
+    public function testWritesOnePaymentInformationBlockPerBatch(): void
+    {
+        $xml = (new Pain008FileWriter())->write(
+            $this->batch('WB-1-S1', '2027-03-01', SequenceType::Recurring, [$this->transaction('A', 6500), $this->transaction('B', 4000)]),
+            $this->batch('WB-1-S2', '2027-03-15', SequenceType::First, [$this->transaction('C', 3000)]),
+        );
+        $document = new \DOMDocument();
+        self::assertTrue($document->loadXML($xml));
+        $xpath = new \DOMXPath($document);
+        $xpath->registerNamespace('p', 'urn:iso:std:iso:20022:tech:xsd:pain.008.001.08');
+
+        self::assertSame('WB-1-S1', $this->value($xpath, '//p:GrpHdr/p:MsgId'));
+        self::assertSame('3', $this->value($xpath, '//p:GrpHdr/p:NbOfTxs'));
+        self::assertSame('135.00', $this->value($xpath, '//p:GrpHdr/p:CtrlSum'));
+        self::assertSame('2', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S1']/p:NbOfTxs"));
+        self::assertSame('105.00', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S1']/p:CtrlSum"));
+        self::assertSame('RCUR', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S1']/p:PmtTpInf/p:SeqTp"));
+        self::assertSame('2027-03-15', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S2']/p:ReqdColltnDt"));
+        self::assertSame('FRST', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S2']/p:PmtTpInf/p:SeqTp"));
+        self::assertSame('MANDAT-C', $this->value($xpath, "//p:PmtInf[p:PmtInfId='WB-1-S2']//p:MndtId"));
+    }
+
+    /**
+     * @param list<DirectDebitTransaction> $transactions
+     */
+    private function batch(string $messageId, string $collectionDate, SequenceType $sequenceType, array $transactions): DirectDebitBatch
+    {
+        $creditor = new DirectDebitCreditor('Waldbad Borkheide e.V.', 'DE98ZZZ09999999999', 'DE02120300000000202051', null);
+
+        return new DirectDebitBatch($messageId, new \DateTimeImmutable('2026-09-28 10:00:00'), $creditor, new \DateTimeImmutable($collectionDate), $sequenceType, $transactions);
+    }
+
+    private function transaction(string $id, int $cents): DirectDebitTransaction
+    {
+        return new DirectDebitTransaction($id, $cents, 'MANDAT-'.$id, new \DateTimeImmutable('2020-03-01'), 'Zahler '.$id, 'DE89370400440532013000', 'Beitrag');
+    }
+
     private function write(DirectDebitCreditor $creditor): \DOMXPath
     {
         $xml = (new Pain008FileWriter())->write(new DirectDebitBatch(

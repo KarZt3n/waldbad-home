@@ -134,6 +134,15 @@ readonly class Member
     }
 
     /**
+     * Tatsächliches Alter in vollen Jahren zum angegebenen Zeitpunkt — im Unterschied zu
+     * `contributionAge()` zählt hier erst der Geburtstag selbst.
+     */
+    public function ageAt(\DateTimeImmutable $at): int
+    {
+        return $this->birthDate->diff($at)->y;
+    }
+
+    /**
      * Ob das Austrittsdatum bereits erreicht ist (heute oder in der Vergangenheit liegt).
      */
     public function hasLeft(\DateTimeImmutable $at): bool

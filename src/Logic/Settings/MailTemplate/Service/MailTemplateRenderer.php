@@ -29,15 +29,14 @@ readonly class MailTemplateRenderer
 
     /**
      * @param array<string, string> $placeholders
-     * @param array<string, string> $htmlBlocks    siehe `renderText()`
      *
      * @return array{subject: string, body: string, html: string} siehe `renderText()`
      */
-    public function render(MailTemplateKey $key, array $placeholders, array $htmlBlocks = []): array
+    public function render(MailTemplateKey $key, array $placeholders): array
     {
         $template = $this->manager->resolve($key);
 
-        return $this->renderText($template->subject, $template->body, $placeholders, $htmlBlocks, $template->signatureId);
+        return $this->renderText($template->subject, $template->body, $placeholders, $template->signatureId);
     }
 
     /**
@@ -49,17 +48,9 @@ readonly class MailTemplateRenderer
      *                                             Text-Fallback verwendet; in der HTML-Ansicht wird
      *                                             jeder Wert escaped in den gestalteten Text
      *                                             eingesetzt (siehe `MailContentRenderer`).
-     * @param array<string, string> $htmlBlocks    Für ausgewählte Platzhalter (z. B. `beitraege`,
-     *                                              siehe `ReleaseMembershipApplicationUseCase`) eine
-     *                                              eigene, bereits fertige HTML-Darstellung (z. B.
-     *                                              eine `<ul>`-Liste statt einer Aufzählung mit
-     *                                              Gedankenstrichen) — nur für die HTML-Ansicht;
-     *                                              Betreff und Text-Fallback verwenden weiterhin den
-     *                                              gleichnamigen Wert aus `$placeholders`.
      * @param string|null           $signatureId   Id einer über `showMailSignatures` gepflegten
      *                                              Signatur (siehe `MailSignature`), deren Text
-     *                                              (mit denselben `$placeholders`/`$htmlBlocks`
-     *                                              ersetzt) an Text/HTML angehängt wird. Existiert
+     *                                              (mit denselben `$placeholders` ersetzt) an Text/HTML angehängt wird. Existiert
      *                                              sie nicht (mehr), wird einfach nichts angehängt
      *                                              — best effort, kein Fehler.
      *
@@ -70,16 +61,16 @@ readonly class MailTemplateRenderer
      *                                                              `BrandedEmailLayout` beim Versand
      *                                                              darum, siehe `NotificationMailer`.
      */
-    public function renderText(string $subject, string $body, array $placeholders, array $htmlBlocks = [], ?string $signatureId = null): array
+    public function renderText(string $subject, string $body, array $placeholders, ?string $signatureId = null): array
     {
         $renderedSubject = $this->substitute($subject, $placeholders);
         $renderedBody = $this->substitute($body, $placeholders);
-        $html = $this->buildHtmlFragment($body, $placeholders, $htmlBlocks);
+        $html = $this->buildHtmlFragment($body, $placeholders);
 
         $signature = $signatureId !== null ? $this->signatures->find($signatureId) : null;
         if ($signature !== null) {
             $renderedBody = rtrim($renderedBody)."\n\n".$this->substitute($signature->body, $placeholders);
-            $html .= $this->buildHtmlFragment($signature->body, $placeholders, $htmlBlocks);
+            $html .= $this->buildHtmlFragment($signature->body, $placeholders);
         }
 
         return [
@@ -101,17 +92,9 @@ readonly class MailTemplateRenderer
 
     /**
      * @param array<string, string> $placeholders
-     * @param array<string, string> $htmlBlocks
      */
-    private function buildHtmlFragment(string $text, array $placeholders, array $htmlBlocks): string
+    private function buildHtmlFragment(string $text, array $placeholders): string
     {
-        $textOnlyPlaceholders = array_diff_key($placeholders, $htmlBlocks);
-        $htmlSource = $this->substitute($text, $textOnlyPlaceholders);
-        $rawBlocks = [];
-        foreach ($htmlBlocks as $name => $html) {
-            $rawBlocks['{{'.$name.'}}'] = $html;
-        }
-
-        return $this->contentRenderer->toHtmlFragment($htmlSource, $rawBlocks);
+        return $this->contentRenderer->toHtmlFragment($this->substitute($text, $placeholders));
     }
 }

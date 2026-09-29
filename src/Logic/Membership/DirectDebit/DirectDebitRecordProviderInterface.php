@@ -8,4 +8,7 @@ interface DirectDebitRecordProviderInterface
 {
     /** @return list<DirectDebitRecord> neueste zuerst */
     public function findByPayerMemberId(string $payerMemberId): array;
+
+    /** @return list<DirectDebitRecord> neueste zuerst */
+    public function findAll(): array;
 }

@@ -597,6 +597,19 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         // Arbeitseinsatz-Zuschlag — das bereits letztes Jahr ausgetretene Mitglied ist laut
         // MemberContributionCalculator (hasLeft()) beitragsfrei und zählt hier mit 0 €.
         self::assertSame(19500, $dashboard['totalContributionCents']);
+
+        // Mitgliedschaften und Beitragssätze zählen nur die drei noch aktiven Mitglieder — jedes
+        // mit eigener Hauptnummer, also drei Einzelmitgliedschaften.
+        self::assertSame(0, $dashboard['families']);
+        self::assertSame(3, $dashboard['individualMemberships']);
+        self::assertSame(3, $dashboard['adults']);
+        self::assertSame(0, $dashboard['minors']);
+        self::assertIsArray($dashboard['contributionRateCounts']);
+        $countsByLabel = array_column($dashboard['contributionRateCounts'], 'count', 'label');
+        self::assertSame(3, $countsByLabel['Einzelperson über 21 Jahre']);
+        self::assertSame(0, $countsByLabel['Einzelperson bis 21 Jahre']);
+        self::assertSame(3, $countsByLabel['Arbeitseinsatz']);
+        self::assertArrayNotHasKey('Beitrittsgebühr Einzelperson', $countsByLabel);
     }
 
     public function testRecalculateAllUpdatesEveryMemberIncludingWholeHouseholds(): void
@@ -773,6 +786,64 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             'positionIds' => $positionIds,
         ], $headers);
         self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
+     * Übersicht: ein Zahler ohne Mandat ist nicht exportierbar, einer mit Mandat schon. Der
+     * Sammelexport enthält nur die exportierbaren Zahler, danach ist deren Eintrittsjahr in der
+     * Historie und sie erscheinen als bereits eingezogen.
+     */
+    public function testDirectDebitOverviewAndBulkExport(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('PUT', '/api/admin/v1/direct-debit-creditor', [
+            'name' => 'Waldbad Borkheide e.V.', 'creditorId' => 'DE98ZZZ09999999999', 'iban' => 'DE02120300000000202051', 'bic' => '',
+        ], $headers);
+        self::assertResponseIsSuccessful();
+
+        $joinedAt = (new \DateTimeImmutable())->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['joinedAt' => $joinedAt]), $headers);
+        $withMandateId = $this->string($this->responseData(), 'id');
+        $this->client->request('POST', '/api/admin/v1/members/'.$withMandateId.'/mandate', server: $headers);
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['lastName' => 'Ohnemandat', 'joinedAt' => $joinedAt]), $headers);
+        $withoutMandateId = $this->string($this->responseData(), 'id');
+
+        $this->client->request('GET', '/api/admin/v1/direct-debits', server: $headers);
+        self::assertResponseIsSuccessful();
+        $overview = $this->responseData();
+        $invalid = $this->arrayList($overview, 'invalid');
+        $valid = $this->arrayList($overview, 'valid');
+        self::assertCount(1, $invalid);
+        self::assertIsArray($invalid[0]);
+        self::assertSame($withoutMandateId, $invalid[0]['payerId']);
+        self::assertIsArray($invalid[0]['obstacles']);
+        self::assertCount(1, $invalid[0]['obstacles']);
+        self::assertIsArray($invalid[0]['obstacles'][0]);
+        self::assertSame('missing_mandate', $invalid[0]['obstacles'][0]['kind']);
+        self::assertSame([['kind' => 'missing_mandate', 'label' => 'Ohne Mandat', 'count' => 1]], $overview['obstacleCategories']);
+        self::assertCount(1, $valid);
+        self::assertIsArray($valid[0]);
+        self::assertSame($withMandateId, $valid[0]['payerId']);
+        self::assertSame('Musterfrau', $valid[0]['lastName']);
+        self::assertSame(7500, $valid[0]['amountCents']);
+
+        // Veraltete Auswahl wird abgelehnt.
+        $this->client->jsonRequest('POST', '/api/admin/v1/direct-debits/export', ['payerIds' => [$withMandateId, $withoutMandateId]], $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/direct-debits/export', ['payerIds' => [$withMandateId]], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertResponseHeaderSame('Content-Type', 'application/xml; charset=UTF-8');
+        $xml = (string) $this->client->getResponse()->getContent();
+        self::assertStringContainsString('<NbOfTxs>1</NbOfTxs>', $xml);
+        self::assertStringContainsString('<InstdAmt Ccy="EUR">75.00</InstdAmt>', $xml);
+        self::assertStringContainsString('<SeqTp>FRST</SeqTp>', $xml);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$withMandateId.'/direct-debit-preview', server: $headers);
+        $lastDebit = $this->arrayData($this->responseData(), 'lastDebit');
+        self::assertSame(7500, $lastDebit['amountCents']);
     }
 
     /**

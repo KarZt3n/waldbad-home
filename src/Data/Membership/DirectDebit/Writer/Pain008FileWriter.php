@@ -17,8 +17,9 @@ readonly class Pain008FileWriter implements DirectDebitFileWriterInterface
 {
     private const string NAMESPACE = 'urn:iso:std:iso:20022:tech:xsd:pain.008.001.08';
 
-    public function write(DirectDebitBatch $batch): string
+    public function write(DirectDebitBatch $batch, DirectDebitBatch ...$furtherBatches): string
     {
+        $batches = [$batch, ...$furtherBatches];
         $creditor = $batch->creditor;
         if ($creditor->name === null || $creditor->creditorId === null || $creditor->iban === null) {
             throw new \LogicException('DirectDebitBatch garantiert vollständige Gläubigerdaten.');
@@ -30,16 +31,29 @@ readonly class Pain008FileWriter implements DirectDebitFileWriterInterface
         $document->appendChild($root);
         $initiation = $this->append($document, $root, 'CstmrDrctDbtInitn');
 
-        $count = (string) count($batch->transactions);
-        $controlSum = $this->amount($batch->totalCents());
-
         $header = $this->append($document, $initiation, 'GrpHdr');
         $this->append($document, $header, 'MsgId', $this->text($batch->messageId, 35));
         $this->append($document, $header, 'CreDtTm', $batch->createdAt->format('Y-m-d\TH:i:s'));
-        $this->append($document, $header, 'NbOfTxs', $count);
-        $this->append($document, $header, 'CtrlSum', $controlSum);
+        $this->append($document, $header, 'NbOfTxs', (string) array_sum(array_map(static fn (DirectDebitBatch $each): int => count($each->transactions), $batches)));
+        $this->append($document, $header, 'CtrlSum', $this->amount(array_sum(array_map(static fn (DirectDebitBatch $each): int => $each->totalCents(), $batches))));
         $this->append($document, $this->append($document, $header, 'InitgPty'), 'Nm', $this->text($creditor->name, 70));
 
+        foreach ($batches as $each) {
+            $this->appendPaymentInformation($document, $initiation, $each, $creditor->name, $creditor->iban, $creditor->creditorId, $creditor->bic);
+        }
+
+        $xml = $document->saveXML();
+        if ($xml === false) {
+            throw new \RuntimeException('Die SEPA-Lastschriftdatei konnte nicht erzeugt werden.');
+        }
+
+        return $xml;
+    }
+
+    private function appendPaymentInformation(\DOMDocument $document, \DOMElement $initiation, DirectDebitBatch $batch, string $creditorName, string $creditorIban, string $creditorId, ?string $creditorBic): void
+    {
+        $count = (string) count($batch->transactions);
+        $controlSum = $this->amount($batch->totalCents());
         $payment = $this->append($document, $initiation, 'PmtInf');
         $this->append($document, $payment, 'PmtInfId', $this->text($batch->messageId, 35));
         $this->append($document, $payment, 'PmtMtd', 'DD');
@@ -50,12 +64,12 @@ readonly class Pain008FileWriter implements DirectDebitFileWriterInterface
         $this->append($document, $this->append($document, $paymentType, 'LclInstrm'), 'Cd', 'CORE');
         $this->append($document, $paymentType, 'SeqTp', $batch->sequenceType->value);
         $this->append($document, $payment, 'ReqdColltnDt', $batch->collectionDate->format('Y-m-d'));
-        $this->append($document, $this->append($document, $payment, 'Cdtr'), 'Nm', $this->text($creditor->name, 70));
-        $this->append($document, $this->append($document, $this->append($document, $payment, 'CdtrAcct'), 'Id'), 'IBAN', $creditor->iban);
-        $this->appendAgent($document, $this->append($document, $payment, 'CdtrAgt'), $creditor->bic);
+        $this->append($document, $this->append($document, $payment, 'Cdtr'), 'Nm', $this->text($creditorName, 70));
+        $this->append($document, $this->append($document, $this->append($document, $payment, 'CdtrAcct'), 'Id'), 'IBAN', $creditorIban);
+        $this->appendAgent($document, $this->append($document, $payment, 'CdtrAgt'), $creditorBic);
         $this->append($document, $payment, 'ChrgBr', 'SLEV');
         $schemeOther = $this->append($document, $this->append($document, $this->append($document, $this->append($document, $payment, 'CdtrSchmeId'), 'Id'), 'PrvtId'), 'Othr');
-        $this->append($document, $schemeOther, 'Id', $creditor->creditorId);
+        $this->append($document, $schemeOther, 'Id', $creditorId);
         $this->append($document, $this->append($document, $schemeOther, 'SchmeNm'), 'Prtry', 'SEPA');
 
         foreach ($batch->transactions as $transaction) {
@@ -70,13 +84,6 @@ readonly class Pain008FileWriter implements DirectDebitFileWriterInterface
             $this->append($document, $this->append($document, $this->append($document, $entry, 'DbtrAcct'), 'Id'), 'IBAN', $transaction->debtorIban);
             $this->append($document, $this->append($document, $entry, 'RmtInf'), 'Ustrd', $this->text($transaction->remittanceInformation, 140));
         }
-
-        $xml = $document->saveXML();
-        if ($xml === false) {
-            throw new \RuntimeException('Die SEPA-Lastschriftdatei konnte nicht erzeugt werden.');
-        }
-
-        return $xml;
     }
 
     private function appendAgent(\DOMDocument $document, \DOMElement $agent, ?string $bic): void

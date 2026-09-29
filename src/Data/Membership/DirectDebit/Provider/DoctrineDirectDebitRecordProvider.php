@@ -22,4 +22,12 @@ readonly class DoctrineDirectDebitRecordProvider implements DirectDebitRecordPro
 
         return array_map($this->mapper->toModel(...), $entities);
     }
+
+    public function findAll(): array
+    {
+        $entities = $this->entityManager->getRepository(DirectDebitRecordEntity::class)
+            ->findBy([], ['exportedAt' => 'DESC']);
+
+        return array_map($this->mapper->toModel(...), $entities);
+    }
 }

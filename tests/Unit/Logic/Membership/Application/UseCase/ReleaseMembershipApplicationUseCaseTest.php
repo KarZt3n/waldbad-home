@@ -9,9 +9,7 @@ use App\Logic\Membership\Application\Model\Applicant;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
-use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
-use App\Logic\Membership\ContributionRate\Model\ContributionRate;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -23,7 +21,7 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Model\Salutation;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
-use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditConfig;
+use App\Logic\Membership\MemberAccess\MemberAccessLinkBuilderInterface;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
@@ -83,8 +81,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $householdRecalculator,
             $memberManager,
-            $this->contributionRates(),
-            $this->workAssignmentCreditConfig(),
+            $this->memberAccessLinkBuilder(),
             $logger,
         ))->execute('application-1');
 
@@ -110,9 +107,9 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         self::assertSame(Salutation::Diverse, $child->salutation);
     }
 
-    public function testJoinDateIsTheSubmissionDateAndRoleUsesTheContributionAge(): void
+    public function testJoinDateIsTheReleaseDateAndRoleUsesTheContributionAge(): void
     {
-        // Eingegangen im August, angenommen im September: Eintritt ist der Eingang. Die zweite
+        // Eingegangen im August, angenommen im September: Eintritt ist die Annahme. Die zweite
         // Person wird erst am 31.12. 21 — zählt laut Stichtag 31.12. aber schon als erwachsen.
         $submittedAt = new \DateTimeImmutable('2026-08-14T09:00:00+02:00');
         $now = new \DateTimeImmutable('2026-09-28T10:00:00+02:00');
@@ -145,104 +142,21 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $this->createStub(HouseholdContributionRecalculator::class),
             $this->createStub(MemberManagerInterface::class),
-            $this->contributionRates(),
-            $this->workAssignmentCreditConfig(),
+            $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
 
         [$head, $partner] = array_column($createdMembers, 'request');
-        self::assertEquals($submittedAt, $head->joinedAt);
-        self::assertEquals($submittedAt, $partner->joinedAt);
+        self::assertEquals($now, $head->joinedAt);
+        self::assertEquals($now, $partner->joinedAt);
         self::assertSame(FamilyRole::Partner, $partner->familyRole);
     }
 
     /**
-     * Die Bestätigungsmail soll je Person nicht nur den Betrag, sondern auch die Bezeichnung des
-     * zugrunde liegenden Beitragssatzes nennen, damit der Gesamtbetrag nachvollziehbar ist.
+     * Die Bestätigungsmail listet die angelegten Personen und verweist für die Beiträge auf „Meine
+     * Mitgliedschaft“, statt selbst eine Beitragsübersicht zu enthalten.
      */
-    public function testConfirmationEmailListsTheContributionRateLabelPerPerson(): void
-    {
-        $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
-        $application = $this->familyApplication($now);
-
-        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
-        $applications->method('get')->willReturn($application);
-        $applications->method('save')->willReturnCallback(static fn (MembershipApplication $saved): MembershipApplication => $saved);
-
-        $createdMembers = [];
-        $orchestrator = $this->createStub(MemberOnboardingOrchestrator::class);
-        $orchestrator->method('createFromRequest')->willReturnCallback(
-            function (CreateMemberRequest $request) use (&$createdMembers): Member {
-                $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1))
-                    ->withContribution(ContributionCategory::FamilyAdult, 5000, null);
-                $createdMembers[] = $member;
-
-                return $member;
-            },
-        );
-
-        $clock = $this->createStub(ClockInterface::class);
-        $clock->method('now')->willReturn($now);
-
-        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
-        $memberManager = $this->createStub(MemberManagerInterface::class);
-        $memberManager->method('findByPrimaryMemberNumber')->willReturnCallback(static fn (): array => $createdMembers);
-
-        $contributionRates = $this->createStub(ContributionRateManagerInterface::class);
-        $contributionRates->method('findByCategory')->willReturn(
-            new ContributionRate('rate-1', ContributionCategory::FamilyAdult, 'Familienbeitrag Erwachsene', 5000, PaymentInterval::Yearly),
-        );
-
-        $capturedEmail = null;
-        $mailerStub = $this->createStub(MailerInterface::class);
-        $mailerStub->method('send')->willReturnCallback(function (Email $email) use (&$capturedEmail): void {
-            $capturedEmail = $email;
-        });
-
-        $emailSettingsManager = $this->createStub(EmailSettingsManagerInterface::class);
-        $emailSettingsManager->method('get')->willReturn(new EmailSettings([]));
-        $templateManager = $this->createStub(MailTemplateManagerInterface::class);
-        $templateManager->method('resolve')->willReturnCallback(
-            static fn (MailTemplateKey $key): MailTemplate => new MailTemplate($key, 'Betreff', $key->defaultBody()),
-        );
-        $signatures = $this->createStub(MailSignatureManagerInterface::class);
-        $signatures->method('find')->willReturn(null);
-        $mailer = new NotificationMailer(
-            $mailerStub,
-            $emailSettingsManager,
-            new MailTemplateRenderer($templateManager, new MailContentRenderer(), $signatures),
-            new BrandedEmailLayout(),
-            $this->createStub(EmailLogoProviderInterface::class),
-            $this->createStub(LoggerInterface::class),
-            'from@example.test',
-            'Verein',
-        );
-
-        (new ReleaseMembershipApplicationUseCase(
-            $applications,
-            $orchestrator,
-            $clock,
-            $mailer,
-            $householdRecalculator,
-            $memberManager,
-            $contributionRates,
-            $this->workAssignmentCreditConfig(),
-            $this->createStub(LoggerInterface::class),
-        ))->execute('application-1');
-
-        self::assertNotNull($capturedEmail);
-        self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getTextBody());
-        self::assertStringContainsString('Familienbeitrag Erwachsene', (string) $capturedEmail->getHtmlBody());
-        self::assertStringContainsString('(Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)', (string) $capturedEmail->getTextBody());
-    }
-
-    /**
-     * Die Beitragsübersicht in der HTML-Mail soll je Person eine fett dargestellte Zeile sein, die
-     * einzelnen Positionen darunter kursiv — und der Arbeitseinsatz-Zuschlag nennt statt der
-     * admin-editierbaren Beitragssatz-Bezeichnung die aktuell gültige, zur vollen Rückerstattung
-     * nötige Stundenzahl (Nutzer-Vorgabe).
-     */
-    public function testConfirmationEmailFormatsThePersonLineBoldAndPositionsItalicWithWorkAssignmentHours(): void
+    public function testConfirmationEmailListsThePersonsAndLinksToMemberAccessInsteadOfContributions(): void
     {
         $now = new \DateTimeImmutable('2026-06-01T10:00:00+02:00');
         $application = $this->familyApplication($now);
@@ -266,14 +180,8 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn($now);
 
-        $householdRecalculator = $this->createStub(HouseholdContributionRecalculator::class);
         $memberManager = $this->createStub(MemberManagerInterface::class);
         $memberManager->method('findByPrimaryMemberNumber')->willReturnCallback(static fn (): array => $createdMembers);
-
-        $contributionRates = $this->createStub(ContributionRateManagerInterface::class);
-        $contributionRates->method('findByCategory')->willReturn(
-            new ContributionRate('rate-1', ContributionCategory::FamilyAdult, 'Familienbeitrag Erwachsene', 5000, PaymentInterval::Yearly),
-        );
 
         $capturedEmail = null;
         $mailerStub = $this->createStub(MailerInterface::class);
@@ -305,17 +213,22 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $orchestrator,
             $clock,
             $mailer,
-            $householdRecalculator,
+            $this->createStub(HouseholdContributionRecalculator::class),
             $memberManager,
-            $contributionRates,
-            $this->workAssignmentCreditConfig(),
+            $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
 
-        $html = (string) $capturedEmail?->getHtmlBody();
-        self::assertStringContainsString('<li style="margin-bottom:8px;font-weight:bold;">Maria Muster: ', $html);
-        self::assertStringContainsString('<li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: ', $html);
-        self::assertStringContainsString('<li style="font-style:italic;font-weight:normal;">Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 15,00 € pro Jahr</li>', $html);
+        self::assertNotNull($capturedEmail);
+        self::assertSame('maria@example.com', $capturedEmail->getTo()[0]->getAddress());
+        $text = (string) $capturedEmail->getTextBody();
+        self::assertStringContainsString('- Maria Muster (Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)', $text);
+        self::assertStringContainsString('- Mia Muster (Kind), geb. 01.01.2015 (Beitragsalter 2026: 11)', $text);
+        self::assertStringContainsString('„Meine Mitgliedschaft“', $text);
+        self::assertStringContainsString('https://example.test/meine-mitgliedschaft', $text);
+        self::assertStringContainsString('https://example.test/meine-mitgliedschaft', (string) $capturedEmail->getHtmlBody());
+        self::assertStringNotContainsString('€', $text);
+        self::assertStringNotContainsString('{{', $text);
     }
 
     public function testCannotReleaseTheSameApplicationTwice(): void
@@ -341,8 +254,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $this->createStub(HouseholdContributionRecalculator::class),
             $this->createStub(MemberManagerInterface::class),
-            $this->contributionRates(),
-            $this->workAssignmentCreditConfig(),
+            $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
         ))->execute('application-1');
     }
@@ -388,8 +300,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->notConfiguredMailer(),
             $householdRecalculator,
             $this->createStub(MemberManagerInterface::class),
-            $this->contributionRates(),
-            $this->workAssignmentCreditConfig(),
+            $this->memberAccessLinkBuilder(),
             $logger,
         ))->execute('application-1');
 
@@ -482,20 +393,11 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         );
     }
 
-    /**
-     * Kein Beitragssatz hinterlegt: `formatContributions()` lässt die Bezeichnung dann einfach weg,
-     * statt einen Fehler auszulösen.
-     */
-    private function contributionRates(): ContributionRateManagerInterface
+    private function memberAccessLinkBuilder(): MemberAccessLinkBuilderInterface
     {
-        return $this->createStub(ContributionRateManagerInterface::class);
-    }
+        $linkBuilder = $this->createStub(MemberAccessLinkBuilderInterface::class);
+        $linkBuilder->method('buildEntry')->willReturn('https://example.test/meine-mitgliedschaft');
 
-    private function workAssignmentCreditConfig(): WorkAssignmentCreditConfig
-    {
-        return new WorkAssignmentCreditConfig(
-            ['from' => '2026-01-01', 'to' => '2027-01-01'],
-            [['valid_from' => '2026-01-01', 'required_hours' => 5]],
-        );
+        return $linkBuilder;
     }
 }

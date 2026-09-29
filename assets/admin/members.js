@@ -176,6 +176,11 @@ const showMembershipDashboard = async () => {
         element('strong', {text: String(value)}),
         element('span', {text: label}),
     ]});
+    // Trennlinie mit Überschrift zwischen den Kennzahlen-Gruppen. Mitgliedschaften und Beitragssätze
+    // zählen nur aktive Mitglieder.
+    const section = (title) => element('h3', {className: 'stat-section-heading', text: title});
+    const note = (text) => element('p', {className: 'stat-section-note', text});
+    const contributionYear = new Date().getFullYear();
     workspace.replaceChildren(
         sectionHeading('Dashboard', 'Kennzahlen der Mitgliederverwaltung auf einen Blick'),
         element('div', {className: 'stat-tile-grid', children: [
@@ -185,7 +190,18 @@ const showMembershipDashboard = async () => {
             tile('Austritte aus Vorjahr', stats.leftLastYearEnd),
             tile('Beiträge gesamt pro Jahr', formatEuro(stats.totalContributionCents)),
         ]}),
-        element('p', {className: 'empty-copy', text: 'Weitere Auswertungen folgen.'}),
+        section('Mitgliedschaften'),
+        element('div', {className: 'stat-tile-grid', children: [
+            tile('Familien', stats.families),
+            tile('Einzelmitgliedschaften', stats.individualMemberships),
+            tile('21 Jahre und älter', stats.adults),
+            tile('Unter 21 Jahre', stats.minors),
+        ]}),
+        section('Beitragssätze'),
+        note(`Zuordnung nach Beitragsalter zum Stichtag 31.12.${contributionYear} — kann daher von den Altersgruppen unter „Mitgliedschaften“ abweichen, die das heutige Alter zählen.`),
+        element('div', {className: 'stat-tile-grid', children: stats.contributionRateCounts.length
+            ? stats.contributionRateCounts.map((rate) => tile(rate.label, rate.count))
+            : [emptyState('Keine Beitragssätze hinterlegt.')]}),
     );
 };
 
@@ -1182,8 +1198,8 @@ const openRecalculationErrorsDialog = (errors) => {
 const formatIban = (iban) => iban ? iban.replace(/(.{4})/g, '$1 ').trim() : '–';
 
 // Wie `postMemberExport`: bei Erfolg eine Datei statt JSON, daher fetch() statt request().
-const postDirectDebitExport = async (memberId, body) => {
-    const response = await fetch(`/api/admin/v1/members/${memberId}/direct-debit-export`, {
+const postDirectDebitExport = async (url, body) => {
+    const response = await fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
@@ -1206,9 +1222,10 @@ const postDirectDebitExport = async (memberId, body) => {
     throw error;
 };
 
-const exportDirectDebitWithOptionalPin = async (memberId, body) => {
+// Einzel- (`/members/{id}/direct-debit-export`) und Sammelexport (`/direct-debits/export`).
+const exportDirectDebitWithOptionalPin = async (url, body) => {
     try {
-        return await postDirectDebitExport(memberId, body);
+        return await postDirectDebitExport(url, body);
     } catch (error) {
         if (error.code !== 'pinrequiredexception') throw error;
     }
@@ -1216,10 +1233,19 @@ const exportDirectDebitWithOptionalPin = async (memberId, body) => {
     const unlocked = await promptForPin(
         'SEPA-Lastschrift exportieren',
         'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
-        async (pin) => { file = await postDirectDebitExport(memberId, {...body, pin}); },
+        async (pin) => { file = await postDirectDebitExport(url, {...body, pin}); },
     );
 
     return unlocked ? file : null;
+};
+
+const downloadFile = ({blob, fileName}) => {
+    const url = URL.createObjectURL(blob);
+    const link = element('a', {attributes: {href: url, download: fileName}});
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 };
 
 const directDebitDataRow = (label, value) => element('div', {className: 'member-data-row', children: [
@@ -1336,19 +1362,14 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
         message.textContent = '';
         submit.disabled = true;
         try {
-            const file = await exportDirectDebitWithOptionalPin(memberId, {
+            const file = await exportDirectDebitWithOptionalPin(`/api/admin/v1/members/${memberId}/direct-debit-export`, {
                 collectionDate: collectionDate.querySelector('input').value,
                 sequenceType: sequenceType.querySelector('select').value,
                 remittanceInformation: remittanceInput.value,
                 positionIds: selectedIds(),
             });
             if (!file) return;
-            const url = URL.createObjectURL(file.blob);
-            const link = element('a', {attributes: {href: url, download: file.fileName}});
-            document.body.append(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
+            downloadFile(file);
             toast('Die SEPA-Lastschriftdatei wurde erstellt.');
             dialog.close();
             await onExported();
@@ -1362,6 +1383,147 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
     dialog.append(form);
     document.body.append(dialog);
     dialog.showModal();
+};
+
+// Lastschrift-Übersicht aller Zahler (siehe `GetDirectDebitOverviewQuery`): oben die nicht
+// exportierbaren mit Grund, darunter die exportierbaren. Ein Klick öffnet die Einzelvorschau
+// (`openDirectDebitDialog`); „Alle exportieren“ erzeugt eine gemeinsame XML-Datei für alle
+// exportierbaren Zahler mit den Vorgaben ihrer jeweiligen Einzelvorschau.
+const openDirectDebitOverviewDialog = async () => {
+    const dialog = element('dialog', {className: 'activity-dialog direct-debit-overview-dialog'});
+    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+    const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Lastschriften werden geladen …')]});
+    const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
+    exportAll.disabled = true;
+    const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
+    let overview = null;
+
+    const table = (entries, withObstacles) => {
+        const headers = ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', 'Betrag', ...(withObstacles ? ['Grund'] : [])];
+        const rows = entries.map((entry) => {
+            const row = element('tr', {className: 'member-row', attributes: {tabindex: '0', role: 'button'}, children: [
+                ...[entry.memberNumber, entry.primaryMemberNumber, entry.lastName, entry.firstName, formatIban(entry.iban)]
+                    .map((text) => element('td', {text})),
+                element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
+                ...(withObstacles ? [element('td', {className: 'direct-debit-obstacles', text: entry.obstacles.map((obstacle) => obstacle.message).join(' ')})] : []),
+            ]});
+            const open = () => openDirectDebitDialog(entry.payerId, load);
+            row.addEventListener('click', open);
+            row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+
+            return row;
+        });
+
+        return element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
+            element('thead', {children: [element('tr', {children: headers.map((text) => element('th', {text}))})]}),
+            element('tbody', {children: rows}),
+        ]})]});
+    };
+    const sum = (entries) => entries.reduce((total, entry) => total + entry.amountCents, 0);
+    // Nicht exportierbare Zahler nach Grund gefiltert (Tabs); ein Zahler mit mehreren Gründen
+    // erscheint in jedem passenden Tab. Der gewählte Tab bleibt beim Neuladen erhalten.
+    let activeObstacleKind = '';
+    // Auf-/Zugeklappt-Zustand der beiden Listen bleibt beim Neuladen (z. B. nach einem Einzelexport) erhalten.
+    const openSections = {invalid: false, valid: false, withoutAmount: false};
+    const invalidSection = () => {
+        const panel = element('div');
+        const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'Gründe'}});
+        const tabs = [
+            ['', `Alle (${overview.invalid.length})`],
+            ...overview.obstacleCategories.map((category) => [category.kind, `${category.label} (${category.count})`]),
+        ];
+        if (!tabs.some(([kind]) => kind === activeObstacleKind)) activeObstacleKind = '';
+        const render = () => {
+            strip.replaceChildren(...tabs.map(([kind, label]) => {
+                const button = element('button', {className: `sub-tab${kind === activeObstacleKind ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
+                button.addEventListener('click', () => { activeObstacleKind = kind; render(); });
+
+                return button;
+            }));
+            const entries = activeObstacleKind
+                ? overview.invalid.filter((entry) => entry.obstacles.some((obstacle) => obstacle.kind === activeObstacleKind))
+                : overview.invalid;
+            panel.replaceChildren(table(entries, true));
+        };
+        render();
+
+        return element('div', {children: [strip, panel]});
+    };
+
+    async function load() {
+        try {
+            overview = await request('/api/admin/v1/direct-debits');
+        } catch (error) {
+            body.replaceChildren(emptyState('Die Lastschriften konnten nicht geladen werden.'));
+            toast(error.message, 'error');
+            return;
+        }
+        exportAll.disabled = overview.valid.length === 0;
+        exportAll.textContent = `Alle exportieren (${overview.valid.length})`;
+        const accordion = (key, title, badge, children) => {
+            const details = element('details', {className: 'event-helper-archive direct-debit-accordion', children: [
+                element('summary', {children: [element('strong', {text: title}), element('span', {className: 'status-badge', text: badge})]}),
+                element('div', {className: 'event-helper-archive-list', children}),
+            ]});
+            details.open = openSections[key];
+            details.addEventListener('toggle', () => { openSections[key] = details.open; });
+
+            return details;
+        };
+        body.replaceChildren(
+            accordion('invalid', 'Nicht exportierbar', String(overview.invalid.length), [
+                element('p', {className: 'field-hint', text: 'Diese Zahler sind nicht im Sammelexport enthalten. Zum Prüfen oder Einzelexport einen Datensatz anklicken.'}),
+                overview.invalid.length ? invalidSection() : emptyState('Keine – alle Zahler sind exportierbar.'),
+            ]),
+            accordion('valid', 'Exportierbar', `${overview.valid.length} · ${formatEuro(sum(overview.valid))}`, [
+                overview.valid.length ? table(overview.valid, false) : emptyState('Keine exportierbaren Lastschriften.'),
+            ]),
+            ...(overview.withoutAmount.length ? [accordion('withoutAmount', 'Ohne abzubuchenden Betrag', String(overview.withoutAmount.length), [
+                element('p', {className: 'field-hint', text: 'Bei diesen Zahlern ist mit den Vorgaben der Einzelvorschau nichts abzubuchen (z. B. beitragsfrei oder ausgetreten); sie sind nicht im Sammelexport enthalten.'}),
+                table(overview.withoutAmount, false),
+            ])] : []),
+        );
+    }
+
+    exportAll.addEventListener('click', async () => {
+        if (!overview?.valid.length) return;
+        const dueDates = new Map();
+        overview.valid.forEach((entry) => dueDates.set(entry.collectionDate, (dueDates.get(entry.collectionDate) || 0) + 1));
+        const dueSummary = [...dueDates.entries()].sort(([left], [right]) => left.localeCompare(right))
+            .map(([date, count]) => `${formatDateDE(date)} (${count})`).join(', ');
+        const confirmed = await confirmAction(
+            'Alle Lastschriften exportieren?',
+            `${overview.valid.length} Lastschriften über insgesamt ${formatEuro(sum(overview.valid))} werden in eine XML-Datei exportiert — jeweils mit Positionen, Fälligkeit und Verwendungszweck der Einzelvorschau. Fälligkeiten: ${dueSummary}. Der Export wird in der Lastschrift-Historie festgehalten und rückt die „Nächste Buchung“ der Zahler vor.`,
+            'Exportieren',
+        );
+        if (!confirmed) return;
+        exportAll.disabled = true;
+        try {
+            const file = await exportDirectDebitWithOptionalPin('/api/admin/v1/direct-debits/export', {
+                payerIds: overview.valid.map((entry) => entry.payerId),
+            });
+            if (!file) return;
+            downloadFile(file);
+            toast('Die SEPA-Sammellastschriftdatei wurde erstellt.');
+        } catch (error) {
+            toast(error.message, 'error');
+        } finally {
+            await load();
+        }
+    });
+
+    closeButton.addEventListener('click', () => dialog.close());
+    close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.append(close, element('div', {className: 'activity-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'SEPA-Lastschriften'}),
+        element('h2', {text: 'Lastschriften aller Zahler'}),
+        element('div', {className: 'confirm-dialog-actions direct-debit-overview-actions', children: [closeButton, exportAll]}),
+        body,
+    ]}));
+    document.body.append(dialog);
+    dialog.showModal();
+    await load();
 };
 
 /** SEPA-Gläubigerdaten des Vereins (siehe `DirectDebitCreditor`) — Voraussetzung für jeden Lastschrift-Export. */
@@ -1489,7 +1651,7 @@ const showMembers = () => {
         // Bewusst kein generischer `actionButton`: der Antwortkörper enthält je übersprungenem
         // Mitglied dessen Mitgliedsnummer und den Grund (`errors`) — die müssen sichtbar
         // gemacht werden, statt wie bei `actionButton` ungelesen zu verfallen.
-        const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge für alle Mitglieder neu berechnen', attributes: {type: 'button'}});
+        const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge neu berechnen', attributes: {type: 'button'}});
         recalculateAll.addEventListener('click', async () => {
             const year = await openRecalculateAllContributionsDialog();
             if (!year) return;
@@ -1510,6 +1672,11 @@ const showMembers = () => {
             }
         });
         actions.push(recalculateAll);
+    }
+    if (canEditModule('members')) {
+        const directDebits = element('button', {className: 'secondary-button', text: 'SEPA-Lastschriften…', attributes: {type: 'button'}});
+        directDebits.addEventListener('click', () => openDirectDebitOverviewDialog());
+        actions.push(directDebits);
     }
     if (canEditModule('members')) {
         actions.push(actionMenu('Datenbank', [

@@ -19,4 +19,9 @@ readonly class RoutingMemberAccessLinkBuilder implements MemberAccessLinkBuilder
             UrlGeneratorInterface::ABSOLUTE_URL,
         );
     }
+
+    public function buildEntry(): string
+    {
+        return $this->urlGenerator->generate('public_member_access', [], UrlGeneratorInterface::ABSOLUTE_URL);
+    }
 }

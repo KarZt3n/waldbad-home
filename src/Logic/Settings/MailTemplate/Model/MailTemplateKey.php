@@ -64,7 +64,7 @@ enum MailTemplateKey: string
     {
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart'],
-            self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'beitraege', 'vereinsname'],
+            self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'link', 'vereinsname'],
             self::AdminLoginMagicLink => ['link', 'gueltig_minuten', 'vereinsname'],
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
             self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
@@ -108,9 +108,8 @@ enum MailTemplateKey: string
                 Übersicht der angemeldeten Personen:
                 {{personen}}
 
-                Beiträge:
-
-                {{beitraege}}
+                Deine Beiträge und weitere Angaben zu deiner Mitgliedschaft kannst du jederzeit unter „Meine Mitgliedschaft“ einsehen. Dort forderst du mit deiner E-Mail-Adresse und deinem Geburtsdatum einen Zugang an:
+                {{link}}
 
                 Bei Fragen melde dich gerne bei uns.
 
@@ -233,14 +232,7 @@ enum MailTemplateKey: string
                     - Erika Musterfrau (Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)
                     - Max Mustermann (Familienangehöriger), geb. 01.01.1983 (Beitragsalter 2026: 43)
                     TEXT,
-                'beitraege' => <<<'TEXT'
-                    - Erika Musterfrau: 50,00 € pro Jahr
-                      - Familienbeitrag Erwachsene: 50,00 € pro Jahr
-                    - Max Mustermann: 60,00 € pro Jahr
-                      - Familienbeitrag Erwachsene: 50,00 € pro Jahr
-                      - Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 10,00 € pro Jahr
-                    Gesamt: 110,00 € pro Jahr
-                    TEXT,
+                'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft',
                 'vereinsname' => AssociationName::CURRENT,
             ],
             self::AdminLoginMagicLink => [
@@ -290,38 +282,6 @@ enum MailTemplateKey: string
                 'email' => 'erika@example.com',
                 'mitglied' => 'Bad-01234',
                 'nachricht' => 'Wir bringen eigene Handtücher mit.',
-            ],
-        };
-    }
-
-    /**
-     * Für Platzhalter mit eigener HTML-Darstellung (siehe `MailTemplateRenderer::render()`,
-     * `$htmlBlocks`) das dazu passende Beispiel-HTML für die Vorschau — nur für `beitraege`
-     * (verschachtelte Liste, siehe `ReleaseMembershipApplicationUseCase::formatContributionsAsHtml()`),
-     * sonst leer.
-     *
-     * @return array<string, string>
-     */
-    public function sampleHtmlBlocks(): array
-    {
-        return match ($this) {
-            self::MembershipApplicationSubmittedNotification,
-            self::AdminLoginMagicLink,
-            self::MemberAccessMagicLink,
-            self::MemberMessageSubmittedNotification,
-            self::EventHelpRequestConfirmation,
-            self::MemberEmailConsentRequest,
-            self::MemberEmailConsentOptOutRegret,
-            self::SaunaBookingSubmittedNotification => [],
-            self::MembershipApplicationApproved => [
-                'beitraege' => '<ul style="margin:0 0 12px;padding-left:20px;">'
-                    .'<li style="margin-bottom:8px;font-weight:bold;">Erika Musterfrau: 50,00 € pro Jahr'
-                    .'<ul style="margin:4px 0 0;padding-left:20px;"><li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: 50,00 € pro Jahr</li></ul></li>'
-                    .'<li style="margin-bottom:8px;font-weight:bold;">Max Mustermann: 60,00 € pro Jahr'
-                    .'<ul style="margin:4px 0 0;padding-left:20px;">'
-                    .'<li style="font-style:italic;font-weight:normal;">Familienbeitrag Erwachsene: 50,00 € pro Jahr</li>'
-                    .'<li style="font-style:italic;font-weight:normal;">Arbeitseinsatz (Rückerstattung nach 5 Gemeinschaftsstunden): 10,00 € pro Jahr</li></ul></li>'
-                    .'</ul><p style="margin:0;font-weight:bold;">Gesamt: 110,00 € pro Jahr</p>',
             ],
         };
     }

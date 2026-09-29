@@ -8,6 +8,7 @@ use App\Logic\Membership\DirectDebit\DirectDebitFileWriterInterface;
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitFileResponse;
 use App\Logic\Membership\DirectDebit\Dto\ExportPayerDirectDebitRequest;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitBatch;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacle;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitTransaction;
 use App\Logic\Membership\DirectDebit\Service\DirectDebitBookkeeper;
@@ -22,8 +23,6 @@ use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
  */
 readonly class ExportPayerDirectDebitUseCase
 {
-    private const int MAX_REMITTANCE_LENGTH = 140;
-
     public function __construct(
         private PayerDirectDebitPlanner $planner,
         private DirectDebitFileWriterInterface $writer,
@@ -37,7 +36,7 @@ readonly class ExportPayerDirectDebitUseCase
         $now = $this->clock->now();
         $draft = $this->planner->plan($request->memberId, $now);
         if ($draft->blockers !== []) {
-            throw new BusinessRuleViolationException(implode(' ', $draft->blockers));
+            throw new BusinessRuleViolationException(implode(' ', array_map(static fn (DirectDebitObstacle $blocker): string => $blocker->message, $draft->blockers)));
         }
 
         $positionsById = [];
@@ -56,8 +55,8 @@ readonly class ExportPayerDirectDebitUseCase
             throw new BusinessRuleViolationException('Das Fälligkeitsdatum muss in der Zukunft liegen.');
         }
         $remittance = trim($request->remittanceInformation);
-        if ($remittance === '' || mb_strlen($remittance) > self::MAX_REMITTANCE_LENGTH) {
-            throw new BusinessRuleViolationException(sprintf('Der Verwendungszweck muss zwischen 1 und %d Zeichen lang sein.', self::MAX_REMITTANCE_LENGTH));
+        if ($remittance === '' || mb_strlen($remittance) > DirectDebitTransaction::MAX_REMITTANCE_LENGTH) {
+            throw new BusinessRuleViolationException(sprintf('Der Verwendungszweck muss zwischen 1 und %d Zeichen lang sein.', DirectDebitTransaction::MAX_REMITTANCE_LENGTH));
         }
 
         $payer = $draft->payer;

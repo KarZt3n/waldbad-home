@@ -28,24 +28,35 @@ readonly class DirectDebitBookkeeper
 
     public function book(PayerDirectDebitDraft $draft, DirectDebitBatch $batch): void
     {
-        $payer = $draft->payer;
-        $mandateReference = $payer->mandateReference
-            ?? throw new \LogicException('Ein exportierter Zahler hat immer eine Mandatsreferenz.');
+        $this->bookAll([['draft' => $draft, 'batch' => $batch, 'amountCents' => $batch->totalCents()]]);
+    }
 
-        $this->transaction->execute(function () use ($draft, $batch, $payer, $mandateReference): void {
-            $this->records->save(new DirectDebitRecord(
-                id: $this->identifierGenerator->generate(),
-                payerMemberId: $payer->id,
-                mandateReference: $mandateReference,
-                contributionYear: $draft->contributionYear,
-                sequenceType: $batch->sequenceType,
-                collectionDate: $batch->collectionDate,
-                amountCents: $batch->totalCents(),
-                messageId: $batch->messageId,
-                exportedAt: $batch->createdAt,
-            ));
-            if (!$draft->joiningYearDebit && $payer->nextBookingMonth !== null && $payer->nextBookingYear !== null) {
-                $this->members->save($payer->withNextBooking($payer->nextBookingMonth, $payer->nextBookingYear + 1));
+    /**
+     * Sammelexport: alle Zahler einer Datei gemeinsam oder gar nicht. `amountCents` ist der Betrag
+     * des einzelnen Zahlers — ein Batch kann mehrere Zahler enthalten.
+     *
+     * @param list<array{draft: PayerDirectDebitDraft, batch: DirectDebitBatch, amountCents: int}> $bookings
+     */
+    public function bookAll(array $bookings): void
+    {
+        $this->transaction->execute(function () use ($bookings): void {
+            foreach ($bookings as ['draft' => $draft, 'batch' => $batch, 'amountCents' => $amountCents]) {
+                $payer = $draft->payer;
+                $this->records->save(new DirectDebitRecord(
+                    id: $this->identifierGenerator->generate(),
+                    payerMemberId: $payer->id,
+                    mandateReference: $payer->mandateReference
+                        ?? throw new \LogicException('Ein exportierter Zahler hat immer eine Mandatsreferenz.'),
+                    contributionYear: $draft->contributionYear,
+                    sequenceType: $batch->sequenceType,
+                    collectionDate: $batch->collectionDate,
+                    amountCents: $amountCents,
+                    messageId: $batch->messageId,
+                    exportedAt: $batch->createdAt,
+                ));
+                if (!$draft->joiningYearDebit && $payer->nextBookingMonth !== null && $payer->nextBookingYear !== null) {
+                    $this->members->save($payer->withNextBooking($payer->nextBookingMonth, $payer->nextBookingYear + 1));
+                }
             }
         });
     }

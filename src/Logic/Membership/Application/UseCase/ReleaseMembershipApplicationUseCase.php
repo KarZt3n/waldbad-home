@@ -7,7 +7,6 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\MembershipType;
-use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -18,7 +17,7 @@ use App\Logic\Membership\Member\Model\PaymentDay;
 use App\Logic\Membership\Member\Model\PaymentMethod;
 use App\Logic\Membership\Member\Orchestrator\MemberOnboardingOrchestrator;
 use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
-use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditConfig;
+use App\Logic\Membership\MemberAccess\MemberAccessLinkBuilderInterface;
 use App\Logic\Membership\PaymentInterval;
 use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Service\NotificationMailer;
@@ -37,13 +36,14 @@ use Psr\Log\LoggerInterface;
  * Beitragsberechnung, damit ein Kind, das im laufenden Jahr noch 21 wird, nicht erst als Kind
  * angelegt und direkt danach zur Einzelperson umgestuft wird.
  *
- * Eintrittsdatum ist der Eingang des Antrags (`submittedAt`), nicht der Tag der Freigabe. Beitrag
+ * Eintrittsdatum ist der Tag der Annahme (Freigabe), nicht der Eingang des Antrags. Beitrag
  * und nächste Abbuchung (März des Folgejahres) ergeben sich daraus in `MemberOnboardingOrchestrator`.
  *
  * Verschickt zum Abschluss eine Bestätigungsmail (Mailvorlage
  * `MailTemplateKey::MembershipApplicationApproved`) an die E-Mail-Adresse der ersten Person — die
- * einzige, für die eine Adresse zwingend vorliegt (siehe `MembershipApplication`). Das Zusammenstellen
- * dieser Mail (Haushalt neu berechnen, Zusammenfassung bauen, Versand) läuft komplett „best effort“
+ * einzige, für die eine Adresse zwingend vorliegt (siehe `MembershipApplication`). Beiträge nennt die
+ * Mail bewusst nicht, sondern verweist dafür auf „Meine Mitgliedschaft“. Das Zusammenstellen
+ * dieser Mail (Haushalt neu berechnen, Personenliste bauen, Versand) läuft komplett „best effort“
  * in einem eigenen Try/Catch: Die Mitglieder wurden zu diesem Zeitpunkt bereits angelegt und der
  * Antrag bereits als freigegeben gespeichert — ein Fehler danach (z. B. beim Neuberechnen des
  * Beitrags oder beim Versand) darf die Freigabe selbst nicht mehr rückgängig machen oder als
@@ -58,8 +58,7 @@ readonly class ReleaseMembershipApplicationUseCase
         private NotificationMailer $notificationMailer,
         private HouseholdContributionRecalculator $householdRecalculator,
         private MemberManagerInterface $memberManager,
-        private ContributionRateManagerInterface $contributionRates,
-        private WorkAssignmentCreditConfig $workAssignmentCreditConfig,
+        private MemberAccessLinkBuilderInterface $memberAccessLinkBuilder,
         private LoggerInterface $logger,
     ) {
     }
@@ -100,7 +99,7 @@ readonly class ReleaseMembershipApplicationUseCase
                 email: $applicant->email,
                 phone: $applicant->phone,
                 familyRole: $familyRole,
-                joinedAt: $application->submittedAt,
+                joinedAt: $now,
                 leftAt: null,
                 function: MemberFunction::Member,
                 accountHolder: $application->accountHolder,
@@ -130,7 +129,7 @@ readonly class ReleaseMembershipApplicationUseCase
             $now,
         ));
 
-        $this->sendApprovalConfirmation($application->applicants[0]->email, $members, $application->submittedAt, $now);
+        $this->sendApprovalConfirmation($application->applicants[0]->email, $members, $now);
 
         return MembershipApplicationResponse::fromApplication($released);
     }
@@ -138,7 +137,7 @@ readonly class ReleaseMembershipApplicationUseCase
     /**
      * @param list<Member> $members
      */
-    private function sendApprovalConfirmation(?string $applicantEmail, array $members, \DateTimeImmutable $joinedAt, \DateTimeImmutable $now): void
+    private function sendApprovalConfirmation(?string $applicantEmail, array $members, \DateTimeImmutable $joinedAt): void
     {
         if ($applicantEmail === null || $members === []) {
             // $applicantEmail ist laut MembershipApplication für die erste Person zwingend gesetzt
@@ -149,9 +148,9 @@ readonly class ReleaseMembershipApplicationUseCase
         try {
             // Der Familienrabatt hängt vom gesamten Haushalt ab (siehe MemberContributionCalculator);
             // bei der sequenziellen Anlage oben wurde er für zuerst angelegte Personen ggf. noch
-            // ohne die später angelegten Geschwister berechnet. Vor der Beitragszusammenfassung
-            // deshalb einmal den ganzen, jetzt vollständigen Haushalt neu berechnen und die
-            // aktualisierten Datensätze (in der ursprünglichen Reihenfolge) für die E-Mail laden.
+            // ohne die später angelegten Geschwister berechnet. Deshalb einmal den ganzen, jetzt
+            // vollständigen Haushalt neu berechnen und die aktualisierten Datensätze (ggf. geänderte
+            // Familienrollen, in der ursprünglichen Reihenfolge) für die Personenliste laden.
             $this->householdRecalculator->recalculate($members[0]);
             $refreshedById = [];
             foreach ($this->memberManager->findByPrimaryMemberNumber($members[0]->primaryMemberNumber) as $refreshed) {
@@ -166,7 +165,6 @@ readonly class ReleaseMembershipApplicationUseCase
             }
 
             $head = $members[0];
-            $workAssignmentRequiredHours = $this->workAssignmentCreditConfig->requiredHoursAt($now);
             $this->notificationMailer->sendTo(
                 $applicantEmail,
                 MailTemplateKey::MembershipApplicationApproved,
@@ -175,11 +173,10 @@ readonly class ReleaseMembershipApplicationUseCase
                     'nachname' => $head->lastName,
                     'mitgliedsnummer' => $head->memberNumber,
                     'beitrittsdatum' => $joinedAt->format('d.m.Y'),
-                    'personen' => $this->formatMembers($members, (int) $now->format('Y')),
-                    'beitraege' => $this->formatContributionsAsText($members, $workAssignmentRequiredHours),
+                    'personen' => $this->formatMembers($members, (int) $joinedAt->format('Y')),
+                    'link' => $this->memberAccessLinkBuilder->buildEntry(),
                     'vereinsname' => AssociationName::CURRENT,
                 ],
-                ['beitraege' => $this->formatContributionsAsHtml($members, $workAssignmentRequiredHours)],
             );
         } catch (\Throwable $exception) {
             // Die Mitglieder sind zu diesem Zeitpunkt bereits angelegt und der Antrag bereits als
@@ -217,108 +214,5 @@ readonly class ReleaseMembershipApplicationUseCase
             ),
             $members,
         ));
-    }
-
-    /**
-     * Text-Fallback der Beitragsübersicht: je Person eine Zeile mit den Gesamtkosten, darunter
-     * eingerückt die einzelnen Positionen (Beitragssatz, ggf. Arbeitseinsatz-Zuschlag) — siehe
-     * `contributionPositions()`.
-     *
-     * @param list<Member> $members
-     */
-    private function formatContributionsAsText(array $members, int $workAssignmentRequiredHours): string
-    {
-        $lines = [];
-        $totalCents = 0;
-        foreach ($members as $member) {
-            $positions = $this->contributionPositions($member, $workAssignmentRequiredHours);
-            $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
-            $totalCents += $memberTotalCents;
-
-            $lines[] = sprintf('- %s %s: %s pro Jahr', $member->firstName, $member->lastName, $this->formatEuro($memberTotalCents));
-            foreach ($positions as $position) {
-                $lines[] = sprintf('  - %s: %s pro Jahr', $position['label'], $this->formatEuro($position['amountCents']));
-            }
-        }
-        $lines[] = sprintf('Gesamt: %s pro Jahr', $this->formatEuro($totalCents));
-
-        return implode("\n", $lines);
-    }
-
-    /**
-     * Dieselbe Beitragsübersicht als verschachtelte HTML-Liste (Person → Positionen), siehe
-     * `MailContentRenderer` (verarbeitet `rawBlocks`) und `formatContributionsAsText()` für den
-     * Text-Fallback derselben Daten.
-     *
-     * @param list<Member> $members
-     */
-    private function formatContributionsAsHtml(array $members, int $workAssignmentRequiredHours): string
-    {
-        $totalCents = 0;
-        $items = '';
-        foreach ($members as $member) {
-            $positions = $this->contributionPositions($member, $workAssignmentRequiredHours);
-            $memberTotalCents = array_sum(array_column($positions, 'amountCents'));
-            $totalCents += $memberTotalCents;
-
-            $subItems = implode('', array_map(
-                fn (array $position): string => sprintf(
-                    '<li style="font-style:italic;font-weight:normal;">%s: %s pro Jahr</li>',
-                    $this->escapeHtml($position['label']),
-                    $this->formatEuro($position['amountCents']),
-                ),
-                $positions,
-            ));
-            $items .= sprintf(
-                '<li style="margin-bottom:8px;font-weight:bold;">%s %s: %s pro Jahr<ul style="margin:4px 0 0;padding-left:20px;">%s</ul></li>',
-                $this->escapeHtml($member->firstName),
-                $this->escapeHtml($member->lastName),
-                $this->formatEuro($memberTotalCents),
-                $subItems,
-            );
-        }
-
-        return sprintf('<ul style="margin:0 0 12px;padding-left:20px;">%s</ul>', $items)
-            .sprintf('<p style="margin:0;font-weight:bold;">Gesamt: %s pro Jahr</p>', $this->formatEuro($totalCents));
-    }
-
-    /**
-     * Die einzelnen Positionen, aus denen sich der Jahresbeitrag einer Person zusammensetzt: der
-     * eigentliche Beitragssatz (dessen admin-editierbare Bezeichnung, z. B. „Familienbeitrag
-     * Erwachsene“) sowie — nur wenn die Person laut Berechnung dafür in Frage kommt (siehe
-     * `MemberContributionCalculator`) — der Arbeitseinsatz-Zuschlag als eigene Position. Dessen
-     * Bezeichnung nennt bewusst die aktuell gültige, zur vollen Rückerstattung nötige Stundenzahl
-     * (`WorkAssignmentCreditConfig::requiredHoursAt()`, siehe auch `WorkAssignmentCreditCalculator`
-     * in „Meine Mitgliedschaft") statt der admin-editierbaren Beitragssatz-Bezeichnung — Nutzer-Vorgabe.
-     *
-     * @return list<array{label: string, amountCents: int}>
-     */
-    private function contributionPositions(Member $member, int $workAssignmentRequiredHours): array
-    {
-        $rateLabel = $member->contributionCategory !== null
-            ? $this->contributionRates->findByCategory($member->contributionCategory)?->label
-            : null;
-        $positions = [
-            ['label' => $rateLabel ?? 'Mitgliedsbeitrag', 'amountCents' => $member->contributionAmountCents ?? 0],
-        ];
-
-        if ($member->workAssignmentSurchargeCents !== null) {
-            $positions[] = [
-                'label' => sprintf('Arbeitseinsatz (Rückerstattung nach %d Gemeinschaftsstunden)', $workAssignmentRequiredHours),
-                'amountCents' => $member->workAssignmentSurchargeCents,
-            ];
-        }
-
-        return $positions;
-    }
-
-    private function formatEuro(int $cents): string
-    {
-        return number_format($cents / 100, 2, ',', '.').' €';
-    }
-
-    private function escapeHtml(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
     }
 }

@@ -1757,6 +1757,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .stat-tile { display: grid; gap: .35rem; padding: 1.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); box-shadow: var(--shadow); }
 .stat-tile strong { font-size: 2rem; color: var(--forest-900); }
 .stat-tile span { color: var(--muted); }
+.stat-section-note { width: 100%; max-width: 68rem; margin: 1rem auto; color: var(--muted); font-size: .9rem; }
+.stat-section-heading { width: 100%; max-width: 68rem; margin: 1rem auto 0; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--forest-900); }
 
 @media (max-width: 760px) {
     .stat-tile-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1825,6 +1827,15 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 
 /* Vorschau der SEPA-Lastschrift (siehe `openDirectDebitDialog`). */
 .direct-debit-dialog { width: min(52rem, calc(100vw - 2rem)); }
+.direct-debit-overview-dialog { width: min(72rem, calc(100vw - 2rem)); }
+.direct-debit-overview-actions { margin: 0 0 1rem; }
+/* `minmax(0, 1fr)` statt der Grid-Vorgabe `auto`: sonst weiten die breiten Tabellen die Spalte über
+   die Dialogbreite hinaus auf, und die rechtsbündigen Buttons rutschen aus dem sichtbaren Bereich. */
+.direct-debit-overview-dialog .activity-dialog-content, .direct-debit-overview-body, .direct-debit-accordion .event-helper-archive-list { grid-template-columns: minmax(0, 1fr); }
+.direct-debit-accordion { min-width: 0; }
+.direct-debit-overview-body { display: grid; gap: .75rem; }
+.direct-debit-overview-body .data-table td.direct-debit-amount { text-align: right; }
+.direct-debit-overview-body .data-table td.direct-debit-obstacles { white-space: normal; min-width: 18rem; color: var(--danger); }
 .direct-debit-dialog h3 { margin: 0 0 .25rem; font-size: 1rem; }
 .direct-debit-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 1.5rem; }
 .direct-debit-positions { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }

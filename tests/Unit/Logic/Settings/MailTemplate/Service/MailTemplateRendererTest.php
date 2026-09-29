@@ -65,32 +65,6 @@ final class MailTemplateRendererTest extends TestCase
     }
 
     /**
-     * `$htmlBlocks` überschreibt nur die HTML-Ansicht mit fertigem, unescaped HTML — Betreff und
-     * Text-Fallback verwenden weiter den gleichnamigen Wert aus `$placeholders`.
-     */
-    public function testHtmlBlockOverridesOnlyTheHtmlRepresentationOfAPlaceholder(): void
-    {
-        $manager = $this->createStub(MailTemplateManagerInterface::class);
-        $manager->method('resolve')->willReturn(new MailTemplate(
-            MailTemplateKey::MembershipApplicationApproved,
-            'Betreff',
-            "Beiträge:\n\n{{beitraege}}\n\nDanke, {{vorname}}.",
-        ));
-
-        $rendered = $this->renderer($manager)->render(
-            MailTemplateKey::MembershipApplicationApproved,
-            ['beitraege' => "- Position: 50,00 €\nGesamt: 50,00 €", 'vorname' => 'Erika'],
-            ['beitraege' => '<ul><li>Position: 50,00 €</li></ul>'],
-        );
-
-        self::assertSame("Beiträge:\n\n- Position: 50,00 €\nGesamt: 50,00 €\n\nDanke, Erika.", $rendered['body']);
-        self::assertSame(
-            '<p style="margin:0 0 16px;">Beiträge:</p><ul><li>Position: 50,00 €</li></ul><p style="margin:0 0 16px;">Danke, Erika.</p>',
-            $rendered['html'],
-        );
-    }
-
-    /**
      * Eine der Vorlage zugeordnete Signatur (siehe `MailTemplate::$signatureId`) wird — mit
      * denselben Platzhaltern ersetzt — an Text und HTML angehängt, statt ihren Text in die Vorlage
      * zu kopieren: eine spätere Änderung der Signatur wirkt sich so automatisch aus.

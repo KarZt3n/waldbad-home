@@ -19,6 +19,11 @@ readonly class DirectDebitRecordManager implements DirectDebitRecordManagerInter
         return $this->provider->findByPayerMemberId($payerMemberId);
     }
 
+    public function findAll(): array
+    {
+        return $this->provider->findAll();
+    }
+
     public function save(DirectDebitRecord $record): DirectDebitRecord
     {
         return $this->processor->save($record);

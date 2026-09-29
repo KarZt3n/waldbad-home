@@ -20,13 +20,6 @@ final class MailTemplateKeyTest extends TestCase
         self::assertSame($key->placeholders(), array_keys($key->samplePlaceholders()));
     }
 
-    #[DataProvider('keys')]
-    public function testEverySampleHtmlBlockKeyIsADeclaredPlaceholder(MailTemplateKey $key): void
-    {
-        $htmlBlockKeys = array_keys($key->sampleHtmlBlocks());
-        self::assertCount(count(array_intersect($htmlBlockKeys, $key->placeholders())), $htmlBlockKeys);
-    }
-
     /**
      * @return list<array{MailTemplateKey}>
      */

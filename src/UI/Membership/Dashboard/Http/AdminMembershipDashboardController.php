@@ -2,6 +2,7 @@
 
 namespace App\UI\Membership\Dashboard\Http;
 
+use App\Logic\Membership\Dashboard\Dto\ContributionRateCount;
 use App\Logic\Membership\Dashboard\Dto\MembershipDashboardResponse;
 use App\Logic\Membership\Dashboard\Query\GetMembershipDashboardQuery;
 use App\UI\IdentityAccess\Security\Permission;
@@ -21,7 +22,7 @@ class AdminMembershipDashboardController extends AbstractController
     }
 
     /**
-     * @return array<string, int>
+     * @return array<string, int|list<array{label: string, count: int}>>
      */
     private function toArray(MembershipDashboardResponse $response): array
     {
@@ -31,6 +32,14 @@ class AdminMembershipDashboardController extends AbstractController
             'totalContributionCents' => $response->totalContributionCents,
             'leavingAtYearEnd' => $response->leavingAtYearEnd,
             'leftLastYearEnd' => $response->leftLastYearEnd,
+            'families' => $response->families,
+            'individualMemberships' => $response->individualMemberships,
+            'adults' => $response->adults,
+            'minors' => $response->minors,
+            'contributionRateCounts' => array_map(
+                static fn (ContributionRateCount $rate): array => ['label' => $rate->label, 'count' => $rate->count],
+                $response->contributionRateCounts,
+            ),
         ];
     }
 }

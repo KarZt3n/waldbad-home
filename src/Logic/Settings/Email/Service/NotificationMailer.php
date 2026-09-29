@@ -55,36 +55,33 @@ readonly class NotificationMailer
 
     /**
      * @param array<string, string> $placeholders
-     * @param array<string, string> $htmlBlocks siehe `MailTemplateRenderer::render()`
      */
-    public function notify(NotificationEvent $event, MailTemplateKey $templateKey, array $placeholders, array $htmlBlocks = []): void
+    public function notify(NotificationEvent $event, MailTemplateKey $templateKey, array $placeholders): void
     {
         $recipients = $this->manager->get()->recipientsFor($event);
         if ($recipients === []) {
             return;
         }
 
-        $this->send($templateKey, $placeholders, $htmlBlocks, $recipients, $event->value);
+        $this->send($templateKey, $placeholders, $recipients, $event->value);
     }
 
     /**
      * @param array<string, string> $placeholders
-     * @param array<string, string> $htmlBlocks siehe `MailTemplateRenderer::render()`
      */
-    public function sendTo(string $toEmail, MailTemplateKey $templateKey, array $placeholders, array $htmlBlocks = []): void
+    public function sendTo(string $toEmail, MailTemplateKey $templateKey, array $placeholders): void
     {
-        $this->send($templateKey, $placeholders, $htmlBlocks, [$toEmail], $templateKey->value);
+        $this->send($templateKey, $placeholders, [$toEmail], $templateKey->value);
     }
 
     /**
      * @param array<string, string> $placeholders
-     * @param array<string, string> $htmlBlocks
      * @param list<string> $recipients
      */
-    private function send(MailTemplateKey $templateKey, array $placeholders, array $htmlBlocks, array $recipients, string $logContext): void
+    private function send(MailTemplateKey $templateKey, array $placeholders, array $recipients, string $logContext): void
     {
         try {
-            $rendered = $this->templateRenderer->render($templateKey, $placeholders, $htmlBlocks);
+            $rendered = $this->templateRenderer->render($templateKey, $placeholders);
             $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), AssociationName::CURRENT);
             $email = (new Email())
                 ->from(new Address($this->fromAddress, $this->fromName ?? ''))

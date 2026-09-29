@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\DirectDebit\Dto;
 
+use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacle;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Model\PayerDirectDebitDraft;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
@@ -54,7 +55,7 @@ readonly class PayerDirectDebitPreviewResponse
             paymentInterval: $payer->paymentInterval->value,
             creditor: DirectDebitCreditorResponse::fromCreditor($draft->creditor),
             positions: array_map(DirectDebitPositionResponse::fromPosition(...), $draft->positions),
-            blockers: $draft->blockers,
+            blockers: array_map(static fn (DirectDebitObstacle $blocker): string => $blocker->message, $draft->blockers),
             warnings: $draft->warnings,
             defaultCollectionDate: $draft->defaultCollectionDate->format('Y-m-d'),
             defaultSequenceType: $draft->defaultSequenceType->value,
