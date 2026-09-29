@@ -16,14 +16,16 @@ use App\Logic\IdentityAccess\Session\Model\RefreshToken;
  * `RefreshSessionUseCase`) und kapselt damit die Lebensdauer-Regeln an einer Stelle:
  *
  * - Access-Token: 15 Minuten ab Ausstellung.
- * - Refresh-Token: gleitend 15 Minuten ab Ausstellung, aber niemals über die bei der
- *   Erstanmeldung festgelegte absolute Obergrenze (`$absoluteExpiresAt`, 12 Stunden) hinaus — das
- *   Deckeln passiert hier, nicht beim Aufrufer.
+ * - Refresh-Token: gleitend 60 Minuten ab Ausstellung — passend zum Inaktivitäts-Logout der
+ *   Redaktion (`assets/admin/shell.js`), damit eine Sitzung auch dann noch verlängert werden kann,
+ *   wenn der Browser den Tab im Hintergrund gedrosselt oder eingefroren hat —, aber niemals über die
+ *   bei der Erstanmeldung festgelegte absolute Obergrenze (`$absoluteExpiresAt`, 12 Stunden) hinaus.
+ *   Das Deckeln passiert hier, nicht beim Aufrufer.
  */
 readonly class SessionTokenIssuer
 {
     private const int ACCESS_TOKEN_MINUTES = 15;
-    private const int REFRESH_TOKEN_SLIDING_MINUTES = 15;
+    private const int REFRESH_TOKEN_SLIDING_MINUTES = 60;
     private const int REFRESH_TOKEN_ABSOLUTE_HOURS = 12;
 
     public function __construct(

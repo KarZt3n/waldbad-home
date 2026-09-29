@@ -36,9 +36,9 @@ const setAdminPath = (segments, replace = false) => {
 };
 
 // Sitzungs-Timer für die Redaktion (siehe `SessionTokenIssuer`, `AuthenticationController`): ein
-// Inaktivitäts-Logout nach 15 Minuten ohne Interaktion — unabhängig vom Token-Status — sowie ein
+// Inaktivitäts-Logout nach 60 Minuten ohne Interaktion — unabhängig vom Token-Status — sowie ein
 // proaktiver Refresh alle 10 Minuten, solange der Tab offen und die Person aktiv ist.
-const SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
 const SESSION_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const SESSION_ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
 let sessionIdleTimer = null;
