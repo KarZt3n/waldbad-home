@@ -437,7 +437,7 @@ a { color: var(--forest-700); }
     background: var(--white);
     box-shadow: var(--shadow);
 }
-.event-help-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.event-help-dialog::backdrop { background: rgb(5 29 20 / 72%); }
 .event-help-form { margin: 0; padding: clamp(1.5rem, 5vw, 3rem); background: linear-gradient(135deg, var(--forest-100), var(--white)); }
 .event-help-form header p:last-child { color: #33463b; line-height: 1.6; }
 .event-help-close { position: absolute; z-index: 2; top: .75rem; right: .75rem; width: 2.5rem; height: 2.5rem; border: 0; border-radius: 50%; color: var(--forest-900); background: var(--white); font-size: 1.8rem; cursor: pointer; }
@@ -675,6 +675,18 @@ a { color: var(--forest-700); }
     gap: .75rem;
     pointer-events: none;
 }
+/* Als Popover (siehe `toast()` in core.js) die Browser-Standardwerte für Popover zurücksetzen —
+   sonst stünde die Region zentriert mit Rahmen und weißem Hintergrund im Bild. */
+.toast-region[popover] {
+    inset: 1rem 1rem auto auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    color: inherit;
+    background: transparent;
+}
 
 .toast {
     display: grid;
@@ -711,7 +723,10 @@ a { color: var(--forest-700); }
     box-shadow: var(--shadow);
 }
 
-.confirm-dialog::backdrop { background: rgb(5 29 20 / 60%); backdrop-filter: blur(2px); }
+/* Overlay-Hintergründe bewusst ohne `backdrop-filter: blur()`: Der ständig neu berechnete
+   Weichzeichner hinter großen, in sich scrollenden Dialogen ließ die Anzeige beim Scrollen
+   flackern — stattdessen eine etwas deckendere Abdunklung. */
+.confirm-dialog::backdrop { background: rgb(5 29 20 / 67%); }
 .confirm-dialog-content { display: grid; gap: 1rem; padding: 2rem; }
 .confirm-dialog-content h2, .confirm-dialog-content p { margin: 0; }
 .confirm-dialog-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: .5rem; }
@@ -1284,7 +1299,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     background: var(--white);
     box-shadow: var(--shadow);
 }
-.participation-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.participation-dialog::backdrop { background: rgb(5 29 20 / 72%); }
 .participation-form { display: grid; gap: 1rem; padding: clamp(1.5rem, 5vw, 2.5rem); }
 .participation-form h2, .participation-form p { margin: 0; }
 .participation-interval-list { display: grid; gap: .75rem; }
@@ -1440,7 +1455,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     background: var(--white);
     box-shadow: var(--shadow);
 }
-.table-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.table-dialog::backdrop { background: rgb(5 29 20 / 72%); }
 .table-form { display: grid; gap: 1.25rem; padding: clamp(1.5rem, 5vw, 2.5rem); }
 .table-form h2, .table-form p { margin: 0; }
 
@@ -1464,7 +1479,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     box-shadow: var(--shadow);
 }
 
-.media-dialog::backdrop { background: rgb(11 46 32 / 68%); backdrop-filter: blur(4px); }
+.media-dialog::backdrop { background: rgb(11 46 32 / 75%); }
 .media-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; color: var(--ink); background: var(--white); }
 .media-dialog-header h2 { margin: .2rem 0 0; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 1rem; padding: 1.5rem; overflow: auto; background: #f0f4f1; }
@@ -1483,7 +1498,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     box-shadow: var(--shadow);
 }
 
-.preview-dialog::backdrop { background: rgb(11 46 32 / 72%); backdrop-filter: blur(4px); }
+.preview-dialog::backdrop { background: rgb(11 46 32 / 79%); }
 .preview-toolbar { position: sticky; z-index: 2; top: 0; display: flex; min-height: 4rem; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; color: var(--white); background: var(--forest-950); }
 .preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .preview-toolbar .editor-tool.active { color: var(--forest-950); background: var(--lime-400); }
@@ -1646,7 +1661,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .status-badge.status-active { color: var(--forest-900); background: #dcefe4; }
 .status-badge.status-inactive { color: #59645f; background: #e8ebe9; }
 .activity-dialog { width: min(38rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 1rem; color: var(--ink); background: var(--white); box-shadow: var(--shadow); }
-.activity-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.activity-dialog::backdrop { background: rgb(5 29 20 / 72%); }
 .activity-dialog-content { display: grid; gap: 1rem; padding: 2rem; }
 .activity-dialog-content header h2 { margin: .2rem 0 0; }
 .activity-dialog-content textarea { min-height: 8rem; }
@@ -1662,7 +1677,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .status-badge.event-kind-badge-event { color: var(--white); background: var(--forest-700); }
 .status-badge.event-kind-badge-work_assignment { color: var(--forest-950); background: var(--sun-400); }
 .event-schedule-dialog { width: min(52rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 1rem; color: var(--ink); background: var(--white); box-shadow: var(--shadow); }
-.event-schedule-dialog::backdrop { background: rgb(5 29 20 / 65%); backdrop-filter: blur(3px); }
+.event-schedule-dialog::backdrop { background: rgb(5 29 20 / 72%); }
 .event-schedule-dialog-content { display: grid; width: 100%; min-width: 0; gap: 1rem; padding: 2rem; overflow-x: hidden; overflow-y: auto; }
 .event-schedule-dialog-content > * { min-width: 0; }
 .event-schedule-dialog-content header h2 { margin: .2rem 0 0; }

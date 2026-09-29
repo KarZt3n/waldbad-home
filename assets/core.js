@@ -168,12 +168,21 @@ const element = (tag, options = {}) => {
 
     return node;
 };
+// Modale Dialoge (`showModal()`) liegen im „Top Layer“ des Browsers über jedem z-index. Damit
+// Meldungen trotzdem davor erscheinen, ist die Toast-Region ein Popover: Jedes (erneute) Öffnen
+// legt sie im Top Layer ganz nach oben, also vor einen bereits offenen Dialog.
+const supportsPopover = typeof HTMLElement !== 'undefined' && Object.hasOwn(HTMLElement.prototype, 'showPopover');
+const bringToastRegionToFront = (region) => {
+    if (!supportsPopover) return;
+    if (region.matches(':popover-open')) region.hidePopover();
+    region.showPopover();
+};
 const toast = (message, type = 'success', duration = 4500) => {
     let region = document.querySelector('.toast-region');
     if (!region) {
         region = element('div', {
             className: 'toast-region',
-            attributes: {'aria-label': 'Benachrichtigungen', 'aria-live': 'polite'},
+            attributes: {'aria-label': 'Benachrichtigungen', 'aria-live': 'polite', ...(supportsPopover ? {popover: 'manual'} : {})},
         });
         document.body.append(region);
     }
@@ -196,6 +205,7 @@ const toast = (message, type = 'success', duration = 4500) => {
     close.addEventListener('click', remove);
     item.append(element('span', {className: 'toast-icon', text: type === 'error' ? '!' : type === 'info' ? 'i' : '✓'}), element('p', {text: message}), close);
     region.append(item);
+    bringToastRegionToFront(region);
     window.setTimeout(remove, duration);
 };
 const confirmAction = (title, description, confirmLabel = 'Entfernen') => new Promise((resolve) => {
