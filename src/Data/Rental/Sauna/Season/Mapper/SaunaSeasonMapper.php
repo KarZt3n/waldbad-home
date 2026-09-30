@@ -2,9 +2,11 @@
 
 namespace App\Data\Rental\Sauna\Season\Mapper;
 
+use App\Data\Rental\Sauna\Season\Entity\SaunaSeasonClosureEntity;
 use App\Data\Rental\Sauna\Season\Entity\SaunaSeasonEntity;
 use App\Data\Rental\Sauna\Season\Entity\SaunaSeasonOpeningHoursEntity;
 use App\Logic\Common\IdentifierGeneratorInterface;
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 use App\Logic\Rental\Sauna\Season\Model\Weekday;
@@ -33,6 +35,14 @@ readonly class SaunaSeasonMapper
             createdAt: $entity->getCreatedAt(),
             updatedAt: $entity->getUpdatedAt(),
             closedOn: $entity->getClosedOn(),
+            closures: array_map(
+                static fn (SaunaSeasonClosureEntity $closure): SaunaClosure => new SaunaClosure(
+                    startsOn: $closure->getStartsOn(),
+                    endsOn: $closure->getEndsOn(),
+                    reason: $closure->getReason(),
+                ),
+                $entity->getClosures(),
+            ),
         );
     }
 
@@ -48,6 +58,7 @@ readonly class SaunaSeasonMapper
             closedOn: $season->closedOn,
         );
         $entity->replaceOpeningHours($this->openingHoursEntities($season, $entity));
+        $entity->replaceClosures($this->closureEntities($season, $entity));
 
         return $entity;
     }
@@ -62,6 +73,7 @@ readonly class SaunaSeasonMapper
             closedOn: $season->closedOn,
         );
         $entity->replaceOpeningHours($this->openingHoursEntities($season, $entity));
+        $entity->replaceClosures($this->closureEntities($season, $entity));
     }
 
     /**
@@ -84,6 +96,27 @@ readonly class SaunaSeasonMapper
             ),
             $season->openingHours,
             array_keys($season->openingHours),
+        );
+    }
+
+    /**
+     * Wie die Zeitfenster bei jedem Speichern vollständig ersetzt (siehe `openingHoursEntities()`).
+     *
+     * @return list<SaunaSeasonClosureEntity>
+     */
+    private function closureEntities(SaunaSeason $season, SaunaSeasonEntity $entity): array
+    {
+        return array_map(
+            fn (SaunaClosure $closure, int $position): SaunaSeasonClosureEntity => new SaunaSeasonClosureEntity(
+                id: $this->identifierGenerator->generate(),
+                season: $entity,
+                position: $position,
+                startsOn: $closure->startsOn,
+                endsOn: $closure->endsOn,
+                reason: $closure->reason,
+            ),
+            $season->closures,
+            array_keys($season->closures),
         );
     }
 }

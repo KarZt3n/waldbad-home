@@ -6,6 +6,7 @@ use App\Logic\Rental\Sauna\Booking\Dto\SaunaBookingResponse;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaCalendarDay;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaCalendarResponse;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaCalendarSlot;
+use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingParticipant;
 use App\UI\Rental\Sauna\Terms\Http\SaunaTermsResponseFactory;
 
 readonly class SaunaBookingResponseFactory
@@ -14,7 +15,7 @@ readonly class SaunaBookingResponseFactory
     {
     }
 
-    /** @return array<string, string|int|bool|array<string, string|null>|null> */
+    /** @return array<string, string|int|bool|array<string, string|null>|list<array{firstName: string, lastName: string}>|null> */
     public function booking(SaunaBookingResponse $booking): array
     {
         return [
@@ -35,6 +36,12 @@ readonly class SaunaBookingResponseFactory
             'submittedAt' => $booking->submittedAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $booking->updatedAt->format(\DateTimeInterface::ATOM),
             'individual' => $booking->individual,
+            'requestId' => $booking->requestId,
+            'requesterKey' => $booking->requesterKey,
+            'participants' => array_map(static fn (SaunaBookingParticipant $participant): array => [
+                'firstName' => $participant->firstName,
+                'lastName' => $participant->lastName,
+            ], $booking->participants),
             'memberContact' => $booking->memberContact === null ? null : [
                 'memberNumber' => $booking->memberContact->memberNumber,
                 'street' => $booking->memberContact->street,
@@ -47,7 +54,7 @@ readonly class SaunaBookingResponseFactory
 
     /**
      * @param list<SaunaBookingResponse> $bookings
-     * @return array{items: list<array<string, string|int|bool|array<string, string|null>|null>>, total: int}
+     * @return array{items: list<array<string, string|int|bool|array<string, string|null>|list<array{firstName: string, lastName: string}>|null>>, total: int}
      */
     public function collection(array $bookings): array
     {
@@ -63,6 +70,8 @@ readonly class SaunaBookingResponseFactory
      *     days: list<array{
      *         date: string,
      *         weekday: int,
+     *         closed: bool,
+     *         closedReason: string,
      *         slots: list<array{startTime: string, endTime: string, state: string}>
      *     }>,
      *     terms: array{priceCents: int, priceUnitMinutes: int, minPersons: int, maxPersons: int, updatedAt: string|null},
@@ -78,6 +87,8 @@ readonly class SaunaBookingResponseFactory
                 static fn (SaunaCalendarDay $day): array => [
                     'date' => $day->date->format('Y-m-d'),
                     'weekday' => (int) $day->date->format('N'),
+                    'closed' => $day->closed,
+                    'closedReason' => $day->closedReason,
                     'slots' => array_map(
                         static fn (SaunaCalendarSlot $slot): array => [
                             'startTime' => $slot->startTime,

@@ -6,6 +6,7 @@ use App\Logic\Common\Exception\AccessDeniedException;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\Exception\ConcurrencyException;
 use App\Logic\Common\Exception\DomainException;
+use App\Logic\Common\Exception\ErrorDetailsInterface;
 use App\Logic\Common\Exception\ResourceNotFoundException;
 use App\Logic\Common\Exception\UnauthenticatedException;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
@@ -42,6 +43,7 @@ readonly class DomainExceptionSubscriber
             'error' => [
                 'code' => $code,
                 'message' => $exception->getMessage(),
+                ...($exception instanceof ErrorDetailsInterface ? ['details' => $exception->details()] : []),
             ],
         ], $status));
     }

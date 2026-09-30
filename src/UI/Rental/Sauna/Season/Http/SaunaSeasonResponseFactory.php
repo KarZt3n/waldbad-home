@@ -3,6 +3,7 @@
 namespace App\UI\Rental\Sauna\Season\Http;
 
 use App\Logic\Rental\Sauna\Season\Dto\SaunaSeasonResponse;
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 
 readonly class SaunaSeasonResponseFactory
@@ -16,7 +17,8 @@ readonly class SaunaSeasonResponseFactory
      *     openingHours: list<array{weekday: int, startTime: string, endTime: string}>,
      *     createdAt: string,
      *     updatedAt: string,
-     *     closedOn: string|null
+     *     closedOn: string|null,
+     *     closures: list<array{startsOn: string, endsOn: string, reason: string}>
      * }
      */
     public function season(SaunaSeasonResponse $season): array
@@ -37,6 +39,14 @@ readonly class SaunaSeasonResponseFactory
             'createdAt' => $season->createdAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $season->updatedAt->format(\DateTimeInterface::ATOM),
             'closedOn' => $season->closedOn?->format('Y-m-d'),
+            'closures' => array_map(
+                static fn (SaunaClosure $closure): array => [
+                    'startsOn' => $closure->startsOn->format('Y-m-d'),
+                    'endsOn' => $closure->endsOn->format('Y-m-d'),
+                    'reason' => $closure->reason,
+                ],
+                $season->closures,
+            ),
         ];
     }
 

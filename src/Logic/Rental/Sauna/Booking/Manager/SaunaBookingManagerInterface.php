@@ -15,4 +15,11 @@ interface SaunaBookingManagerInterface
     public function findBetween(\DateTimeImmutable $from, \DateTimeImmutable $to): array;
 
     public function save(SaunaBooking $booking): SaunaBooking;
+
+    /**
+     * @param list<SaunaBooking> $bookings
+     *
+     * @return list<SaunaBooking>
+     */
+    public function saveAll(array $bookings): array;
 }

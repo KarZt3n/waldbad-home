@@ -3,11 +3,15 @@
 namespace App\Logic\Rental\Sauna\Booking\Dto;
 
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
+use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingParticipant;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaGuestContact;
 
 readonly class SaunaBookingResponse
 {
+    /**
+     * @param list<SaunaBookingParticipant> $participants
+     */
     public function __construct(
         public string $id,
         public \DateTimeImmutable $date,
@@ -28,6 +32,10 @@ readonly class SaunaBookingResponse
         public bool $individual,
         /** Aktuelle Kontaktdaten des verknüpften Mitglieds; nur in der Verwaltungsliste befüllt. */
         public ?SaunaGuestContact $memberContact = null,
+        public ?string $requestId = null,
+        public array $participants = [],
+        /** Siehe `SaunaBooking::requesterKey()`. */
+        public string $requesterKey = '',
     ) {
     }
 
@@ -52,6 +60,9 @@ readonly class SaunaBookingResponse
             updatedAt: $booking->updatedAt,
             individual: $booking->individual,
             memberContact: $memberContact,
+            requestId: $booking->requestId,
+            participants: $booking->participants,
+            requesterKey: $booking->requesterKey(),
         );
     }
 }

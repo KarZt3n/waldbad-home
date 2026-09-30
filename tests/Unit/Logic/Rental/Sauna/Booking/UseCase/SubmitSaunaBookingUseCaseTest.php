@@ -9,7 +9,6 @@ use App\Logic\Rental\Sauna\Booking\Dto\SubmitSaunaBookingRequest;
 use App\Logic\Rental\Sauna\Booking\Manager\SaunaBookingManagerInterface;
 use App\Logic\Rental\Sauna\Booking\Mapping\SaunaBookingModelFactory;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
-use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaGuestMatch;
 use App\Logic\Rental\Sauna\Booking\SaunaBookingNotifierInterface;
 use App\Logic\Rental\Sauna\Booking\SaunaGuestMatcherInterface;
@@ -80,49 +79,6 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $this->useCase($bookings)->execute($this->request(personCount: 7, endTime: '19:00'));
     }
 
-    public function testIndividualRequestIsAllowedOutsideSeasonAndSlotGrid(): void
-    {
-        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
-        $bookings->method('findBetween')->willReturn([]);
-        $bookings->expects(self::once())->method('save')
-            ->with(self::callback(static fn (SaunaBooking $booking): bool => $booking->individual
-                && $booking->startTime === '13:15'
-                && $booking->priceCents === 1750))
-            ->willReturnArgument(0);
-
-        // Dienstag, außerhalb des Wochenplans (nur montags) und nicht am Raster ausgerichtet.
-        $this->useCase($bookings)->execute($this->request(personCount: 3, endTime: '15:00', date: '2026-10-06', startTime: '13:15', individual: true));
-    }
-
-    public function testIndividualRequestMustNotOverlapExistingRequest(): void
-    {
-        $existing = new SaunaBooking(
-            id: 'existing',
-            date: new \DateTimeImmutable('2026-10-06'),
-            startTime: '14:00',
-            endTime: '16:00',
-            personCount: 2,
-            priceCents: 2000,
-            firstName: 'Max',
-            lastName: 'Mustermann',
-            birthDate: new \DateTimeImmutable('1985-05-05'),
-            email: null,
-            message: '',
-            status: SaunaBookingStatus::Open,
-            memberId: null,
-            memberNumber: null,
-            submittedAt: new \DateTimeImmutable('2026-09-20T10:00:00'),
-            updatedAt: new \DateTimeImmutable('2026-09-20T10:00:00'),
-        );
-        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
-        $bookings->method('findBetween')->willReturn([$existing]);
-        $bookings->expects(self::never())->method('save');
-
-        $this->expectException(BusinessRuleViolationException::class);
-        $this->expectExceptionMessage('bereits belegt');
-        $this->useCase($bookings)->execute($this->request(personCount: 3, endTime: '15:00', date: '2026-10-06', startTime: '13:15', individual: true));
-    }
-
     public function testRegularRequestOutsideSlotGridIsRejected(): void
     {
         $bookings = $this->createMock(SaunaBookingManagerInterface::class);
@@ -172,7 +128,6 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         string $endTime,
         string $date = '2026-10-05',
         string $startTime = '18:00',
-        bool $individual = false,
     ): SubmitSaunaBookingRequest {
         return new SubmitSaunaBookingRequest(
             date: new \DateTimeImmutable($date),
@@ -184,7 +139,6 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
             birthDate: new \DateTimeImmutable('1990-01-01'),
             email: null,
             message: '',
-            individual: $individual,
         );
     }
 }

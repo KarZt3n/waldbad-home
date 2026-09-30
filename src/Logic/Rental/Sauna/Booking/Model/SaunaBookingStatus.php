@@ -7,4 +7,6 @@ enum SaunaBookingStatus: string
     case Open = 'open';
     case Accepted = 'accepted';
     case Rejected = 'rejected';
+    /** Nach der Annahme wieder abgesagt (Storno); gibt den Zeitraum frei. */
+    case Cancelled = 'cancelled';
 }

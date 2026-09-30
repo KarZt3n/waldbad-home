@@ -12,8 +12,8 @@ const WEEKDAYS = [
     [1, 'Montag'], [2, 'Dienstag'], [3, 'Mittwoch'], [4, 'Donnerstag'], [5, 'Freitag'], [6, 'Samstag'], [7, 'Sonntag'],
 ];
 const WEEKDAY_SHORT = {1: 'Mo', 2: 'Di', 3: 'Mi', 4: 'Do', 5: 'Fr', 6: 'Sa', 7: 'So'};
-const BOOKING_STATUS_LABELS = {open: 'Offen', accepted: 'Angenommen', rejected: 'Abgelehnt'};
-const BOOKING_STATUS_BADGES = {open: 'status-pending', accepted: 'status-active', rejected: 'status-rejected'};
+const BOOKING_STATUS_LABELS = {open: 'Offen', accepted: 'Angenommen', rejected: 'Abgelehnt', cancelled: 'Storniert'};
+const BOOKING_STATUS_BADGES = {open: 'status-pending', accepted: 'status-active', rejected: 'status-rejected', cancelled: 'status-inactive'};
 
 const todayIso = () => {
     const now = new Date();
@@ -21,20 +21,74 @@ const todayIso = () => {
     return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 };
 
-/**
- * Karte einer Sauna-Anmeldung, aufgebaut wie die Teilnehmerzeilen der Helferanfragen: links die
- * Person (Name mit Mitgliedsnummer-Bubble, darunter Anschrift und E-Mail des verknüpften
- * Mitglieds) und der Termin, rechts Kennzeichen/Status oben und die Aktionen unten.
- */
-const bookingCard = (booking, refresh) => {
+/** Anfragende Person: Name mit Mitgliedsnummer-Bubble, darunter Anschrift und E-Mail des verknüpften Mitglieds. */
+const bookingIdentity = (booking) => {
     const contact = booking.memberContact;
     const email = booking.email || contact?.email || null;
+
+    return element('div', {className: 'event-helper-participant-identity', children: [
+        element('div', {className: 'event-helper-participant-name-row', children: [
+            element('strong', {text: `${booking.firstName} ${booking.lastName}`}),
+            ...(contact || booking.memberNumber
+                ? [element('span', {className: 'status-badge member-link-badge is-linked', text: contact?.memberNumber || booking.memberNumber})]
+                : [element('span', {className: 'status-badge member-link-badge', text: 'Kein Mitglied'})]),
+        ]}),
+        ...(contact ? [element('small', {className: 'event-helper-member-detail', text: `${contact.street} • ${contact.postalCode} ${contact.city}`})] : []),
+        ...(email ? [element('a', {className: 'event-helper-member-detail', text: email, attributes: {href: `mailto:${email}`}})] : []),
+    ]});
+};
+
+const bookingMessage = (booking) => booking.message ? [element('p', {className: 'sauna-booking-message', text: booking.message})] : [];
+const bookingSubmitted = (booking) => element('small', {className: 'sauna-booking-submitted', text: `Eingegangen am ${new Date(booking.submittedAt).toLocaleString('de-DE')}`});
+
+/**
+ * „Stornieren“ mit Rückfrage; in der Rückfrage lässt sich die Stornobestätigung an die anfragende
+ * Person abwählen (standardmäßig angehakt, ohne bekannte E-Mail-Adresse nicht möglich).
+ */
+const cancelButton = (booking, refresh) => {
+    const button = element('button', {className: 'secondary-button', text: 'Stornieren', attributes: {type: 'button'}});
+    button.addEventListener('click', async () => {
+        const email = booking.email || booking.memberContact?.email || null;
+        const notify = element('input', {attributes: {type: 'checkbox', ...(email ? {checked: 'checked'} : {disabled: 'disabled'})}});
+        const confirmed = await confirmAction(
+            'Sauna-Termin stornieren?',
+            'Der Termin wird abgesagt und der Zeitraum im öffentlichen Kalender wieder als frei angezeigt.',
+            'Stornieren',
+            [element('label', {className: 'check-field', children: [
+                notify,
+                element('span', {text: email ? `Stornobestätigung an ${email} senden` : 'Stornobestätigung senden (keine E-Mail-Adresse bekannt)'}),
+            ]})],
+        );
+        if (!confirmed) return;
+        button.disabled = true;
+        try {
+            await request(`/api/admin/v1/sauna-bookings/${booking.id}/cancel`, {method: 'POST', body: JSON.stringify({notify: notify.checked})});
+            toast(notify.checked ? 'Sauna-Termin wurde storniert, die Bestätigung wird versendet.' : 'Sauna-Termin wurde storniert.');
+            await refresh();
+        } catch (error) {
+            toast(error.message, 'error');
+            button.disabled = false;
+        }
+    });
+
+    return button;
+};
+
+/**
+ * Karte einer Sauna-Anmeldung, aufgebaut wie die Teilnehmerzeilen der Helferanfragen: links die
+ * Person und der Termin, rechts Kennzeichen/Status oben und die Aktionen unten. Innerhalb der
+ * Gruppe einer anfragenden Person (`inRequest`) ohne Person und Nachricht — die stehen dann im Kopf
+ * der Gruppe.
+ */
+const bookingCard = (booking, refresh, {inRequest = false} = {}) => {
     const weekday = new Date(`${booking.date}T00:00:00`).toLocaleDateString('de-DE', {weekday: 'short'});
     const actions = canEditModule('rental_sauna') ? [
         ...(booking.status !== 'accepted' ? [actionButton('Annehmen', `/api/admin/v1/sauna-bookings/${booking.id}/accept`, refresh, 'button', {
             success: 'Sauna-Anmeldung wurde angenommen.',
         })] : []),
-        ...(booking.status !== 'rejected' ? [actionButton('Ablehnen', `/api/admin/v1/sauna-bookings/${booking.id}/reject`, refresh, 'secondary-button', {
+        // Angenommene Termine werden storniert statt abgelehnt (z. B. wenn jemand einen Tag absagt).
+        ...(booking.status === 'accepted' ? [cancelButton(booking, refresh)] : []),
+        ...(booking.status === 'open' ? [actionButton('Ablehnen', `/api/admin/v1/sauna-bookings/${booking.id}/reject`, refresh, 'secondary-button', {
             success: 'Sauna-Anmeldung wurde abgelehnt.',
             confirm: {
                 title: 'Sauna-Anmeldung ablehnen?',
@@ -44,23 +98,15 @@ const bookingCard = (booking, refresh) => {
         })] : []),
     ] : [];
 
-    return element('article', {className: `management-card sauna-booking-card status-${booking.status}`, children: [
+    return element('article', {className: `management-card sauna-booking-card status-${booking.status}${inRequest ? ' is-request-day' : ''}`, children: [
         element('div', {className: 'sauna-booking-main', children: [
-            element('div', {className: 'event-helper-participant-identity', children: [
-                element('div', {className: 'event-helper-participant-name-row', children: [
-                    element('strong', {text: `${booking.firstName} ${booking.lastName}`}),
-                    ...(contact || booking.memberNumber
-                        ? [element('span', {className: 'status-badge member-link-badge is-linked', text: contact?.memberNumber || booking.memberNumber})]
-                        : [element('span', {className: 'status-badge member-link-badge', text: 'Kein Mitglied'})]),
-                ]}),
-                ...(contact ? [element('small', {className: 'event-helper-member-detail', text: `${contact.street} • ${contact.postalCode} ${contact.city}`})] : []),
-                ...(email ? [element('a', {className: 'event-helper-member-detail', text: email, attributes: {href: `mailto:${email}`}})] : []),
-            ]}),
+            ...(inRequest ? [] : [bookingIdentity(booking)]),
             element('div', {className: 'sauna-booking-appointment', children: [
                 element('strong', {text: `${weekday}, ${formatDateDE(booking.date)} · ${booking.startTime}–${booking.endTime} Uhr`}),
-                element('small', {text: `${booking.personCount} Personen · ${formatEuro(booking.priceCents)} · geb. ${formatDateDE(booking.birthDate)}`}),
-                ...(booking.message ? [element('p', {className: 'sauna-booking-message', text: booking.message})] : []),
-                element('small', {className: 'sauna-booking-submitted', text: `Eingegangen am ${new Date(booking.submittedAt).toLocaleString('de-DE')}`}),
+                element('small', {text: `${booking.personCount} Personen · ${formatEuro(booking.priceCents)}`}),
+                ...(booking.participants.length ? [element('small', {className: 'sauna-booking-participants', text: `Personen: ${booking.participants.map((participant) => `${participant.firstName} ${participant.lastName}`).join(', ')}`})] : []),
+                ...(inRequest ? [] : bookingMessage(booking)),
+                bookingSubmitted(booking),
             ]}),
         ]}),
         element('div', {className: 'sauna-booking-side', children: [
@@ -73,6 +119,37 @@ const bookingCard = (booking, refresh) => {
     ]});
 };
 
+/**
+ * Alle Anmeldungen einer anfragenden Person (gleicher `requesterKey`, auch aus mehreren Anfragen)
+ * als eine Gruppe: im Kopf die Person mit ihren Nachrichten und „Alle annehmen“ für alle offenen
+ * Termine, darunter jeder Termin mit eigener Annahme/Ablehnung.
+ */
+const requestGroup = (items, refresh) => {
+    const newest = items.reduce((latest, item) => (item.submittedAt > latest.submittedAt ? item : latest));
+    const openCount = items.filter((item) => item.status === 'open').length;
+    const requestCount = new Set(items.map((item) => item.requestId || item.id)).size;
+    const messages = [...new Set(items.map((item) => item.message.trim()).filter(Boolean))];
+    const acceptAll = canEditModule('rental_sauna') && openCount > 1
+        ? [actionButton(`Alle annehmen (${openCount})`, `/api/admin/v1/sauna-bookings/requesters/${newest.requesterKey}/accept`, refresh, 'button', {
+            success: `${openCount} Sauna-Termine wurden angenommen.`,
+        })]
+        : [];
+
+    return element('article', {className: 'management-card sauna-request-group', children: [
+        element('header', {className: 'sauna-request-head', children: [
+            bookingIdentity(newest),
+            element('div', {className: 'sauna-request-meta', children: [
+                element('div', {className: 'sauna-booking-badges', children: [
+                    element('span', {className: 'status-badge', text: requestCount > 1 ? `${items.length} Termine · ${requestCount} Anfragen` : `${items.length} Termine`}),
+                ]}),
+                ...(acceptAll.length ? [element('div', {className: 'card-actions sauna-booking-actions', children: acceptAll})] : []),
+            ]}),
+            ...(messages.length ? [element('div', {className: 'sauna-request-message', children: messages.map((message) => element('p', {className: 'sauna-booking-message', text: message}))})] : []),
+        ]}),
+        element('div', {className: 'sauna-request-days', children: items.map((item) => bookingCard(item, refresh, {inRequest: true}))}),
+    ]});
+};
+
 const showSaunaBookings = async () => {
     const data = await request('/api/admin/v1/sauna-bookings');
     const today = todayIso();
@@ -80,13 +157,27 @@ const showSaunaBookings = async () => {
     const upcomingAccepted = data.items.filter((item) => item.status === 'accepted' && item.date >= today);
     const pastAccepted = data.items.filter((item) => item.status === 'accepted' && item.date < today).reverse();
     const rejected = data.items.filter((item) => item.status === 'rejected').reverse();
+    const cancelled = data.items.filter((item) => item.status === 'cancelled').reverse();
+    // Anmeldungen derselben Person (`requesterKey`, siehe `SaunaBooking::requesterKey()`) innerhalb
+    // eines Abschnitts an der Stelle ihrer ersten Anmeldung zusammenfassen.
+    const cards = (items) => {
+        const byRequester = new Map();
+        items.forEach((item) => byRequester.set(item.requesterKey, [...(byRequester.get(item.requesterKey) || []), item]));
+
+        return items.flatMap((item) => {
+            const group = byRequester.get(item.requesterKey);
+            if (group.length < 2) return [bookingCard(item, showRentalManagement)];
+
+            return group[0] === item ? [requestGroup(group, showRentalManagement)] : [];
+        });
+    };
     const section = (title, items, badgeClass, emptyText) => element('section', {className: 'event-helper-section', children: [
         element('div', {className: 'event-helper-section-heading', children: [
             element('h3', {text: title}),
             element('span', {className: `status-badge ${badgeClass}`, text: String(items.length)}),
         ]}),
         element('div', {className: 'card-list', children: items.length
-            ? items.map((item) => bookingCard(item, showRentalManagement))
+            ? cards(items)
             : [emptyState(emptyText)]}),
     ]});
     const archive = (title, items) => element('details', {className: 'event-helper-archive', children: [
@@ -94,7 +185,7 @@ const showSaunaBookings = async () => {
             element('strong', {text: title}),
             element('span', {className: 'status-badge', text: String(items.length)}),
         ]}),
-        element('div', {className: 'card-list event-helper-archive-list', children: items.map((item) => bookingCard(item, showRentalManagement))}),
+        element('div', {className: 'card-list event-helper-archive-list', children: cards(items)}),
     ]});
 
     workspace.replaceChildren(
@@ -104,6 +195,7 @@ const showSaunaBookings = async () => {
             section('Angenommen – anstehend', upcomingAccepted, 'status-active', 'Keine anstehenden Sauna-Termine.'),
             ...(pastAccepted.length ? [archive('Angenommen – vergangen', pastAccepted)] : []),
             ...(rejected.length ? [archive('Abgelehnt', rejected)] : []),
+            ...(cancelled.length ? [archive('Storniert', cancelled)] : []),
         ]}),
     );
 };
@@ -176,6 +268,79 @@ const buildWeeklyPlanEditor = (openingHours) => {
     return container;
 };
 
+const closureLabel = (closure) => {
+    const range = closure.endsOn && closure.endsOn !== closure.startsOn
+        ? `${formatDateDE(closure.startsOn)} – ${formatDateDE(closure.endsOn)}`
+        : formatDateDE(closure.startsOn);
+
+    return closure.reason ? `${range} (${closure.reason})` : range;
+};
+
+/**
+ * Schließzeiten-Editor: Tage bzw. Zeiträume, an denen die Sauna trotz Wochenplan geschlossen ist.
+ * `closures` wird wie beim Wochenplan in place gepflegt; ohne „bis“ gilt eine Schließzeit nur für
+ * den einen Tag.
+ */
+const buildClosuresEditor = (closures, idPrefix) => {
+    const container = element('div', {className: 'sauna-closure-editor'});
+    const render = () => {
+        const add = element('button', {className: 'secondary-button button-compact', text: '＋ Schließzeit', attributes: {type: 'button'}});
+        add.addEventListener('click', () => {
+            closures.push({startsOn: '', endsOn: '', reason: ''});
+            render();
+            container.querySelector('.sauna-closure-row:last-of-type input')?.focus();
+        });
+        container.replaceChildren(
+            ...(closures.length ? closures.map((closure, index) => {
+                const id = `${idPrefix}-closure-${index}`;
+                const startsOn = element('input', {attributes: {type: 'date', id: `${id}-from`, required: 'required'}});
+                const endsOn = element('input', {attributes: {type: 'date', id: `${id}-to`}});
+                const reason = element('input', {attributes: {type: 'text', id: `${id}-reason`, maxlength: '120', placeholder: 'z. B. Revision'}});
+                startsOn.value = closure.startsOn;
+                endsOn.value = closure.endsOn || '';
+                reason.value = closure.reason || '';
+                startsOn.addEventListener('change', () => {
+                    closure.startsOn = startsOn.value;
+                    endsOn.min = startsOn.value;
+                });
+                endsOn.min = closure.startsOn;
+                endsOn.addEventListener('change', () => closure.endsOn = endsOn.value);
+                reason.addEventListener('input', () => closure.reason = reason.value);
+                const remove = element('button', {className: 'text-button danger', text: 'Entfernen', attributes: {type: 'button', 'aria-label': 'Schließzeit entfernen'}});
+                remove.addEventListener('click', () => {
+                    closures.splice(closures.indexOf(closure), 1);
+                    render();
+                });
+
+                return element('div', {className: 'sauna-closure-row', children: [
+                    element('label', {className: 'field', attributes: {for: `${id}-from`}, children: [element('span', {text: 'Von'}), startsOn]}),
+                    element('label', {className: 'field', attributes: {for: `${id}-to`}, children: [element('span', {text: 'Bis (optional)'}), endsOn]}),
+                    element('label', {className: 'field', attributes: {for: `${id}-reason`}, children: [element('span', {text: 'Grund (optional)'}), reason]}),
+                    remove,
+                ]});
+            }) : [element('small', {className: 'sauna-plan-closed', text: 'Keine Schließzeiten'})]),
+            add,
+        );
+    };
+    render();
+
+    return container;
+};
+
+/** Aufklappbarer Abschnitt im Saison-Dialog; `summary` fasst den Inhalt im zugeklappten Zustand zusammen. */
+const seasonSection = (title, summary, content, open = false) => {
+    const details = element('details', {className: 'event-helper-archive sauna-season-section', children: [
+        element('summary', {children: [
+            element('strong', {text: title}),
+            element('small', {className: 'sauna-season-section-summary', text: summary}),
+        ]}),
+        element('div', {className: 'sauna-season-section-body', children: [content]}),
+    ]});
+    details.open = open;
+
+    return details;
+};
+
 const openSeasonDialog = (season, onSaved) => {
     const dialog = element('dialog', {className: 'activity-dialog sauna-season-dialog'});
     const key = season?.id || 'new';
@@ -187,6 +352,7 @@ const openSeasonDialog = (season, onSaved) => {
     slotDurationInput.max = '720';
     slotDurationInput.step = '15';
     const openingHours = (season?.openingHours || []).map((hours) => ({...hours}));
+    const closures = (season?.closures || []).map((closure) => ({...closure}));
     const message = formMessage();
     const submit = element('button', {className: 'button', text: season ? 'Änderungen speichern' : 'Saison anlegen', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -263,8 +429,16 @@ const openSeasonDialog = (season, onSaved) => {
         ...(season ? [] : [element('small', {text: 'Es ist immer nur eine Saison aktiv: Eine noch offene Saison wird automatisch zum Beginn dieser neuen Saison abgeschlossen (frühestens heute), ihr Enddatum bleibt unverändert.'})]),
         slotDuration,
         element('small', {text: 'Die Zeitfenster werden im Kalender in Einheiten dieser Länge aufgeteilt. Gäste können mehrere aufeinanderfolgende Einheiten anfragen.'}),
-        element('h3', {text: 'Wochenplan'}),
-        buildWeeklyPlanEditor(openingHours),
+        seasonSection('Wochenplan', weeklySummary(openingHours) || 'Noch keine Zeiten', buildWeeklyPlanEditor(openingHours), true),
+        seasonSection(
+            'Schließzeiten',
+            closures.length ? `${closures.length} ${closures.length === 1 ? 'Schließzeit' : 'Schließzeiten'}` : 'Keine',
+            element('div', {className: 'sauna-season-section-content', children: [
+                element('small', {text: 'An diesen Tagen ist die Sauna trotz Wochenplan geschlossen: Der Kalender zeigt „Geschlossen“, Anfragen für diese Tage werden abgewiesen.'}),
+                buildClosuresEditor(closures, `sauna-season-${key}`),
+            ]}),
+            closures.length > 0,
+        ),
         message,
         element('div', {className: 'confirm-dialog-actions', children: actions}),
     ]});
@@ -283,6 +457,7 @@ const openSeasonDialog = (season, onSaved) => {
                     endsOn: endsOn.querySelector('input').value || null,
                     slotDurationMinutes: Number.parseInt(slotDurationInput.value, 10),
                     openingHours,
+                    closures: closures.map((closure) => ({startsOn: closure.startsOn, endsOn: closure.endsOn || null, reason: closure.reason.trim()})),
                 }),
             });
             toast(season ? 'Saison wurde gespeichert.' : 'Saison wurde angelegt.');
@@ -320,6 +495,7 @@ const showSaunaSeasons = async () => {
                     element('small', {text: `${season.endsOn ? '' : 'ohne Ende · '}`
                         + `${season.closedOn ? `abgeschlossen zum ${formatDateDE(season.closedOn)} · ` : ''}Einheiten à ${season.slotDurationMinutes} Min.`}),
                     element('small', {text: weeklySummary(season.openingHours)}),
+                    ...(season.closures.length ? [element('small', {text: `Geschlossen: ${season.closures.map(closureLabel).join(', ')}`})] : []),
                 ]}),
                 element('span', {className: `status-badge ${state.badge}`, text: state.label}),
                 ...(canEditModule('rental_sauna') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),

@@ -22,6 +22,7 @@ readonly class UpdateSaunaSeasonUseCase
             endsOn: $request->endsOn,
             slotDurationMinutes: $request->slotDurationMinutes,
             openingHours: $request->openingHours,
+            closures: $request->closures,
             updatedAt: $this->clock->now(),
         );
         return SaunaSeasonResponse::fromSeason($this->manager->save($season));

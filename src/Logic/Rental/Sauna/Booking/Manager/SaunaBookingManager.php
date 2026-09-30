@@ -34,4 +34,9 @@ readonly class SaunaBookingManager implements SaunaBookingManagerInterface
     {
         return $this->processor->save($booking);
     }
+
+    public function saveAll(array $bookings): array
+    {
+        return $this->processor->saveAll($bookings);
+    }
 }

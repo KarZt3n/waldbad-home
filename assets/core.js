@@ -59,6 +59,8 @@ const request = async (url, options = {}, isCsrfRetry = false) => {
         // Manche Fehler (z. B. „PIN erforderlich“, siehe pin-settings) müssen von Aufrufern
         // unterschieden werden können, statt nur als Text im Toast zu landen.
         error.code = errorCode;
+        // Zuordnung des Fehlers zu einem Teil der Eingabe (siehe `ErrorDetailsInterface`), z. B. `{days: [1]}`.
+        error.details = data?.error?.details || null;
         // Nur innerhalb einer bestehenden Sitzung (csrfToken gesetzt) automatisch abmelden — sonst
         // würde ein 401 auf /login-requests, /login oder /me (dort erwartet, siehe admin/auth.js)
         // die gerade angezeigte Anmeldeseite unterbrechen.
@@ -208,7 +210,9 @@ const toast = (message, type = 'success', duration = 4500) => {
     bringToastRegionToFront(region);
     window.setTimeout(remove, duration);
 };
-const confirmAction = (title, description, confirmLabel = 'Entfernen') => new Promise((resolve) => {
+// `extra`: zusätzliche Elemente (z. B. eine Checkbox) zwischen Beschreibung und Schaltflächen; der
+// Aufrufer liest deren Zustand nach der Bestätigung selbst aus.
+const confirmAction = (title, description, confirmLabel = 'Entfernen', extra = []) => new Promise((resolve) => {
     const dialog = element('dialog', {className: 'confirm-dialog'});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const confirm = element('button', {className: 'button danger-button', text: confirmLabel, attributes: {type: 'button'}});
@@ -232,6 +236,7 @@ const confirmAction = (title, description, confirmLabel = 'Entfernen') => new Pr
         element('p', {className: 'eyebrow', text: 'Bitte bestätigen'}),
         element('h2', {text: title}),
         element('p', {text: description}),
+        ...extra,
         element('div', {className: 'confirm-dialog-actions', children: [cancel, confirm]}),
     ]}));
     document.body.append(dialog);

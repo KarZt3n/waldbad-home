@@ -7,6 +7,11 @@ use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 
 readonly class SaunaBooking
 {
+    /**
+     * @param list<SaunaBookingParticipant> $participants Namen aller Personen der Gruppe (bei individuellen
+     *                                                    Anfragen erfasst, sonst leer); wenn vorhanden,
+     *                                                    genau `$personCount` Einträge
+     */
     public function __construct(
         public string $id,
         public \DateTimeImmutable $date,
@@ -27,9 +32,18 @@ readonly class SaunaBooking
         public ?string $memberNumber,
         public \DateTimeImmutable $submittedAt,
         public \DateTimeImmutable $updatedAt,
-        /** Freie Wunschzeit außerhalb des Saison-Zeitrasters („individuelle Anfrage“). */
+        /** Freie Wunschzeit innerhalb der Saison, aber außerhalb ihres Zeitrasters („individuelle Anfrage“). */
         public bool $individual = false,
+        /**
+         * Gemeinsame Kennung aller Buchungen, die mit einer individuellen Anfrage zusammen angefragt
+         * wurden (je Wunschtag eine Buchung) — sonst `null`.
+         */
+        public ?string $requestId = null,
+        public array $participants = [],
     ) {
+        if ($this->participants !== [] && count($this->participants) !== $this->personCount) {
+            throw new BusinessRuleViolationException('Für jede Person der Gruppe sind Vorname und Nachname anzugeben.');
+        }
         if (trim($this->firstName) === '' || trim($this->lastName) === '') {
             throw new BusinessRuleViolationException('Vorname und Nachname sind erforderlich.');
         }
@@ -71,10 +85,34 @@ readonly class SaunaBooking
         return $this->withStatus(SaunaBookingStatus::Rejected, $updatedAt);
     }
 
+    /** Storno eines angenommenen Termins, z. B. wenn die anfragende Person einen Tag absagt. */
+    public function cancel(\DateTimeImmutable $updatedAt): self
+    {
+        if ($this->status !== SaunaBookingStatus::Accepted) {
+            throw new BusinessRuleViolationException('Nur angenommene Sauna-Anmeldungen können storniert werden.');
+        }
+
+        return $this->withStatus(SaunaBookingStatus::Cancelled, $updatedAt);
+    }
+
     /** Offene Anfragen reservieren den Zeitraum bereits, damit er nicht doppelt angefragt wird. */
     public function blocksTime(): bool
     {
-        return $this->status !== SaunaBookingStatus::Rejected;
+        return $this->status !== SaunaBookingStatus::Rejected && $this->status !== SaunaBookingStatus::Cancelled;
+    }
+
+    /**
+     * Kennung der anfragenden Person, unter der die Verwaltung alle ihre Anmeldungen zusammenfasst:
+     * das zugeordnete Mitglied, sonst Vor-/Nachname und Geburtsdatum (unabhängig von
+     * Groß-/Kleinschreibung) — die E-Mail-Adresse ist optional und daher kein verlässliches Merkmal.
+     */
+    public function requesterKey(): string
+    {
+        $identity = $this->memberId !== null
+            ? 'member:'.$this->memberId
+            : 'guest:'.mb_strtolower(trim($this->firstName)).'|'.mb_strtolower(trim($this->lastName)).'|'.$this->birthDate->format('Y-m-d');
+
+        return hash('sha256', $identity);
     }
 
     public function overlaps(\DateTimeImmutable $date, string $startTime, string $endTime): bool
@@ -104,6 +142,8 @@ readonly class SaunaBooking
             submittedAt: $this->submittedAt,
             updatedAt: $updatedAt,
             individual: $this->individual,
+            requestId: $this->requestId,
+            participants: $this->participants,
         );
     }
 }

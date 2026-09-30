@@ -9,6 +9,7 @@ use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaSlotState;
 use App\Logic\Rental\Sauna\Booking\Service\SaunaSlotAvailability;
 use App\Logic\Rental\Sauna\Season\Manager\SaunaSeasonManagerInterface;
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 use App\Logic\Rental\Sauna\Season\Model\Weekday;
@@ -17,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 final class SaunaSlotAvailabilityTest extends TestCase
 {
     private const string MONDAY = '2026-10-05';
+    private const string CLOSED_MONDAY = '2026-10-12';
 
     public function testCalendarMarksFreeBookedAndPastSlots(): void
     {
@@ -72,6 +74,33 @@ final class SaunaSlotAvailabilityTest extends TestCase
         $availability->assertBookable(new \DateTimeImmutable(self::MONDAY), '17:30', '18:30', new \DateTimeImmutable('2026-09-25T10:00:00'));
     }
 
+    public function testCalendarShowsClosureDaysAsClosedWithoutSlots(): void
+    {
+        $days = $this->availability([])->calendar(
+            new \DateTimeImmutable(self::CLOSED_MONDAY),
+            1,
+            new \DateTimeImmutable('2026-09-25T10:00:00'),
+        );
+
+        self::assertTrue($days[0]->closed);
+        self::assertSame('Revision', $days[0]->closedReason);
+        self::assertSame([], $days[0]->slots);
+    }
+
+    public function testRejectsCalendarBookingOnAClosureDay(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Die Sauna ist am 12.10.2026 geschlossen (Revision).');
+        $this->availability([])->assertBookable(new \DateTimeImmutable(self::CLOSED_MONDAY), '18:00', '19:00', new \DateTimeImmutable('2026-09-25T10:00:00'));
+    }
+
+    public function testRejectsIndividualRequestOnAClosureDay(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Die Sauna ist am 13.10.2026 geschlossen (Revision).');
+        $this->availability([])->assertIndividuallyRequestable(new \DateTimeImmutable('2026-10-13'), '10:00', '12:00', new \DateTimeImmutable('2026-09-25T10:00:00'));
+    }
+
     /**
      * @param list<SaunaBooking> $bookings
      */
@@ -86,6 +115,7 @@ final class SaunaSlotAvailabilityTest extends TestCase
             openingHours: [new SaunaOpeningHours(Weekday::Monday, '17:00', '21:00')],
             createdAt: $now,
             updatedAt: $now,
+            closures: [new SaunaClosure(new \DateTimeImmutable(self::CLOSED_MONDAY), new \DateTimeImmutable('2026-10-14'), 'Revision')],
         );
         $seasons = $this->createStub(SaunaSeasonManagerInterface::class);
         $seasons->method('all')->willReturn([$season]);

@@ -17,6 +17,7 @@ readonly class SaunaCalendarResponse
         public SaunaTermsResponse $terms,
         /** Beginn der laufenden oder nächsten kommenden Saison; `null` = aktuell keine Saison (alle abgelaufen/abgeschlossen). */
         public ?\DateTimeImmutable $seasonStartsOn,
+        /** Letzter buchbarer Tag dieser Saison (Ende bzw. Tag vor dem Abschluss); `null` = bis auf Weiteres. */
         public ?\DateTimeImmutable $seasonEndsOn,
     ) {
     }

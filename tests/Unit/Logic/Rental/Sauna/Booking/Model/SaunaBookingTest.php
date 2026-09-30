@@ -30,6 +30,17 @@ final class SaunaBookingTest extends TestCase
         $accepted->accept(new \DateTimeImmutable('2026-09-26T10:00:00'));
     }
 
+    public function testOnlyAcceptedBookingsCanBeCancelledAndThenFreeTheirTime(): void
+    {
+        $cancelled = $this->booking()->accept(new \DateTimeImmutable('2026-09-26T09:00:00'))->cancel(new \DateTimeImmutable('2026-09-27T09:00:00'));
+
+        self::assertSame(SaunaBookingStatus::Cancelled, $cancelled->status);
+        self::assertFalse($cancelled->blocksTime());
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->booking()->cancel(new \DateTimeImmutable('2026-09-27T09:00:00'));
+    }
+
     public function testOverlapIsCheckedPerDayAndTimeRange(): void
     {
         $booking = $this->booking();
@@ -48,24 +59,43 @@ final class SaunaBookingTest extends TestCase
         $this->booking(email: 'keine-adresse');
     }
 
-    private function booking(?string $email = null): SaunaBooking
+    public function testRequesterKeyGroupsByMemberOtherwiseByNameAndBirthDate(): void
     {
+        $guest = $this->booking();
+
+        self::assertSame($guest->requesterKey(), $this->booking(firstName: ' erika ', lastName: 'MUSTERFRAU', id: 'booking-2')->requesterKey());
+        self::assertNotSame($guest->requesterKey(), $this->booking(birthDate: '1991-01-01')->requesterKey());
+        self::assertSame(
+            $this->booking(memberId: 'member-7')->requesterKey(),
+            $this->booking(firstName: 'Eri', memberId: 'member-7')->requesterKey(),
+        );
+        self::assertNotSame($guest->requesterKey(), $this->booking(memberId: 'member-7')->requesterKey());
+    }
+
+    private function booking(
+        ?string $email = null,
+        string $firstName = 'Erika',
+        string $lastName = 'Musterfrau',
+        string $birthDate = '1990-01-01',
+        ?string $memberId = null,
+        string $id = 'booking-1',
+    ): SaunaBooking {
         $submittedAt = new \DateTimeImmutable('2026-09-25T10:00:00');
 
         return new SaunaBooking(
-            id: 'booking-1',
+            id: $id,
             date: new \DateTimeImmutable('2026-10-05'),
             startTime: '18:00',
             endTime: '20:00',
             personCount: 4,
             priceCents: 2000,
-            firstName: 'Erika',
-            lastName: 'Musterfrau',
-            birthDate: new \DateTimeImmutable('1990-01-01'),
+            firstName: $firstName,
+            lastName: $lastName,
+            birthDate: new \DateTimeImmutable($birthDate),
             email: $email,
             message: '',
             status: SaunaBookingStatus::Open,
-            memberId: null,
+            memberId: $memberId,
             memberNumber: null,
             submittedAt: $submittedAt,
             updatedAt: $submittedAt,

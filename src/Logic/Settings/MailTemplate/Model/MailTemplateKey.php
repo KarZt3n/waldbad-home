@@ -26,6 +26,8 @@ enum MailTemplateKey: string
     case MemberEmailConsentRequest = 'member_email_consent_request';
     case MemberEmailConsentOptOutRegret = 'member_email_consent_opt_out_regret';
     case SaunaBookingSubmittedNotification = 'sauna_booking_submitted_notification';
+    case SaunaBookingAccepted = 'sauna_booking_accepted';
+    case SaunaBookingCancelled = 'sauna_booking_cancelled';
 
     public function label(): string
     {
@@ -39,6 +41,8 @@ enum MailTemplateKey: string
             self::MemberEmailConsentRequest => 'Bestätigungslink: E-Mail-Einwilligung',
             self::MemberEmailConsentOptOutRegret => 'Rückmeldung: E-Mail-Einwilligung widerrufen',
             self::SaunaBookingSubmittedNotification => 'Benachrichtigung: neue Sauna-Anmeldung',
+            self::SaunaBookingAccepted => 'Bestätigung: Sauna-Anfrage angenommen',
+            self::SaunaBookingCancelled => 'Bestätigung: Sauna-Termin storniert',
         };
     }
 
@@ -54,6 +58,8 @@ enum MailTemplateKey: string
             self::MemberEmailConsentRequest => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald die Redaktion unter „Mitgliederverwaltung“ → Mitglied → Kontaktdaten die E-Mail-Einwilligung anfordert — der Erhalt von Vereinsinformationen per E-Mail gilt erst als zugestimmt, wenn der enthaltene Link angeklickt wird.',
             self::MemberEmailConsentOptOutRegret => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald es unter „Meine Mitgliedschaft“ die E-Mail-Einwilligung selbst abbestellt — enthält einen Link, um das rückgängig zu machen, falls es ein Versehen war.',
             self::SaunaBookingSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über den Sauna-Kalender eine Anmeldung eingeht.',
+            self::SaunaBookingAccepted => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ eine Sauna-Anfrage annimmt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds. Bei „Alle annehmen“ stehen alle angenommenen Termine der Person in einer Mail, sonst je angenommenem Termin eine eigene Mail.',
+            self::SaunaBookingCancelled => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ einen angenommenen Termin storniert und dabei „Stornobestätigung senden“ angehakt lässt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds.',
         };
     }
 
@@ -71,7 +77,9 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
             self::MemberEmailConsentRequest => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
             self::MemberEmailConsentOptOutRegret => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
-            self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht'],
+            self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'termine', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht'],
+            self::SaunaBookingAccepted => ['vorname', 'nachname', 'datum', 'termine', 'preis', 'nachricht', 'vereinsname'],
+            self::SaunaBookingCancelled => ['vorname', 'nachname', 'datum', 'termin', 'vereinsname'],
         };
     }
 
@@ -87,6 +95,8 @@ enum MailTemplateKey: string
             self::MemberEmailConsentRequest => 'Möchtest du per E-Mail auf dem Laufenden bleiben?',
             self::MemberEmailConsentOptOutRegret => 'Schade, dass du keine Neuigkeiten mehr erhalten möchtest',
             self::SaunaBookingSubmittedNotification => 'Neue Sauna-Anmeldung am {{datum}}',
+            self::SaunaBookingAccepted => 'Deine Sauna-Anfrage wurde angenommen',
+            self::SaunaBookingCancelled => 'Dein Sauna-Termin am {{datum}} wurde storniert',
         };
     }
 
@@ -194,16 +204,39 @@ enum MailTemplateKey: string
             self::SaunaBookingSubmittedNotification => <<<'TEXT'
                 {{vorname}} {{nachname}} hat die Sauna angefragt:
 
-                Termin: {{datum}}, {{uhrzeit}} Uhr ({{anfrageart}})
-                Personen: {{personenzahl}}
-                Preis: {{preis}}
-                E-Mail: {{email}}
-                Mitglied: {{mitglied}}
+                {{anfrageart}}:
 
-                Nachricht:
-                {{nachricht}}
+                {{termine}}
+
+                Nachricht: {{nachricht}}
 
                 Bitte im Admin-Bereich unter „Vermietung“ → „Sauna“ → „Anmeldungen“ annehmen oder ablehnen.
+                TEXT,
+            self::SaunaBookingAccepted => <<<'TEXT'
+                Hallo {{vorname}} {{nachname}},
+
+                deine Sauna-Anfrage wurde angenommen:
+
+                {{termine}}
+
+                Nachricht: {{nachricht}}
+
+                Wir freuen uns auf euren Besuch!
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
+            self::SaunaBookingCancelled => <<<'TEXT'
+                Hallo {{vorname}} {{nachname}},
+
+                dein Sauna-Termin wurde storniert:
+
+                {{termin}}
+
+                Bei Fragen melde dich gerne bei uns.
+
+                Viele Grüße
+                Dein {{vereinsname}}
                 TEXT,
         };
     }
@@ -277,11 +310,28 @@ enum MailTemplateKey: string
                 'datum' => '05.10.2026',
                 'uhrzeit' => '18:00–20:00',
                 'anfrageart' => 'Zeitfenster aus dem Kalender',
+                'termine' => "05.10.2026, 18:00–20:00 Uhr,\n- 4 Personen\n- Preis: 20,00 €",
                 'personenzahl' => '4',
                 'preis' => '20,00 €',
                 'email' => 'erika@example.com',
                 'mitglied' => 'Bad-01234',
                 'nachricht' => 'Wir bringen eigene Handtücher mit.',
+            ],
+            self::SaunaBookingAccepted => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'datum' => '05.10.2026',
+                'termine' => "05.10.2026, 18:00–20:00 Uhr,\n- 4 Personen (Erika Musterfrau, Max Mustermann, Mia Mustermann, Tom Mustermann)\n- Preis: 20,00 €\n\n08.10.2026, 17:00–19:00 Uhr,\n- 2 Personen (Erika Musterfrau, Max Mustermann)\n- Preis: 20,00 €",
+                'preis' => '40,00 €',
+                'nachricht' => 'Wir bringen eigene Handtücher mit.',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
+            self::SaunaBookingCancelled => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'datum' => '05.10.2026',
+                'termin' => "05.10.2026, 18:00–20:00 Uhr,\n- 4 Personen (Erika Musterfrau, Max Mustermann, Mia Mustermann, Tom Mustermann)\n- Preis: 20,00 €",
+                'vereinsname' => AssociationName::CURRENT,
             ],
         };
     }

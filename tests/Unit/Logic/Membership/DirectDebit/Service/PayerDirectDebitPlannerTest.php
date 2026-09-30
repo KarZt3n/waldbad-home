@@ -242,6 +242,25 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertSame([DirectDebitObstacleKind::OtherPaymentMethod], array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $draft->blockers));
     }
 
+    /**
+     * Ein ausgetretener Zahler wird nicht mehr eingezogen: Zahlt er noch für aktive Mitglieder, ist
+     * er blockiert („Zahler ausgetreten“); ohne aktive Mitglieder taucht er in `planAll()` gar nicht
+     * mehr auf.
+     */
+    public function testLeftPayerIsBlockedAndLeftPayerWithoutActiveMembersIsSkipped(): void
+    {
+        $leftPayer = $this->member('payer', leftAt: '2026-06-30', mandateValidFrom: '2020-03-01');
+        $child = $this->member('child', payerId: 'payer', category: ContributionCategory::FamilyChildPaying, amountCents: 3000, surchargeCents: null);
+        $leftAlone = $this->member('alone', leftAt: '2025-12-31', mandateValidFrom: '2020-03-01');
+        $now = new \DateTimeImmutable(self::NOW);
+        $planner = $this->planner([$leftPayer, $child, $leftAlone]);
+
+        $draft = $planner->plan('child', $now);
+        self::assertSame([DirectDebitObstacleKind::PayerLeft], array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $draft->blockers));
+        self::assertStringContainsString('30.06.2026', $draft->blockers[0]->message);
+        self::assertSame(['payer'], array_map(static fn (PayerDirectDebitDraft $each): string => $each->payer->id, $planner->planAll($now)));
+    }
+
     private function record(int $contributionYear, SequenceType $sequenceType): DirectDebitRecord
     {
         return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'));

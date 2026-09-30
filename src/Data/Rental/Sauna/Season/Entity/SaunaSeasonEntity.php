@@ -17,6 +17,11 @@ class SaunaSeasonEntity
     #[ORM\OrderBy(['position' => 'ASC'])]
     private Collection $openingHours;
 
+    /** @var Collection<int, SaunaSeasonClosureEntity> */
+    #[ORM\OneToMany(targetEntity: SaunaSeasonClosureEntity::class, mappedBy: 'season', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    private Collection $closures;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: Types::STRING, length: 36)]
@@ -35,6 +40,7 @@ class SaunaSeasonEntity
         private ?\DateTimeImmutable $closedOn = null,
     ) {
         $this->openingHours = new ArrayCollection();
+        $this->closures = new ArrayCollection();
     }
 
     public function getId(): string { return $this->id; }
@@ -47,6 +53,9 @@ class SaunaSeasonEntity
 
     /** @return list<SaunaSeasonOpeningHoursEntity> */
     public function getOpeningHours(): array { return array_values($this->openingHours->toArray()); }
+
+    /** @return list<SaunaSeasonClosureEntity> */
+    public function getClosures(): array { return array_values($this->closures->toArray()); }
 
     public function update(
         \DateTimeImmutable $startsOn,
@@ -68,6 +77,15 @@ class SaunaSeasonEntity
         $this->openingHours->clear();
         foreach ($openingHours as $hours) {
             $this->openingHours->add($hours);
+        }
+    }
+
+    /** @param list<SaunaSeasonClosureEntity> $closures */
+    public function replaceClosures(array $closures): void
+    {
+        $this->closures->clear();
+        foreach ($closures as $closure) {
+            $this->closures->add($closure);
         }
     }
 }

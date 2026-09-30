@@ -7,7 +7,9 @@ use App\Data\Rental\Sauna\Booking\Provider\DoctrineSaunaBookingProvider;
 use App\Data\Rental\Sauna\Season\Processor\DoctrineSaunaSeasonProcessor;
 use App\Data\Rental\Sauna\Season\Provider\DoctrineSaunaSeasonProvider;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
+use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingParticipant;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 use App\Logic\Rental\Sauna\Season\Model\Weekday;
@@ -33,7 +35,7 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         $schemaTool->createSchema($metadata);
     }
 
-    public function testSeasonRoundTripReplacesOpeningHoursOnUpdate(): void
+    public function testSeasonRoundTripReplacesOpeningHoursAndClosuresOnUpdate(): void
     {
         $processor = $this->service(DoctrineSaunaSeasonProcessor::class);
         $provider = $this->service(DoctrineSaunaSeasonProvider::class);
@@ -49,6 +51,7 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
             ],
             createdAt: $now,
             updatedAt: $now,
+            closures: [new SaunaClosure(new \DateTimeImmutable('2026-10-12'), new \DateTimeImmutable('2026-10-12'), 'Revision')],
         );
         $processor->save($season);
         $processor->save($season->revise(
@@ -56,6 +59,10 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
             endsOn: new \DateTimeImmutable('2027-03-31'),
             slotDurationMinutes: 60,
             openingHours: [new SaunaOpeningHours(Weekday::Sunday, '14:00', '18:00')],
+            closures: [
+                new SaunaClosure(new \DateTimeImmutable('2026-12-24'), new \DateTimeImmutable('2026-12-26'), 'Weihnachten'),
+                new SaunaClosure(new \DateTimeImmutable('2027-01-01'), new \DateTimeImmutable('2027-01-01')),
+            ],
             updatedAt: $now->modify('+1 hour'),
         ));
         $this->entityManager->clear();
@@ -68,6 +75,14 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         self::assertCount(1, $loaded->openingHours);
         self::assertSame(Weekday::Sunday, $loaded->openingHours[0]->weekday);
         self::assertSame('14:00', $loaded->openingHours[0]->startTime);
+        self::assertSame(
+            [['2026-12-24', '2026-12-26', 'Weihnachten'], ['2027-01-01', '2027-01-01', '']],
+            array_map(static fn (SaunaClosure $closure): array => [
+                $closure->startsOn->format('Y-m-d'),
+                $closure->endsOn->format('Y-m-d'),
+                $closure->reason,
+            ], $loaded->closures),
+        );
     }
 
     public function testBookingsAreFoundByInclusiveDateRangeAndStatusIsUpdated(): void
@@ -90,6 +105,26 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         self::assertSame('M-100', $found[0]->memberNumber);
     }
 
+    public function testSaveAllStoresEveryDayOfARequestWithItsParticipants(): void
+    {
+        $processor = $this->service(DoctrineSaunaBookingProcessor::class);
+        $provider = $this->service(DoctrineSaunaBookingProvider::class);
+        $processor->saveAll([
+            $this->booking('thursday', '2026-10-08', 'request-1', ['Erika Musterfrau', 'Max Muster']),
+            $this->booking('sunday', '2026-10-11', 'request-1', ['Erika Musterfrau', 'Mia Muster']),
+        ]);
+        $this->entityManager->clear();
+
+        $found = $provider->findBetween(new \DateTimeImmutable('2026-10-08'), new \DateTimeImmutable('2026-10-11'));
+
+        self::assertSame(['thursday', 'sunday'], array_map(static fn (SaunaBooking $booking): string => $booking->id, $found));
+        self::assertSame(['request-1', 'request-1'], array_map(static fn (SaunaBooking $booking): ?string => $booking->requestId, $found));
+        self::assertSame(
+            ['Erika Musterfrau', 'Mia Muster'],
+            array_map(static fn (SaunaBookingParticipant $participant): string => $participant->firstName.' '.$participant->lastName, $found[1]->participants),
+        );
+    }
+
     /**
      * @template T of object
      * @param class-string<T> $class
@@ -105,7 +140,10 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
         return $service;
     }
 
-    private function booking(string $id, string $date): SaunaBooking
+    /**
+     * @param list<string> $participantNames
+     */
+    private function booking(string $id, string $date, ?string $requestId = null, array $participantNames = []): SaunaBooking
     {
         $submittedAt = new \DateTimeImmutable('2026-09-25T10:00:00');
 
@@ -114,7 +152,7 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
             date: new \DateTimeImmutable($date),
             startTime: '18:00',
             endTime: '19:00',
-            personCount: 4,
+            personCount: $participantNames === [] ? 4 : count($participantNames),
             priceCents: 2000,
             firstName: 'Erika',
             lastName: 'Musterfrau',
@@ -126,6 +164,13 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
             memberNumber: 'M-100',
             submittedAt: $submittedAt,
             updatedAt: $submittedAt,
+            individual: $requestId !== null,
+            requestId: $requestId,
+            participants: array_map(static function (string $name) use ($id): SaunaBookingParticipant {
+                [$firstName, $lastName] = explode(' ', $name);
+
+                return new SaunaBookingParticipant($id.'-'.$firstName, $firstName, $lastName);
+            }, $participantNames),
         );
     }
 }

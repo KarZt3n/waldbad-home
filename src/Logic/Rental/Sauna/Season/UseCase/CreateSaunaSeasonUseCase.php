@@ -31,6 +31,7 @@ readonly class CreateSaunaSeasonUseCase
             openingHours: $request->openingHours,
             createdAt: $now,
             updatedAt: $now,
+            closures: $request->closures,
         );
         $saved = $this->manager->save($season);
         $this->rotation->closeOthers($saved, $now);

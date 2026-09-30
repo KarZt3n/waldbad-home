@@ -3,6 +3,7 @@
 namespace App\Tests\Unit\Logic\Rental\Sauna\Season\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 use App\Logic\Rental\Sauna\Season\Model\SaunaTimeSlot;
@@ -137,10 +138,73 @@ final class SaunaSeasonTest extends TestCase
         $this->season(openingHours: []);
     }
 
+    public function testClosureDaysHaveNoSlotsButOtherDaysKeepTheirPlan(): void
+    {
+        // 2026-10-05 und 2026-10-12 sind Montage; nur der erste liegt in der Schließzeit.
+        $season = $this->season(closures: [new SaunaClosure(new \DateTimeImmutable('2026-10-05'), new \DateTimeImmutable('2026-10-07'), 'Revision')]);
+
+        self::assertSame([], $season->slotsOn(new \DateTimeImmutable('2026-10-05')));
+        self::assertSame('Revision', $season->closureOn(new \DateTimeImmutable('2026-10-07'))?->reason);
+        self::assertNull($season->closureOn(new \DateTimeImmutable('2026-10-08')));
+        self::assertCount(3, $season->slotsOn(new \DateTimeImmutable('2026-10-12')));
+        self::assertSame(
+            'Die Sauna ist am 06.10.2026 geschlossen (Revision).',
+            $season->closureOn(new \DateTimeImmutable('2026-10-06'))?->messageFor(new \DateTimeImmutable('2026-10-06')),
+        );
+    }
+
+    public function testClosureMustLieWithinTheSeason(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('innerhalb des Saisonzeitraums');
+
+        $this->season(closures: [new SaunaClosure(new \DateTimeImmutable('2027-03-30'), new \DateTimeImmutable('2027-04-02'))]);
+    }
+
+    public function testClosuresMustNotOverlap(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('nicht überschneiden');
+
+        $this->season(closures: [
+            new SaunaClosure(new \DateTimeImmutable('2026-12-24'), new \DateTimeImmutable('2026-12-26')),
+            new SaunaClosure(new \DateTimeImmutable('2026-12-26'), new \DateTimeImmutable('2026-12-26')),
+        ]);
+    }
+
+    public function testClosureEndMustNotPrecedeItsStart(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+
+        new SaunaClosure(new \DateTimeImmutable('2026-12-26'), new \DateTimeImmutable('2026-12-24'));
+    }
+
+    public function testLastBookableDayIsTheEarlierOfEndAndDayBeforeClosing(): void
+    {
+        $now = new \DateTimeImmutable('2026-10-01T10:00:00');
+
+        self::assertSame('2027-03-31', $this->season()->lastBookableDay()?->format('Y-m-d'));
+        self::assertNull($this->season(endsOn: null)->lastBookableDay());
+        self::assertSame('2026-11-14', $this->season()->close(new \DateTimeImmutable('2026-11-15'), $now)->lastBookableDay()?->format('Y-m-d'));
+        self::assertSame('2026-11-14', $this->season(endsOn: null)->close(new \DateTimeImmutable('2026-11-15'), $now)->lastBookableDay()?->format('Y-m-d'));
+        self::assertSame('2027-03-31', $this->season()->close(new \DateTimeImmutable('2027-06-01'), $now)->lastBookableDay()?->format('Y-m-d'));
+    }
+
+    public function testClosingAndReopeningKeepsTheClosures(): void
+    {
+        $closures = [new SaunaClosure(new \DateTimeImmutable('2026-12-24'), new \DateTimeImmutable('2026-12-26'), 'Weihnachten')];
+        $now = new \DateTimeImmutable('2026-10-01T10:00:00');
+
+        $season = $this->season(closures: $closures)->close($now, $now)->reopen($now);
+
+        self::assertEquals($closures, $season->closures);
+    }
+
     /**
      * @param list<SaunaOpeningHours>|null $openingHours
+     * @param list<SaunaClosure>           $closures
      */
-    private function season(string $startsOn = '2026-10-01', ?string $endsOn = '2027-03-31', ?array $openingHours = null): SaunaSeason
+    private function season(string $startsOn = '2026-10-01', ?string $endsOn = '2027-03-31', ?array $openingHours = null, array $closures = []): SaunaSeason
     {
         $now = new \DateTimeImmutable('2026-09-25T10:00:00');
 
@@ -152,6 +216,7 @@ final class SaunaSeasonTest extends TestCase
             openingHours: $openingHours ?? [new SaunaOpeningHours(Weekday::Monday, '18:00', '21:00')],
             createdAt: $now,
             updatedAt: $now,
+            closures: $closures,
         );
     }
 }

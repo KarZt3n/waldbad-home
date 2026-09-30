@@ -147,6 +147,8 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertNotNull($notification);
         self::assertEmailAddressContains($notification, 'To', 'sauna-team@example.test');
         self::assertEmailTextBodyContains($notification, 'Erika Musterfrau hat die Sauna angefragt');
+        self::assertEmailTextBodyContains($notification, "Zeitfenster aus dem Kalender:\n\n".(new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen\n- Preis: 24,00 €");
+        self::assertEmailTextBodyContains($notification, 'Nachricht: Wir kommen zu dritt.');
 
         self::assertSame(['10:00 booked', '11:00 booked', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
         self::assertStringNotContainsString('Musterfrau', (string) $this->client->getResponse()->getContent());
@@ -179,12 +181,84 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/accept', [], $headers);
         self::assertResponseIsSuccessful();
         self::assertSame('accepted', $this->responseData()['status']);
+        // Die anfragende Person erhält eine Bestätigung mit ihren Angaben.
+        self::assertQueuedEmailCount(1);
+        $confirmation = self::getMailerMessage();
+        self::assertNotNull($confirmation);
+        self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
+        self::assertEmailTextBodyContains($confirmation, 'deine Sauna-Anfrage wurde angenommen');
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen\n- Preis: 24,00 €");
+        self::assertEmailTextBodyContains($confirmation, 'Nachricht: Wir kommen zu dritt.');
+
+        // Storno eines angenommenen Termins gibt den Zeitraum frei; ein zweites Storno ist nicht möglich.
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/cancel', ['notify' => true], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('cancelled', $this->responseData()['status']);
+        self::assertQueuedEmailCount(1);
+        $cancellation = self::getMailerMessage();
+        self::assertNotNull($cancellation);
+        self::assertEmailAddressContains($cancellation, 'To', 'erika@example.test');
+        self::assertEmailTextBodyContains($cancellation, "dein Sauna-Termin wurde storniert:\n\n".(new \DateTimeImmutable($tomorrow))->format('d.m.Y').', 10:00–12:00 Uhr,');
+        self::assertSame(['10:00 free', '11:00 free', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/cancel', [], $headers);
+        self::assertResponseStatusCodeSame(422);
 
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/reject', [], $headers);
         self::assertResponseIsSuccessful();
         self::assertSame('rejected', $this->responseData()['status']);
 
         self::assertSame(['10:00 free', '11:00 free', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
+    }
+
+    /**
+     * Schließzeiten der Saison: Der Tag erscheint im Kalender als „Geschlossen“ ohne Zeiten, und
+     * weder eine Kalender- noch eine individuelle Anfrage für diesen Tag wird angenommen.
+     */
+    public function testClosureDaysAreShownClosedAndRejectRequests(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $closedDay = (new \DateTimeImmutable('+2 days'))->format('Y-m-d');
+        $closedLabel = (new \DateTimeImmutable($closedDay))->format('d.m.Y');
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
+            'startsOn' => (new \DateTimeImmutable('tomorrow'))->format('Y-m-d'),
+            'endsOn' => null,
+            'slotDurationMinutes' => 60,
+            'openingHours' => array_map(
+                static fn (int $weekday): array => ['weekday' => $weekday, 'startTime' => '10:00', 'endTime' => '14:00'],
+                range(1, 7),
+            ),
+            'closures' => [['startsOn' => $closedDay, 'endsOn' => null, 'reason' => 'Revision']],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame([['startsOn' => $closedDay, 'endsOn' => $closedDay, 'reason' => 'Revision']], $this->responseData()['closures']);
+
+        $this->client->request('GET', '/api/public/v1/sauna/calendar?from='.$closedDay.'&days=1');
+        self::assertResponseIsSuccessful();
+        $days = $this->responseData()['days'];
+        self::assertIsArray($days);
+        self::assertIsArray($days[0]);
+        self::assertSame([true, 'Revision', []], [$days[0]['closed'], $days[0]['closedReason'], $days[0]['slots']]);
+
+        $guest = ['firstName' => 'Erika', 'lastName' => 'Musterfrau', 'birthDate' => '1990-01-01', 'privacyAccepted' => true];
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            ...$guest, 'date' => $closedDay, 'startTime' => '10:00', 'endTime' => '11:00', 'personCount' => 2,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        self::assertSame('Die Sauna ist am '.$closedLabel.' geschlossen (Revision).', $error['message']);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$guest, 'individual' => true, 'days' => [
+            ['date' => $closedDay, 'startTime' => '18:00', 'endTime' => '20:00', 'personCount' => 2, 'participants' => [
+                ['firstName' => 'Erika', 'lastName' => 'Musterfrau'], ['firstName' => 'Max', 'lastName' => 'Muster'],
+            ]],
+        ]]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame([
+            'code' => 'saunarequestdayconflictexception',
+            'message' => 'Die Sauna ist am '.$closedLabel.' geschlossen (Revision).',
+            'details' => ['days' => [0]],
+        ], $this->responseData()['error']);
     }
 
     public function testCalendarReportsRunningOrUpcomingSeasonButNotExpiredOnes(): void
@@ -241,44 +315,125 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    public function testIndividualRequestWithFreeTimeWorksWithoutSeason(): void
+    /**
+     * Individuelle Anfrage für zwei Wunschtage innerhalb der Saison, aber außerhalb ihres Zeitrasters:
+     * je Tag eine eigene Buchung mit eigenen Personen, beide Tage sind sofort belegt und werden
+     * einzeln angenommen. Tage außerhalb der Saison sind nicht anfragbar.
+     */
+    public function testIndividualRequestReservesEveryDayWithItsOwnParticipants(): void
     {
-        $date = (new \DateTimeImmutable('+3 days'))->format('Y-m-d');
-        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
-            'date' => $date,
-            'startTime' => '07:30',
-            'endTime' => '09:45',
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->createSeason('tomorrow', '+30 days', $headers);
+        $thursday = (new \DateTimeImmutable('+3 days'))->format('Y-m-d');
+        $sunday = (new \DateTimeImmutable('+6 days'))->format('Y-m-d');
+        $person = static fn (string $firstName, string $lastName): array => ['firstName' => $firstName, 'lastName' => $lastName];
+        $request = static fn (array $days, string $lastName = 'Musterfrau'): array => [
             'individual' => true,
-            'personCount' => 3,
+            'days' => $days,
             'firstName' => 'Erika',
-            'lastName' => 'Musterfrau',
+            'lastName' => $lastName,
             'birthDate' => '1990-01-01',
+            'email' => 'erika@example.test',
             'message' => 'Geburtstagsrunde',
             'privacyAccepted' => true,
-        ]);
+        ];
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
+            ['date' => $thursday, 'startTime' => '07:30', 'endTime' => '09:45', 'personCount' => 3,
+                'participants' => [$person('Erika', 'Musterfrau'), $person('Max', 'Muster'), $person('Mia', 'Muster')]],
+            ['date' => $sunday, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
+                'participants' => [$person('Erika', 'Musterfrau'), $person('Tom', 'Muster')]],
+        ]));
         self::assertResponseStatusCodeSame(202);
 
-        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
-            'date' => $date,
-            'startTime' => '09:00',
-            'endTime' => '10:00',
-            'individual' => true,
-            'personCount' => 2,
-            'firstName' => 'Max',
-            'lastName' => 'Mustermann',
-            'birthDate' => '1985-05-05',
-            'privacyAccepted' => true,
-        ]);
+        // Außerhalb der Saison ist keine Anfrage möglich.
+        $outsideSeason = (new \DateTimeImmutable('+40 days'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
+            ['date' => $outsideSeason, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
+                'participants' => [$person('Erika', 'Musterfrau'), $person('Max', 'Muster')]],
+        ]));
+        self::assertResponseStatusCodeSame(422);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        self::assertSame('Der '.(new \DateTimeImmutable($outsideSeason))->format('d.m.Y').' liegt außerhalb der Sauna-Saison.', $error['message']);
+
+        // Beide Wunschtage sind reserviert.
+        foreach ([[$thursday, '09:00', '10:00'], [$sunday, '11:00', '12:00']] as [$date, $startTime, $endTime]) {
+            $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
+                ['date' => $date, 'startTime' => $startTime, 'endTime' => $endTime, 'personCount' => 2,
+                    'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
+            ], 'Andere'));
+            self::assertResponseStatusCodeSame(422);
+        }
+
+        // Der belegte Wunschtag wird in der Fehlerantwort benannt, damit die Oberfläche ihn markiert.
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
+            ['date' => (new \DateTimeImmutable('+10 days'))->format('Y-m-d'), 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
+                'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
+            ['date' => $sunday, 'startTime' => '11:00', 'endTime' => '12:00', 'personCount' => 2,
+                'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
+        ], 'Andere'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame([
+            'code' => 'saunarequestdayconflictexception',
+            'message' => 'Wunschtag 2: Der gewählte Zeitraum ist bereits belegt.',
+            'details' => ['days' => [1]],
+        ], $this->responseData()['error']);
+
+        // Namen passen nicht zur Personenzahl.
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
+            ['date' => (new \DateTimeImmutable('+10 days'))->format('Y-m-d'), 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 3,
+                'participants' => [$person('Erika', 'Musterfrau')]],
+        ]));
         self::assertResponseStatusCodeSame(422);
 
-        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        // Eine weitere Anfrage derselben Person (anders geschrieben) wird in der Verwaltung mit der ersten zusammengefasst.
+        $laterDay = (new \DateTimeImmutable('+12 days'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$request([
+            ['date' => $laterDay, 'startTime' => '17:00', 'endTime' => '19:00', 'personCount' => 2,
+                'participants' => [$person('Erika', 'Musterfrau'), $person('Max', 'Muster')]],
+        ], 'MUSTERFRAU'), 'email' => '']);
+        self::assertResponseStatusCodeSame(202);
+
         $this->client->request('GET', '/api/admin/v1/sauna-bookings', [], [], $headers);
         $items = $this->responseData()['items'];
         self::assertIsArray($items);
-        self::assertCount(1, $items);
+        self::assertCount(3, $items);
         self::assertIsArray($items[0]);
+        self::assertIsArray($items[1]);
+        self::assertIsArray($items[2]);
         self::assertTrue($items[0]['individual']);
-        self::assertSame(2250, $items[0]['priceCents']);
+        self::assertSame($items[0]['requestId'], $items[1]['requestId']);
+        self::assertNotSame($items[0]['requestId'], $items[2]['requestId']);
+        self::assertSame([$items[0]['requesterKey'], $items[0]['requesterKey']], [$items[1]['requesterKey'], $items[2]['requesterKey']]);
+        self::assertSame([2250, 3], [$items[0]['priceCents'], $items[0]['personCount']]);
+        self::assertSame([['firstName' => 'Erika', 'lastName' => 'Musterfrau'], ['firstName' => 'Tom', 'lastName' => 'Muster']], $items[1]['participants']);
+        self::assertIsString($items[1]['id']);
+
+        self::assertIsString($items[0]['requesterKey']);
+
+        // „Alle annehmen“: alle Tage beider Anfragen gemeinsam, eine Bestätigung mit allen Tagen.
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/requesters/'.$items[0]['requesterKey'].'/accept', [], $headers);
+        self::assertResponseIsSuccessful();
+        $accepted = $this->responseData()['items'];
+        self::assertIsArray($accepted);
+        self::assertSame(['accepted', 'accepted', 'accepted'], array_column($accepted, 'status'));
+        self::assertQueuedEmailCount(1);
+        $confirmation = self::getMailerMessage();
+        self::assertNotNull($confirmation);
+        self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($thursday))->format('d.m.Y').', 07:30–09:45 Uhr,');
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($sunday))->format('d.m.Y').', 10:00–12:00 Uhr,');
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($laterDay))->format('d.m.Y').', 17:00–19:00 Uhr,');
+
+        // Einzeln bleibt jeder Tag bearbeitbar; ohne offene Tage gibt es nichts mehr gemeinsam anzunehmen.
+        $this->client->request('POST', '/api/admin/v1/sauna-bookings/'.$items[1]['id'].'/reject', [], [], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('rejected', $this->responseData()['status']);
+        $this->client->request('POST', '/api/admin/v1/sauna-bookings/'.$items[1]['id'].'/accept', [], [], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('accepted', $this->responseData()['status']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/requesters/'.$items[0]['requesterKey'].'/accept', [], $headers);
+        self::assertResponseStatusCodeSame(422);
     }
 
     public function testAdminEndpointsRequireAuthentication(): void

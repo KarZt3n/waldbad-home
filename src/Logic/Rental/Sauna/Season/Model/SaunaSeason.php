@@ -10,6 +10,7 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
  * werden (`$closedOn`): ab diesem Tag ist sie nicht mehr buchbar, das Enddatum bleibt unverändert.
  * Es gibt höchstens eine nicht abgeschlossene Saison (siehe `SaunaSeasonRotation`). Die Wochenzeitfenster werden in gleich lange Buchungseinheiten
  * (`$slotDurationMinutes`) zerlegt, die im öffentlichen Kalender als frei/belegt erscheinen.
+ * An Schließzeiten (`$closures`) ist die Sauna trotz Wochenplan geschlossen.
  */
 readonly class SaunaSeason
 {
@@ -18,6 +19,7 @@ readonly class SaunaSeason
 
     /**
      * @param list<SaunaOpeningHours> $openingHours
+     * @param list<SaunaClosure>      $closures
      */
     public function __construct(
         public string $id,
@@ -28,6 +30,7 @@ readonly class SaunaSeason
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $closedOn = null,
+        public array $closures = [],
     ) {
         if ($this->endsOn !== null && $this->endsOn->format('Y-m-d') < $this->startsOn->format('Y-m-d')) {
             throw new BusinessRuleViolationException('Das Saisonende darf nicht vor dem Saisonbeginn liegen.');
@@ -52,16 +55,29 @@ readonly class SaunaSeason
                 }
             }
         }
+        foreach ($this->closures as $index => $closure) {
+            if ($closure->startsOn->format('Y-m-d') < $this->startsOn->format('Y-m-d')
+                || ($this->endsOn !== null && $closure->endsOn->format('Y-m-d') > $this->endsOn->format('Y-m-d'))) {
+                throw new BusinessRuleViolationException('Schließzeiten müssen innerhalb des Saisonzeitraums liegen.');
+            }
+            foreach (array_slice($this->closures, $index + 1) as $other) {
+                if ($closure->overlaps($other)) {
+                    throw new BusinessRuleViolationException('Schließzeiten dürfen sich nicht überschneiden.');
+                }
+            }
+        }
     }
 
     /**
      * @param list<SaunaOpeningHours> $openingHours
+     * @param list<SaunaClosure>      $closures
      */
     public function revise(
         \DateTimeImmutable $startsOn,
         ?\DateTimeImmutable $endsOn,
         int $slotDurationMinutes,
         array $openingHours,
+        array $closures,
         \DateTimeImmutable $updatedAt,
     ): self {
         return new self(
@@ -73,6 +89,7 @@ readonly class SaunaSeason
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
             closedOn: $this->closedOn,
+            closures: $closures,
         );
     }
 
@@ -97,6 +114,7 @@ readonly class SaunaSeason
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
             closedOn: $closedOn->setTime(0, 0),
+            closures: $this->closures,
         );
     }
 
@@ -118,6 +136,7 @@ readonly class SaunaSeason
             openingHours: $this->openingHours,
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
+            closures: $this->closures,
         );
     }
 
@@ -125,6 +144,20 @@ readonly class SaunaSeason
     public function isUpcoming(\DateTimeImmutable $date): bool
     {
         return $this->startsOn->format('Y-m-d') > $date->format('Y-m-d') && $this->covers($this->startsOn);
+    }
+
+    /**
+     * Letzter Tag, an dem die Saison buchbar ist: das Saisonende bzw. der Tag vor dem Abschluss,
+     * je nachdem, was früher liegt; `null` = bis auf Weiteres.
+     */
+    public function lastBookableDay(): ?\DateTimeImmutable
+    {
+        $dayBeforeClosing = $this->closedOn?->modify('-1 day');
+        if ($this->endsOn === null || $dayBeforeClosing === null) {
+            return $this->endsOn ?? $dayBeforeClosing;
+        }
+
+        return $dayBeforeClosing < $this->endsOn ? $dayBeforeClosing : $this->endsOn;
     }
 
     public function covers(\DateTimeImmutable $date): bool
@@ -136,12 +169,25 @@ readonly class SaunaSeason
             && ($this->closedOn === null || $day < $this->closedOn->format('Y-m-d'));
     }
 
+    /** Die Schließzeit, in die `$date` fällt, sonst `null`. */
+    public function closureOn(\DateTimeImmutable $date): ?SaunaClosure
+    {
+        foreach ($this->closures as $closure) {
+            if ($closure->covers($date)) {
+                return $closure;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @return list<SaunaTimeSlot> chronologisch sortiert; leer, wenn der Tag nicht zur Saison gehört
+     *                             oder in eine Schließzeit fällt
      */
     public function slotsOn(\DateTimeImmutable $date): array
     {
-        if (!$this->covers($date)) {
+        if (!$this->covers($date) || $this->closureOn($date) !== null) {
             return [];
         }
 

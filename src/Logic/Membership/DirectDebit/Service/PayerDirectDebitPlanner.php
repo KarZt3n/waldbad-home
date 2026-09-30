@@ -24,7 +24,9 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  * „Gesamtberechnung für den Zahler“ (`GetMemberHouseholdQuery`) — der Zahler selbst, sofern
  * Selbstzahler, plus alle Mitglieder, deren Beitrag er trägt. Je Person werden der gespeicherte
  * Beitrag und Arbeitseinsatz-Zuschlag sowie deren einmalige Gebühren (z. B. Beitrittsgebühr) als
- * wählbare Positionen angeboten; Ausgetretene und Beitragsbefreite entfallen wie dort.
+ * wählbare Positionen angeboten; Ausgetretene und Beitragsbefreite entfallen wie dort. Ist der
+ * Zahler selbst ausgetreten, wird nicht mehr über sein Konto eingezogen (Hinderungsgrund „Zahler
+ * ausgetreten“), auch wenn er noch für aktive Mitglieder eingetragen ist.
  *
  * Anhand der Lastschrift-Historie des Zahlers: Ist er im laufenden Jahr eingetreten und wurde für
  * dieses Jahr noch nichts eingezogen, ist es die Lastschrift für das Eintrittsjahr (sofort fällig).
@@ -108,7 +110,7 @@ readonly class PayerDirectDebitPlanner
             if ($member->payerType !== PayerType::SelfPayer && !$withoutPayer && !isset($paidByPayerId[$member->id])) {
                 continue;
             }
-            $drafts[] = $this->planPayer(
+            $draft = $this->planPayer(
                 $member,
                 $paidByPayerId[$member->id] ?? [],
                 $now,
@@ -117,6 +119,13 @@ readonly class PayerDirectDebitPlanner
                 static fn (ContributionCategory $category): ?string => $rateLabels[$category->value] ?? null,
                 $withoutPayer,
             );
+            // Ein ausgetretener Zahler ohne weitere aktive Mitglieder ist kein Zahler mehr — er taucht
+            // gar nicht auf. Zahlt er noch für aktive Mitglieder, bleibt er als blockierter Eintrag
+            // sichtbar (siehe `blockers()`), damit für diese ein neuer Zahler hinterlegt wird.
+            if ($member->hasLeft($now) && $draft->positions === []) {
+                continue;
+            }
+            $drafts[] = $draft;
         }
 
         return $drafts;
@@ -273,6 +282,9 @@ readonly class PayerDirectDebitPlanner
         $blockers = [];
         if ($withoutPayer) {
             $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::MissingPayer, 'Das Mitglied zahlt laut Zahlungsdaten nicht selbst, es ist aber kein zahlendes Mitglied hinterlegt.');
+        }
+        if ($payer->hasLeft($now) && $payer->leftAt !== null) {
+            $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::PayerLeft, sprintf('Der Zahler ist zum %s ausgetreten – für die weiteren Mitglieder muss ein neuer Zahler hinterlegt werden.', $payer->leftAt->format('d.m.Y')));
         }
         if (!$creditorComplete) {
             $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::IncompleteCreditor, 'Die SEPA-Gläubigerdaten des Vereins sind nicht vollständig (Mitgliederverwaltung → Beitragssätze → SEPA-Gläubigerdaten).');

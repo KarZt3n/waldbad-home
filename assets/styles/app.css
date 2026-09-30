@@ -1869,6 +1869,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-month-day.is-outside { border-color: transparent; background: transparent; }
 .sauna-month-day.is-empty { background: #f6f8f7; }
 .sauna-month-day.is-today { border: 2px solid var(--lime-400); }
+.sauna-month-day.is-closed { background: #fff4f4; }
+.sauna-day-closed { margin: 0; padding: .3rem .4rem; border-radius: .4rem; color: var(--danger); background: #ffe8e8; font-size: .78rem; font-weight: 800; text-align: center; }
 .sauna-month-day-label { display: flex; align-items: baseline; gap: .4rem; margin: 0; }
 .sauna-month-day-number { color: var(--forest-900); font-weight: 800; }
 .sauna-month-day.is-empty .sauna-month-day-number { color: var(--muted); font-weight: 600; }
@@ -1902,6 +1904,17 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 
 /* Redaktion „Vermietung“: Wochenplan-Editor der Sauna-Saison (siehe `assets/admin/rental.js`). */
 .sauna-season-dialog { width: min(46rem, calc(100vw - 2rem)); overflow: auto; }
+.sauna-season-section > summary { grid-template-columns: auto minmax(0, 1fr); }
+.sauna-season-section-summary { overflow: hidden; color: var(--muted); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.sauna-season-section-body { padding: 1rem; }
+.sauna-season-section-content { display: grid; gap: .75rem; }
+.sauna-closure-editor { display: grid; gap: .75rem; }
+.sauna-closure-editor > .secondary-button { justify-self: start; }
+.sauna-closure-row { display: grid; grid-template-columns: 10rem 10rem minmax(0, 1fr) auto; align-items: end; gap: .5rem .75rem; }
+@media (max-width: 40rem) {
+    .sauna-closure-row { grid-template-columns: 1fr 1fr; }
+    .sauna-closure-row .field:nth-child(3) { grid-column: 1 / -1; }
+}
 .sauna-plan-editor { display: grid; gap: .75rem; }
 .sauna-plan-day { display: grid; gap: .5rem; margin: 0; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: .75rem; }
 .sauna-plan-day legend { padding: 0 .35rem; color: var(--forest-900); font-weight: 800; }
@@ -1925,6 +1938,31 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-individual { margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; padding: 1rem 1.25rem; border: 1px dashed var(--forest-700); border-radius: .85rem; background: var(--forest-100); }
 .sauna-individual p { margin: 0; color: #33463b; }
 .sauna-individual .button { margin-top: 0; }
+.sauna-same-group { margin-top: .5rem; }
+.sauna-group, .sauna-day-persons { display: grid; gap: .5rem; }
+.sauna-group[hidden], .sauna-day-persons[hidden] { display: none; }
+.sauna-time { display: flex; align-items: center; gap: .35rem; }
+.sauna-time select { flex: 1; min-width: 0; }
+.sauna-participants { display: grid; gap: .5rem; margin: 0; padding-left: 1.25rem; }
+.sauna-participant-booker { color: #33463b; }
+.sauna-participant-booker-name { font-weight: 700; }
+.sauna-wishes { display: grid; gap: .75rem; }
+.sauna-wishes h3 { margin: .5rem 0 0; font-size: 1.05rem; }
+.sauna-wishes .field-hint { margin: 0; }
+.sauna-wish-list { display: grid; gap: .5rem; }
+.sauna-wish { border: 1px solid var(--line); border-radius: .85rem; background: var(--white); }
+.sauna-wish > summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; cursor: pointer; list-style: none; }
+.sauna-wish > summary::-webkit-details-marker { display: none; }
+.sauna-wish > summary::before { content: '▸'; color: var(--forest-700); }
+.sauna-wish[open] > summary::before { content: '▾'; }
+.sauna-wish > summary strong { flex: 1; }
+.sauna-wish[open] > summary { border-bottom: 1px solid var(--line); border-radius: .85rem .85rem 0 0; background: var(--forest-100); }
+.sauna-wish.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.sauna-wish.is-invalid > summary, .sauna-wish.is-invalid[open] > summary { color: var(--danger); background: #fff0f0; }
+.sauna-wish-price { color: var(--forest-900); font-weight: 700; white-space: nowrap; }
+.sauna-wish-body { display: grid; gap: .75rem; padding: 1rem; }
+.sauna-wish-remove, .sauna-wish-add { justify-self: start; }
+.sauna-booking-participants { margin: .25rem 0 0; color: #33463b; font-weight: 700; }
 .status-badge.sauna-individual-badge { color: var(--forest-950); background: var(--sun-400); }
 
 /* Sauna-Anmeldungen (Redaktion): Liste so breit wie die Überschrift (wie „Veranstaltungshelfer“),
@@ -1932,7 +1970,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
    Aktionen unten. */
 .sauna-booking-groups .card-list { width: 100%; max-width: none; margin-right: 0; margin-left: 0; }
 .sauna-booking-card { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 1rem 1.5rem; }
-.sauna-booking-card.status-rejected { opacity: .82; }
+.sauna-booking-card.status-rejected, .sauna-booking-card.status-cancelled { opacity: .82; }
 .sauna-booking-main { display: grid; grid-template-columns: minmax(14rem, 1fr) minmax(0, 1.4fr); gap: .75rem 1.5rem; min-width: 0; }
 .sauna-booking-main .event-helper-participant-identity { display: grid; align-content: start; gap: .3rem; }
 .sauna-booking-main a.event-helper-member-detail { width: fit-content; font-size: .9rem; }
@@ -1943,6 +1981,17 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-booking-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
 .sauna-booking-actions { justify-content: flex-end; }
 .sauna-booking-actions .button, .sauna-booking-actions .secondary-button { margin-top: 0; }
+/* Alle Anmeldungen einer anfragenden Person als Gruppe (siehe `requestGroup()` in admin/rental.js). */
+.sauna-request-group { display: grid; gap: 1rem; }
+.sauna-request-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem 1.5rem; }
+.sauna-request-head .event-helper-participant-identity { display: grid; align-content: start; gap: .3rem; }
+.sauna-request-head a.event-helper-member-detail { width: fit-content; font-size: .9rem; }
+.sauna-request-meta { display: flex; flex-direction: column; align-items: flex-end; gap: .75rem; }
+.sauna-request-message { display: grid; gap: .4rem; grid-column: 1 / -1; }
+.sauna-request-message .sauna-booking-message { margin: 0; }
+.sauna-request-days { display: grid; gap: .5rem; }
+.sauna-booking-card.is-request-day { padding: .75rem 1rem; box-shadow: none; background: #f8faf8; }
+.sauna-booking-card.is-request-day .sauna-booking-main { grid-template-columns: 1fr; }
 @media (max-width: 900px) {
     .sauna-booking-main { grid-template-columns: 1fr; }
 }
@@ -1950,6 +1999,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .sauna-booking-card { grid-template-columns: 1fr; }
     .sauna-booking-side { flex-direction: row; flex-wrap: wrap; align-items: center; }
     .sauna-booking-badges { justify-content: flex-start; }
+    .sauna-request-head { grid-template-columns: 1fr; }
+    .sauna-request-meta { align-items: flex-start; }
 }
 
 /* Alle Overlays (<dialog> per showModal, Frontend und Redaktion): oben und unten gleicher Abstand,

@@ -2,6 +2,7 @@
 
 namespace App\Logic\Rental\Sauna\Season\Dto;
 
+use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 
@@ -9,6 +10,7 @@ readonly class SaunaSeasonResponse
 {
     /**
      * @param list<SaunaOpeningHours> $openingHours
+     * @param list<SaunaClosure>      $closures
      */
     public function __construct(
         public string $id,
@@ -19,6 +21,7 @@ readonly class SaunaSeasonResponse
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $closedOn,
+        public array $closures = [],
     ) {
     }
 
@@ -33,6 +36,7 @@ readonly class SaunaSeasonResponse
             createdAt: $season->createdAt,
             updatedAt: $season->updatedAt,
             closedOn: $season->closedOn,
+            closures: $season->closures,
         );
     }
 }

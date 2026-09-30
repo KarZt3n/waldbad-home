@@ -10,6 +10,7 @@ use App\Logic\Rental\Sauna\Booking\SaunaBookingNotifierInterface;
 use App\Logic\Rental\Sauna\Booking\Service\SaunaSlotAvailability;
 use App\Logic\Rental\Sauna\Terms\Manager\SaunaTermsManagerInterface;
 
+/** Anfrage für freie Buchungseinheiten aus dem Kalender (individuelle Anfragen: `SubmitIndividualSaunaRequestUseCase`). */
 readonly class SubmitSaunaBookingUseCase
 {
     public function __construct(
@@ -26,11 +27,7 @@ readonly class SubmitSaunaBookingUseCase
         $terms = $this->terms->current();
         $terms->assertGroupSize($request->personCount);
         $booking = $this->factory->createFromRequest($request, $terms);
-        if ($booking->individual) {
-            $this->availability->assertIndividuallyRequestable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
-        } else {
-            $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
-        }
+        $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
 
         $saved = $this->manager->save($booking);
         $this->notifier->bookingSubmitted($saved);

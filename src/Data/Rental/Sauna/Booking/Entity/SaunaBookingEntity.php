@@ -2,6 +2,8 @@
 
 namespace App\Data\Rental\Sauna\Booking\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -9,8 +11,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'sauna_booking')]
 #[ORM\Index(name: 'idx_sauna_booking_date_start', columns: ['booking_date', 'start_time'])]
 #[ORM\Index(name: 'idx_sauna_booking_status', columns: ['status'])]
+#[ORM\Index(name: 'idx_sauna_booking_request', columns: ['request_id'])]
 class SaunaBookingEntity
 {
+    /** @var Collection<int, SaunaBookingParticipantEntity> */
+    #[ORM\OneToMany(targetEntity: SaunaBookingParticipantEntity::class, mappedBy: 'booking', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    #[ORM\OrderBy(['position' => 'ASC'])]
+    private Collection $participants;
+
     public function __construct(
         #[ORM\Id]
         #[ORM\Column(type: Types::STRING, length: 36)]
@@ -48,7 +56,23 @@ class SaunaBookingEntity
         private \DateTimeImmutable $updatedAt,
         #[ORM\Column(type: Types::BOOLEAN)]
         private bool $individual = false,
+        #[ORM\Column(type: Types::STRING, length: 36, nullable: true)]
+        private ?string $requestId = null,
     ) {
+        $this->participants = new ArrayCollection();
+    }
+
+    public function addParticipant(SaunaBookingParticipantEntity $participant): void
+    {
+        $this->participants->add($participant);
+    }
+
+    /**
+     * @return list<SaunaBookingParticipantEntity>
+     */
+    public function getParticipants(): array
+    {
+        return array_values($this->participants->toArray());
     }
 
     public function getId(): string { return $this->id; }
@@ -68,6 +92,7 @@ class SaunaBookingEntity
     public function getSubmittedAt(): \DateTimeImmutable { return $this->submittedAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
     public function isIndividual(): bool { return $this->individual; }
+    public function getRequestId(): ?string { return $this->requestId; }
 
     public function changeStatus(string $status, \DateTimeImmutable $updatedAt): void
     {

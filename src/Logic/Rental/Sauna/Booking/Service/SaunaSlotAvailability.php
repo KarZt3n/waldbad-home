@@ -13,7 +13,8 @@ use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
 
 /**
  * Leitet aus Saison-Wochenplan und vorhandenen Anmeldungen ab, welche Buchungseinheiten frei sind.
- * Offene und angenommene Anmeldungen belegen ihren Zeitraum, abgelehnte geben ihn wieder frei.
+ * Offene und angenommene Anmeldungen belegen ihren Zeitraum, abgelehnte geben ihn wieder frei. An
+ * Schließzeiten der Saison ist die Sauna geschlossen — auch für individuelle Anfragen.
  */
 readonly class SaunaSlotAvailability
 {
@@ -25,8 +26,8 @@ readonly class SaunaSlotAvailability
 
     public function assertBookable(\DateTimeImmutable $date, string $startTime, string $endTime, \DateTimeImmutable $now): void
     {
-        $season = $this->seasons->findCovering($date)
-            ?? throw new BusinessRuleViolationException('An diesem Tag ist die Sauna nicht buchbar.');
+        $season = $this->seasonCovering($date);
+        $this->assertNotClosed($season, $date);
         if (!$season->isBookableRange($date, $startTime, $endTime)) {
             throw new BusinessRuleViolationException('Der gewählte Zeitraum passt nicht zu den buchbaren Sauna-Zeiten.');
         }
@@ -34,12 +35,28 @@ readonly class SaunaSlotAvailability
     }
 
     /**
-     * Individuelle Anfragen sind an keine Saison und kein Zeitraster gebunden; sie dürfen nur nicht
-     * in der Vergangenheit liegen und keine offene oder angenommene Anmeldung überschneiden.
+     * Individuelle Anfragen sind an kein Zeitraster gebunden, wohl aber an die Saison: Der Tag muss
+     * in einer Saison und außerhalb ihrer Schließzeiten liegen, darf nicht vergangen sein und keine
+     * offene oder angenommene Anmeldung überschneiden.
      */
     public function assertIndividuallyRequestable(\DateTimeImmutable $date, string $startTime, string $endTime, \DateTimeImmutable $now): void
     {
+        $this->assertNotClosed($this->seasonCovering($date), $date);
         $this->assertFreeInFuture($date, $startTime, $endTime, $now);
+    }
+
+    private function seasonCovering(\DateTimeImmutable $date): SaunaSeason
+    {
+        return $this->seasons->findCovering($date)
+            ?? throw new BusinessRuleViolationException(sprintf('Der %s liegt außerhalb der Sauna-Saison.', $date->format('d.m.Y')));
+    }
+
+    private function assertNotClosed(SaunaSeason $season, \DateTimeImmutable $date): void
+    {
+        $closure = $season->closureOn($date);
+        if ($closure !== null) {
+            throw new BusinessRuleViolationException($closure->messageFor($date));
+        }
     }
 
     private function assertFreeInFuture(\DateTimeImmutable $date, string $startTime, string $endTime, \DateTimeImmutable $now): void
@@ -86,7 +103,8 @@ readonly class SaunaSlotAvailability
                 }
                 $slots[] = new SaunaCalendarSlot($slot->startTime, $slot->endTime, $state);
             }
-            $calendar[] = new SaunaCalendarDay($day, $slots);
+            $closure = $season?->closureOn($day);
+            $calendar[] = new SaunaCalendarDay($day, $slots, $closure !== null, $closure->reason ?? '');
         }
 
         return $calendar;
