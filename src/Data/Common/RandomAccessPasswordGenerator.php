@@ -5,30 +5,25 @@ namespace App\Data\Common;
 use App\Logic\Common\AccessPasswordGeneratorInterface;
 
 /**
- * 8 Zeichen: mindestens ein Buchstabe, mindestens eine Ziffer, genau 2 Sonderzeichen, Rest gemischt
- * alphanumerisch — Position der Zeichenarten wird zufällig verwürfelt, sonst stünden die
- * Sonderzeichen immer an denselben Stellen. Buchstaben/Ziffern ohne leicht verwechselbare Zeichen
- * (0/O, 1/l/I), da das Passwort von Hand aus der Mail abgetippt wird.
+ * 5 Zeichen, nur Buchstaben und Ziffern (mindestens je eines davon), damit sich das Passwort ohne
+ * Sonderzeichen bequem abtippen lässt — auch auf dem Handy. Die geringere Entropie ist vertretbar,
+ * da es nur der zweite Faktor neben dem hochentropischen, 30 Minuten gültigen Link-Token ist und die
+ * Passworteingabe je IP begrenzt wird. Ohne leicht verwechselbare Zeichen (0/O, 1/l/I); die
+ * Position von Buchstabe und Ziffer wird zufällig verwürfelt.
  */
 readonly class RandomAccessPasswordGenerator implements AccessPasswordGeneratorInterface
 {
     private const string LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz';
     private const string DIGITS = '23456789';
-    private const string SPECIAL_CHARACTERS = '!@#$%&*+?';
+    private const int LENGTH = 5;
 
     public function generate(): string
     {
         $alphanumeric = self::LETTERS.self::DIGITS;
-        $characters = [
-            self::randomCharacter(self::LETTERS),
-            self::randomCharacter(self::DIGITS),
-            self::randomCharacter($alphanumeric),
-            self::randomCharacter($alphanumeric),
-            self::randomCharacter($alphanumeric),
-            self::randomCharacter($alphanumeric),
-            self::randomCharacter(self::SPECIAL_CHARACTERS),
-            self::randomCharacter(self::SPECIAL_CHARACTERS),
-        ];
+        $characters = [self::randomCharacter(self::LETTERS), self::randomCharacter(self::DIGITS)];
+        while (\count($characters) < self::LENGTH) {
+            $characters[] = self::randomCharacter($alphanumeric);
+        }
 
         return implode('', self::shuffle($characters));
     }

@@ -275,7 +275,7 @@ enum MailTemplateKey: string
             ],
             self::MemberAccessMagicLink => [
                 'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft?token=beispiel-token',
-                'passwort' => 'aB3!xy9?',
+                'passwort' => 'aB3x9',
                 'gueltig_minuten' => '30',
                 'vereinsname' => AssociationName::CURRENT,
             ],

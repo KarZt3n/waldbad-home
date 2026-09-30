@@ -43,7 +43,7 @@ use Symfony\Component\Mailer\MailerInterface;
 
 final class SendMemberMessageUseCaseTest extends TestCase
 {
-    private const string PASSWORD = 'aB3!xy9?';
+    private const string PASSWORD = 'aB3x9';
 
     public function testSavesTheMessageForAMemberReachableThroughTheToken(): void
     {

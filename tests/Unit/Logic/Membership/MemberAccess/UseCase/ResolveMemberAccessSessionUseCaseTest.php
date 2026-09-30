@@ -29,7 +29,7 @@ use PHPUnit\Framework\TestCase;
 final class ResolveMemberAccessSessionUseCaseTest extends TestCase
 {
     private const string NOW = '2026-06-01T10:00:00+02:00';
-    private const string PASSWORD = 'aB3!xy9?';
+    private const string PASSWORD = 'aB3x9';
 
     public function testThrowsForAnUnknownToken(): void
     {

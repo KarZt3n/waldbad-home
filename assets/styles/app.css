@@ -1865,7 +1865,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-month-label { margin: 0; color: var(--forest-900); font-size: 1.25rem; }
 .sauna-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .4rem; }
 .sauna-month-weekday { padding: .25rem 0; color: var(--muted); font-size: .85rem; font-weight: 800; text-align: center; }
-.sauna-month-day { display: grid; align-content: start; gap: .35rem; min-width: 0; min-height: 6.5rem; padding: .4rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--white); }
+.sauna-month-day { display: grid; align-content: start; gap: .2rem; min-width: 0; min-height: 3.5rem; padding: .4rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--white); }
 .sauna-month-day.is-outside { border-color: transparent; background: transparent; }
 .sauna-month-day.is-empty { background: #f6f8f7; }
 .sauna-month-day.is-today { border: 2px solid var(--lime-400); }

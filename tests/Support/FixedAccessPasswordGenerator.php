@@ -12,7 +12,7 @@ use App\Logic\Common\AccessPasswordGeneratorInterface;
  */
 readonly class FixedAccessPasswordGenerator implements AccessPasswordGeneratorInterface
 {
-    public const string PASSWORD = 'aB3!xy9?';
+    public const string PASSWORD = 'aB3x9';
 
     public function generate(): string
     {

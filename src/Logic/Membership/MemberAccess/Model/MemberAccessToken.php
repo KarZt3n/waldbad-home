@@ -21,7 +21,7 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
  * zufälliges Passwort (`$passwordHash`, siehe `RandomAccessPasswordGenerator`,
  * `MemberAccessPasswordHasher`) — muss bei jedem Aufruf zusätzlich zum Token mitgeschickt werden
  * (`ResolveMemberAccessSessionUseCase`). Anders als der Token selbst gesalzen/langsam gehasht, da es
- * mit 8 Zeichen deutlich weniger Entropie hat.
+ * mit 5 Zeichen deutlich weniger Entropie hat.
  *
  * Rein zeitlich begrenzt (`$expiresAt`, 30 Minuten ab Anfrage) statt einmalig verwendbar — ein
  * Seitenbesuch löst mehrere Aufrufe aus (Daten laden, ggf. eine Nachricht senden), die alle
