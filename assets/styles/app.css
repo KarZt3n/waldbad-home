@@ -1956,6 +1956,9 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-wish[open] > summary::before { content: '▾'; }
 .sauna-wish > summary strong { flex: 1; }
 .sauna-wish[open] > summary { border-bottom: 1px solid var(--line); border-radius: .85rem .85rem 0 0; background: var(--forest-100); }
+/* Kalender-Anfrage: genau ein Wunschtag, nicht aufklappbar, aber im selben Aussehen. */
+.sauna-wish-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); border-radius: .85rem .85rem 0 0; background: var(--forest-100); }
+.sauna-wish-head strong { flex: 1; }
 .sauna-wish.is-invalid { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
 .sauna-wish.is-invalid > summary, .sauna-wish.is-invalid[open] > summary { color: var(--danger); background: #fff0f0; }
 .sauna-wish-price { color: var(--forest-900); font-weight: 700; white-space: nowrap; }

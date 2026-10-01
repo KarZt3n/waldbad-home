@@ -5,6 +5,7 @@ namespace App\Tests\Unit\Logic\Rental\Sauna\Booking\UseCase;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\IdentifierGeneratorInterface;
+use App\Logic\Rental\Sauna\Booking\Dto\SaunaParticipantInput;
 use App\Logic\Rental\Sauna\Booking\Dto\SubmitSaunaBookingRequest;
 use App\Logic\Rental\Sauna\Booking\Manager\SaunaBookingManagerInterface;
 use App\Logic\Rental\Sauna\Booking\Mapping\SaunaBookingModelFactory;
@@ -123,11 +124,23 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         );
     }
 
+    public function testRequiresTheNamesOfAllPersons(): void
+    {
+        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
+        $bookings->expects(self::never())->method('save');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Für jede Person der Gruppe sind Vorname und Nachname anzugeben.');
+        $this->useCase($bookings)->execute($this->request(3, '20:00', participantCount: 2));
+    }
+
+    /** Ohne `$participantCount` mit genau so vielen Namen wie Personen (Erika Musterfrau zuerst). */
     private function request(
         int $personCount,
         string $endTime,
         string $date = '2026-10-05',
         string $startTime = '18:00',
+        ?int $participantCount = null,
     ): SubmitSaunaBookingRequest {
         return new SubmitSaunaBookingRequest(
             date: new \DateTimeImmutable($date),
@@ -139,6 +152,12 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
             birthDate: new \DateTimeImmutable('1990-01-01'),
             email: null,
             message: '',
+            participants: array_map(
+                static fn (int $index): SaunaParticipantInput => $index === 0
+                    ? new SaunaParticipantInput('Erika', 'Musterfrau')
+                    : new SaunaParticipantInput('Gast', (string) $index),
+                range(0, max(0, ($participantCount ?? $personCount) - 1)),
+            ),
         );
     }
 }

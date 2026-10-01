@@ -2,6 +2,7 @@
 
 namespace App\Logic\Rental\Sauna\Booking\UseCase;
 
+use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaBookingResponse;
 use App\Logic\Rental\Sauna\Booking\Dto\SubmitSaunaBookingRequest;
 use App\Logic\Rental\Sauna\Booking\Manager\SaunaBookingManagerInterface;
@@ -26,6 +27,9 @@ readonly class SubmitSaunaBookingUseCase
     {
         $terms = $this->terms->current();
         $terms->assertGroupSize($request->personCount);
+        if (count($request->participants) !== $request->personCount) {
+            throw new BusinessRuleViolationException('Für jede Person der Gruppe sind Vorname und Nachname anzugeben.');
+        }
         $booking = $this->factory->createFromRequest($request, $terms);
         $terms->assertMinimumDuration($booking->durationMinutes());
         $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);

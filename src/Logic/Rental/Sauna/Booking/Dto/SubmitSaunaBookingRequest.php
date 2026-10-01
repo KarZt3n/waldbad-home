@@ -4,6 +4,9 @@ namespace App\Logic\Rental\Sauna\Booking\Dto;
 
 readonly class SubmitSaunaBookingRequest
 {
+    /**
+     * @param list<SaunaParticipantInput> $participants Namen aller Personen der Gruppe, die anfragende Person zuerst
+     */
     public function __construct(
         public \DateTimeImmutable $date,
         public string $startTime,
@@ -14,6 +17,7 @@ readonly class SubmitSaunaBookingRequest
         public \DateTimeImmutable $birthDate,
         public ?string $email,
         public string $message,
+        public array $participants,
     ) {
     }
 }

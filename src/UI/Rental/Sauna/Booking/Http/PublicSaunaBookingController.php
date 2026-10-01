@@ -41,8 +41,8 @@ readonly class PublicSaunaBookingController
 
     /**
      * Zwei Anfragearten: aus dem Kalender genau ein Termin (`date`/`startTime`/`endTime`,
-     * `personCount`), individuell (`individual: true`) ein oder mehrere Wunschtage (`days`), je Tag
-     * mit Personenzahl und den Namen aller Personen.
+     * `personCount`, `participants`), individuell (`individual: true`) ein oder mehrere Wunschtage
+     * (`days`), je Tag mit Personenzahl und den Namen aller Personen.
      */
     #[Route('/bookings', name: 'api_public_sauna_booking_submit', methods: ['POST'])]
     public function submit(Request $request, SubmitSaunaBookingUseCase $useCase, SubmitIndividualSaunaRequestUseCase $individualUseCase): JsonResponse
@@ -71,6 +71,7 @@ readonly class PublicSaunaBookingController
                 throw new BadRequestHttpException('Die Personenzahl muss als ganze Zahl angegeben werden.');
             }
             [$date, $startTime, $endTime] = $this->schedule($data->getString('date'), $data->getString('startTime'), $data->getString('endTime'));
+            $participants = $this->participants($data->all('participants'));
         }
 
         $limit = $this->saunaBookingLimiter->create($request->getClientIp() ?? 'unknown')->consume();
@@ -105,6 +106,7 @@ readonly class PublicSaunaBookingController
             birthDate: $birthDate,
             email: $email === '' ? null : $email,
             message: $message,
+            participants: $participants,
         ));
 
         return new JsonResponse([
@@ -131,20 +133,31 @@ readonly class PublicSaunaBookingController
                 throw new BadRequestHttpException('Für jeden Wunschtag sind die Personenzahl und die Namen der Personen erforderlich.');
             }
             [$date, $startTime, $endTime] = $this->schedule($this->text($rawDay, 'date'), $this->text($rawDay, 'startTime'), $this->text($rawDay, 'endTime'));
-            $participants = [];
-            foreach ($rawParticipants as $rawParticipant) {
-                if (!is_array($rawParticipant)) {
-                    throw new BadRequestHttpException('Die Namen der Personen sind ungültig.');
-                }
-                $participants[] = new SaunaParticipantInput($this->text($rawParticipant, 'firstName'), $this->text($rawParticipant, 'lastName'));
-            }
-            $days[] = new SaunaRequestDayInput($date, $startTime, $endTime, $personCount, $participants);
+            $days[] = new SaunaRequestDayInput($date, $startTime, $endTime, $personCount, $this->participants($rawParticipants));
         }
         if ($days === []) {
             throw new BadRequestHttpException('Bitte mindestens einen Wunschtag angeben.');
         }
 
         return $days;
+    }
+
+    /**
+     * @param array<mixed> $rawParticipants
+     *
+     * @return list<SaunaParticipantInput>
+     */
+    private function participants(array $rawParticipants): array
+    {
+        $participants = [];
+        foreach ($rawParticipants as $rawParticipant) {
+            if (!is_array($rawParticipant)) {
+                throw new BadRequestHttpException('Die Namen der Personen sind ungültig.');
+            }
+            $participants[] = new SaunaParticipantInput($this->text($rawParticipant, 'firstName'), $this->text($rawParticipant, 'lastName'));
+        }
+
+        return $participants;
     }
 
     /**

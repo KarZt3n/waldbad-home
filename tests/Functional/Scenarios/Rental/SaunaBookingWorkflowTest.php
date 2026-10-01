@@ -114,6 +114,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'startTime' => '10:00',
             'endTime' => '12:00',
             'personCount' => 1,
+            'participants' => self::names(1),
             'firstName' => 'Allein',
             'lastName' => 'Saunierer',
             'birthDate' => '1990-01-01',
@@ -131,6 +132,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'startTime' => '10:00',
             'endTime' => '12:00',
             'personCount' => 4,
+            'participants' => self::names(4),
             'firstName' => 'Erika',
             'lastName' => 'Musterfrau',
             'birthDate' => '1990-01-01',
@@ -147,7 +149,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertNotNull($notification);
         self::assertEmailAddressContains($notification, 'To', 'sauna-team@example.test');
         self::assertEmailTextBodyContains($notification, 'Erika Musterfrau hat die Sauna angefragt');
-        self::assertEmailTextBodyContains($notification, "Zeitfenster aus dem Kalender:\n\n".(new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen\n- Preis: 24,00 €");
+        self::assertEmailTextBodyContains($notification, "Zeitfenster aus dem Kalender:\n\n".(new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen (Erika Musterfrau, Gast 1, Gast 2, Gast 3)\n- Preis: 24,00 €");
         self::assertEmailTextBodyContains($notification, 'Nachricht: Wir kommen zu dritt.');
 
         self::assertSame(['10:00 booked', '11:00 booked', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
@@ -158,9 +160,24 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'startTime' => '11:00',
             'endTime' => '13:00',
             'personCount' => 2,
+            'participants' => self::names(2),
             'firstName' => 'Max',
             'lastName' => 'Mustermann',
             'birthDate' => '1985-05-05',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Ohne die Namen aller Personen ist keine Kalender-Anfrage möglich.
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $tomorrow,
+            'startTime' => '12:00',
+            'endTime' => '14:00',
+            'personCount' => 3,
+            'participants' => self::names(2),
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'birthDate' => '1990-01-01',
             'privacyAccepted' => true,
         ]);
         self::assertResponseStatusCodeSame(422);
@@ -171,6 +188,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'startTime' => '12:00',
             'endTime' => '13:00',
             'personCount' => 2,
+            'participants' => self::names(2),
             'firstName' => 'Max',
             'lastName' => 'Mustermann',
             'birthDate' => '1985-05-05',
@@ -203,7 +221,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertNotNull($confirmation);
         self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
         self::assertEmailTextBodyContains($confirmation, 'deine Sauna-Anfrage wurde angenommen');
-        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen\n- Preis: 24,00 €");
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($tomorrow))->format('d.m.Y').", 10:00–12:00 Uhr,\n- 4 Personen (Erika Musterfrau, Gast 1, Gast 2, Gast 3)\n- Preis: 24,00 €");
         self::assertEmailTextBodyContains($confirmation, 'Nachricht: Wir kommen zu dritt.');
 
         // Storno eines angenommenen Termins gibt den Zeitraum frei; ein zweites Storno ist nicht möglich.
@@ -257,7 +275,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
 
         $guest = ['firstName' => 'Erika', 'lastName' => 'Musterfrau', 'birthDate' => '1990-01-01', 'privacyAccepted' => true];
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
-            ...$guest, 'date' => $closedDay, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
+            ...$guest, 'date' => $closedDay, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2, 'participants' => self::names(2),
         ]);
         self::assertResponseStatusCodeSame(422);
         $error = $this->responseData()['error'];
@@ -322,6 +340,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'startTime' => '10:00',
             'endTime' => '12:00',
             'personCount' => 2,
+            'participants' => self::names(2),
             'firstName' => 'Erika',
             'lastName' => 'Musterfrau',
             'birthDate' => '1990-01-01',
@@ -479,6 +498,19 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertIsArray($blocks);
         $extensionKeys = array_map(static fn (mixed $block): mixed => is_array($block) ? ($block['extensionKey'] ?? null) : null, $blocks);
         self::assertContains('sauna', $extensionKeys);
+    }
+
+    /**
+     * Namen für eine Kalender-Anfrage mit `$count` Personen (die anfragende Person zuerst).
+     *
+     * @return list<array{firstName: string, lastName: string}>
+     */
+    private static function names(int $count): array
+    {
+        return array_map(
+            static fn (int $index): array => $index === 0 ? ['firstName' => 'Erika', 'lastName' => 'Musterfrau'] : ['firstName' => 'Gast', 'lastName' => (string) $index],
+            range(0, $count - 1),
+        );
     }
 
     /** @return list<string> */

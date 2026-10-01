@@ -49,6 +49,7 @@ readonly class SaunaBookingModelFactory
             memberNumber: $match?->memberNumber,
             submittedAt: $now,
             updatedAt: $now,
+            participants: $this->participants($request->participants),
         );
     }
 
@@ -85,12 +86,22 @@ readonly class SaunaBookingModelFactory
             updatedAt: $now,
             individual: true,
             requestId: $requestId,
-            participants: array_map(fn (SaunaParticipantInput $participant): SaunaBookingParticipant => new SaunaBookingParticipant(
-                id: $this->identifierGenerator->generate(),
-                firstName: trim($participant->firstName),
-                lastName: trim($participant->lastName),
-            ), $day->participants),
+            participants: $this->participants($day->participants),
         ), $request->days);
+    }
+
+    /**
+     * @param list<SaunaParticipantInput> $participants
+     *
+     * @return list<SaunaBookingParticipant>
+     */
+    private function participants(array $participants): array
+    {
+        return array_map(fn (SaunaParticipantInput $participant): SaunaBookingParticipant => new SaunaBookingParticipant(
+            id: $this->identifierGenerator->generate(),
+            firstName: trim($participant->firstName),
+            lastName: trim($participant->lastName),
+        ), $participants);
     }
 
     private function email(?string $email): ?string
