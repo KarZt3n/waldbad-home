@@ -27,6 +27,7 @@ readonly class SubmitSaunaBookingUseCase
         $terms = $this->terms->current();
         $terms->assertGroupSize($request->personCount);
         $booking = $this->factory->createFromRequest($request, $terms);
+        $terms->assertMinimumDuration($booking->durationMinutes());
         $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
 
         $saved = $this->manager->save($booking);

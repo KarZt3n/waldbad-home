@@ -112,7 +112,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,
             'startTime' => '10:00',
-            'endTime' => '11:00',
+            'endTime' => '12:00',
             'personCount' => 1,
             'firstName' => 'Allein',
             'lastName' => 'Saunierer',
@@ -156,7 +156,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,
             'startTime' => '11:00',
-            'endTime' => '12:00',
+            'endTime' => '13:00',
             'personCount' => 2,
             'firstName' => 'Max',
             'lastName' => 'Mustermann',
@@ -164,6 +164,22 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'privacyAccepted' => true,
         ]);
         self::assertResponseStatusCodeSame(422);
+
+        // Kürzer als die Mindestdauer (Bezugsdauer der Konditionen, standardmäßig 2 Stunden) ist nicht anfragbar.
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $tomorrow,
+            'startTime' => '12:00',
+            'endTime' => '13:00',
+            'personCount' => 2,
+            'firstName' => 'Max',
+            'lastName' => 'Mustermann',
+            'birthDate' => '1985-05-05',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        self::assertSame('Eine Sauna-Anfrage muss mindestens 2 Stunden dauern.', $error['message']);
 
         $this->client->request('GET', '/api/admin/v1/sauna-bookings');
         self::assertResponseIsSuccessful();
@@ -241,7 +257,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
 
         $guest = ['firstName' => 'Erika', 'lastName' => 'Musterfrau', 'birthDate' => '1990-01-01', 'privacyAccepted' => true];
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
-            ...$guest, 'date' => $closedDay, 'startTime' => '10:00', 'endTime' => '11:00', 'personCount' => 2,
+            ...$guest, 'date' => $closedDay, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
         ]);
         self::assertResponseStatusCodeSame(422);
         $error = $this->responseData()['error'];
@@ -304,7 +320,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => (new \DateTimeImmutable('tomorrow'))->format('Y-m-d'),
             'startTime' => '10:00',
-            'endTime' => '11:00',
+            'endTime' => '12:00',
             'personCount' => 2,
             'firstName' => 'Erika',
             'lastName' => 'Musterfrau',
@@ -357,7 +373,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertSame('Der '.(new \DateTimeImmutable($outsideSeason))->format('d.m.Y').' liegt außerhalb der Sauna-Saison.', $error['message']);
 
         // Beide Wunschtage sind reserviert.
-        foreach ([[$thursday, '09:00', '10:00'], [$sunday, '11:00', '12:00']] as [$date, $startTime, $endTime]) {
+        foreach ([[$thursday, '08:00', '10:00'], [$sunday, '11:00', '13:00']] as [$date, $startTime, $endTime]) {
             $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
                 ['date' => $date, 'startTime' => $startTime, 'endTime' => $endTime, 'personCount' => 2,
                     'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
@@ -369,7 +385,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
             ['date' => (new \DateTimeImmutable('+10 days'))->format('Y-m-d'), 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
                 'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
-            ['date' => $sunday, 'startTime' => '11:00', 'endTime' => '12:00', 'personCount' => 2,
+            ['date' => $sunday, 'startTime' => '11:00', 'endTime' => '13:00', 'personCount' => 2,
                 'participants' => [$person('Erika', 'Andere'), $person('Max', 'Andere')]],
         ], 'Andere'));
         self::assertResponseStatusCodeSame(422);

@@ -52,4 +52,20 @@ final class SaunaTermsTest extends TestCase
 
         new SaunaTerms(priceCents: 2000, priceUnitMinutes: 120, minPersons: 4, maxPersons: 3, updatedAt: null);
     }
+
+    public function testPriceUnitIsTheMinimumDurationOfARequest(): void
+    {
+        $terms = SaunaTerms::defaults();
+        $terms->assertMinimumDuration(120);
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Eine Sauna-Anfrage muss mindestens 2 Stunden dauern.');
+        $terms->assertMinimumDuration(105);
+    }
+
+    public function testMinimumDurationMessageUsesMinutesForUnevenDurations(): void
+    {
+        $this->expectExceptionMessage('Eine Sauna-Anfrage muss mindestens 90 Minuten dauern.');
+        (new SaunaTerms(2000, 90, 2, 6, null))->assertMinimumDuration(60);
+    }
 }

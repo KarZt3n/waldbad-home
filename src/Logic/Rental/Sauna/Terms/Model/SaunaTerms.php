@@ -6,8 +6,9 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 
 /**
  * Konditionen der Sauna-Vermietung: Preis je Buchung (für die ganze Gruppe) bezogen auf eine
- * Bezugsdauer sowie die zulässige Gruppengröße. Eine Einzelnutzung ist ausgeschlossen, daher
- * beträgt die Mindestgröße immer mindestens zwei Personen.
+ * Bezugsdauer sowie die zulässige Gruppengröße. Die Bezugsdauer ist zugleich die Mindestdauer
+ * jeder Anfrage. Eine Einzelnutzung ist ausgeschlossen, daher beträgt die Mindestgröße immer
+ * mindestens zwei Personen.
  */
 readonly class SaunaTerms
 {
@@ -53,6 +54,24 @@ readonly class SaunaTerms
     public function priceFor(int $durationMinutes): int
     {
         return (int) round($this->priceCents * $durationMinutes / $this->priceUnitMinutes);
+    }
+
+    /** Eine Anfrage muss mindestens die Bezugsdauer des Preises umfassen (`$priceUnitMinutes`). */
+    public function assertMinimumDuration(int $durationMinutes): void
+    {
+        if ($durationMinutes < $this->priceUnitMinutes) {
+            throw new BusinessRuleViolationException(sprintf('Eine Sauna-Anfrage muss mindestens %s dauern.', $this->minimumDurationLabel()));
+        }
+    }
+
+    private function minimumDurationLabel(): string
+    {
+        if ($this->priceUnitMinutes % 60 !== 0) {
+            return sprintf('%d Minuten', $this->priceUnitMinutes);
+        }
+        $hours = intdiv($this->priceUnitMinutes, 60);
+
+        return $hours === 1 ? '1 Stunde' : sprintf('%d Stunden', $hours);
     }
 
     public function assertGroupSize(int $persons): void

@@ -1878,11 +1878,12 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(3.4rem, 1fr)); gap: .25rem; margin: 0; padding: 0; list-style: none; }
 .sauna-slot { display: grid; }
 .sauna-slot-time { font-weight: 800; }
-.sauna-slot-button, .sauna-slot-booked, .sauna-slot-past { width: 100%; padding: .3rem .15rem; border-radius: .4rem; font-size: .78rem; text-align: center; }
+.sauna-slot-button, .sauna-slot-booked, .sauna-slot-past, .sauna-slot-short { width: 100%; padding: .3rem .15rem; border-radius: .4rem; font-size: .78rem; text-align: center; }
 .sauna-slot-button { border: 2px solid var(--forest-700); color: var(--forest-900); background: var(--forest-100); font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; }
 .sauna-slot-button:hover { color: var(--forest-950); background: var(--lime-400); border-color: var(--lime-400); }
 .sauna-slot-booked { color: #59645f; text-decoration: line-through; background: repeating-linear-gradient(135deg, #eef1ef 0 6px, #e2e7e4 6px 12px); }
 .sauna-slot-past { color: #59645f; opacity: .55; background: #f3f5f4; }
+.sauna-slot-short { color: #59645f; background: #f3f5f4; }
 .sauna-booking-start { padding: .7rem 0; color: var(--forest-900); font-size: 1.1rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -1894,7 +1895,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .sauna-month-day-weekday { display: inline; }
     .sauna-month-day-number { display: none; }
     .sauna-slots { grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr)); }
-    .sauna-slot-button, .sauna-slot-booked, .sauna-slot-past { padding: .5rem .2rem; font-size: .85rem; }
+    .sauna-slot-button, .sauna-slot-booked, .sauna-slot-past, .sauna-slot-short { padding: .5rem .2rem; font-size: .85rem; }
 }
 @media (max-width: 480px) {
     .sauna-month-day { grid-template-columns: 1fr; }
@@ -1941,8 +1942,6 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-same-group { margin-top: .5rem; }
 .sauna-group, .sauna-day-persons { display: grid; gap: .5rem; }
 .sauna-group[hidden], .sauna-day-persons[hidden] { display: none; }
-.sauna-time { display: flex; align-items: center; gap: .35rem; }
-.sauna-time select { flex: 1; min-width: 0; }
 .sauna-participants { display: grid; gap: .5rem; margin: 0; padding-left: 1.25rem; }
 .sauna-participant-booker { color: #33463b; }
 .sauna-participant-booker-name { font-weight: 700; }

@@ -24,19 +24,23 @@ const formatDuration = (minutes) => minutes % 60 === 0
 // Gleiche Rechnung wie `SaunaTerms::priceFor()`; maßgeblich bleibt der serverseitig gespeicherte Preis.
 const priceFor = (terms, durationMinutes) => Math.round(terms.priceCents * durationMinutes / terms.priceUnitMinutes);
 const termsSummary = (terms) => `${formatEuro(terms.priceCents)} je ${formatDuration(terms.priceUnitMinutes)} für die ganze Gruppe`
+    + ` · Mindestdauer ${formatDuration(terms.priceUnitMinutes)}`
     + ` · Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen, keine Einzelnutzung`;
 
 /**
  * Alle Endzeiten, die sich ab `slotIndex` durch lückenlos anschließende freie Buchungseinheiten
- * desselben Tages erreichen lassen — Grundlage der „bis“-Auswahl im Anfrage-Dialog.
+ * desselben Tages erreichen lassen und mindestens die Mindestdauer (`terms.priceUnitMinutes`)
+ * umfassen — Grundlage der „bis“-Auswahl im Anfrage-Dialog. Leer, wenn ab hier keine Anfrage der
+ * Mindestdauer möglich ist.
  */
-const reachableEndTimes = (slots, slotIndex) => {
+const reachableEndTimes = (slots, slotIndex, terms) => {
     const endTimes = [];
+    const earliestEnd = toMinutes(slots[slotIndex].startTime) + terms.priceUnitMinutes;
     for (let index = slotIndex; index < slots.length; index++) {
         const slot = slots[index];
         if (slot.state !== 'free') break;
         if (index > slotIndex && slot.startTime !== slots[index - 1].endTime) break;
-        endTimes.push(slot.endTime);
+        if (toMinutes(slot.endTime) >= earliestEnd) endTimes.push(slot.endTime);
     }
 
     return endTimes;
@@ -53,7 +57,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
 
     const {day, slotIndex} = selection;
     const slot = day.slots[slotIndex];
-    const endSelect = element('select', {attributes: {name: 'endTime', id: 'sauna-booking-end'}, children: reachableEndTimes(day.slots, slotIndex)
+    const endSelect = element('select', {attributes: {name: 'endTime', id: 'sauna-booking-end'}, children: reachableEndTimes(day.slots, slotIndex, terms)
         .map((endTime) => element('option', {text: `${endTime} Uhr`, attributes: {value: endTime}}))});
     const personSelect = personCountSelect(terms, 'personCount', 'sauna-booking-persons');
     const price = element('strong', {className: 'sauna-booking-price', attributes: {'aria-live': 'polite'}});
@@ -198,8 +202,16 @@ const openIndividualSaunaRequestDialog = (terms, season, onSubmitted) => {
             min: season.startsOn > today ? season.startsOn : today,
             ...(season.endsOn ? {max: season.endsOn} : {}),
         }});
+        // Nur volle Stunden. „von“ nur so spät, dass bis 23 Uhr noch die Mindestdauer bleibt; „bis“
+        // erst ab Beginn + Mindestdauer (aufgerundet auf die volle Stunde) und damit vorausgewählt.
         const startInput = timeSelect(`${dayId}-start`, 'von');
         const endInput = timeSelect(`${dayId}-end`, 'bis');
+        startInput.setRange({from: 0, to: LAST_HOUR_OF_DAY - terms.priceUnitMinutes}, null);
+        endInput.setRange(null, null);
+        startInput.onChange(() => {
+            const earliestEnd = startInput.value ? toMinutes(startInput.value) + terms.priceUnitMinutes : null;
+            endInput.setRange(earliestEnd === null ? null : {from: earliestEnd, to: LAST_HOUR_OF_DAY}, earliestEnd);
+        });
         const editor = participantsEditor();
         const personsSection = element('div', {className: 'sauna-day-persons', children: [editor.element]});
         const summaryText = element('strong');
@@ -338,23 +350,41 @@ const groupHint = (terms) => `Die Sauna wird nur an Gruppen von ${terms.minPerso
 const personCountSelect = (terms, name, id) => element('select', {attributes: {...(name ? {name} : {}), id}, children: Array
     .from({length: terms.maxPersons - terms.minPersons + 1}, (_, index) => terms.minPersons + index)
     .map((count) => element('option', {text: `${count} Personen`, attributes: {value: String(count)}}))});
+const LAST_HOUR_OF_DAY = 23 * 60;
+
 /**
- * Uhrzeit als Stunden- und Minutenauswahl statt `<input type="time">`: dort lassen sich die Minuten
- * nicht mit „00“ vorbelegen, solange keine Stunde gewählt ist. `value` liefert wie das native Feld
- * `HH:MM` bzw. leer, solange keine Stunde gewählt ist.
+ * Uhrzeit für individuelle Anfragen als Auswahl voller Stunden (`HH:00`); `value` ist leer, solange
+ * nichts gewählt ist. `setRange()` beschränkt die wählbaren Stunden (z. B. „bis“ erst ab Beginn +
+ * Mindestdauer, aufgerundet auf die volle Stunde) und wählt `preselect`, wenn die bisherige Wahl
+ * außerhalb liegt; ohne Bereich (`null`) ist die Auswahl gesperrt.
  */
 const timeSelect = (id, label) => {
-    const hour = element('select', {attributes: {id, required: 'required', 'aria-label': `${label}: Stunde`}, children: [
-        element('option', {text: '--', attributes: {value: ''}}),
-        ...Array.from({length: 24}, (_, index) => String(index).padStart(2, '0'))
-            .map((value) => element('option', {text: value, attributes: {value}})),
-    ]});
-    const minute = element('select', {attributes: {'aria-label': `${label}: Minute`}, children: ['00', '15', '30', '45']
-        .map((value) => element('option', {text: value, attributes: {value}}))});
+    const hour = element('select', {attributes: {id, required: 'required', 'aria-label': label}});
+    const select = (range, minutes) => {
+        const options = [];
+        for (let value = Math.ceil(range.from / 60) * 60; value <= range.to; value += 60) {
+            const time = `${String(value / 60).padStart(2, '0')}:00`;
+            options.push(element('option', {text: `${time} Uhr`, attributes: {value: time}}));
+        }
+        hour.replaceChildren(element('option', {text: '--:--', attributes: {value: ''}}), ...options);
+        hour.value = minutes === null ? '' : `${String(Math.floor(minutes / 60)).padStart(2, '0')}:00`;
+    };
+    select({from: 0, to: LAST_HOUR_OF_DAY}, null);
 
     return {
-        element: element('span', {className: 'sauna-time', children: [hour, element('span', {text: ':'}), minute, element('span', {text: 'Uhr'})]}),
-        get value() { return hour.value ? `${hour.value}:${minute.value}` : ''; },
+        element: hour,
+        get value() { return hour.value; },
+        onChange: (callback) => hour.addEventListener('change', callback),
+        setRange: (range, preselect) => {
+            hour.disabled = range === null || Math.ceil(range.from / 60) * 60 > range.to;
+            if (hour.disabled) {
+                select({from: 0, to: LAST_HOUR_OF_DAY}, null);
+                return;
+            }
+            const current = hour.value ? toMinutes(hour.value) : null;
+            const earliest = Math.ceil(range.from / 60) * 60;
+            select(range, current !== null && current >= earliest && current <= range.to ? current : (preselect === null ? null : Math.ceil(preselect / 60) * 60));
+        },
     };
 };
 const guestFields = () => [
@@ -399,6 +429,14 @@ const MONTH_LABEL = new Intl.DateTimeFormat('de-DE', {month: 'long', year: 'nume
 const renderSlot = (day, slot, index, terms, reload) => {
     const time = `${slot.startTime}–${slot.endTime}`;
     const label = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: ${SLOT_LABELS[slot.state] || slot.state}`;
+    // Ab dieser Einheit reicht die freie Zeit nicht für die Mindestdauer: nicht anklickbar.
+    if (slot.state === 'free' && reachableEndTimes(day.slots, index, terms).length === 0) {
+        const shortLabel = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: frei, aber kürzer als die Mindestdauer von ${formatDuration(terms.priceUnitMinutes)}`;
+        return element('li', {className: 'sauna-slot sauna-slot-short', attributes: {title: shortLabel}, children: [
+            element('span', {className: 'sauna-slot-time', text: slot.startTime, attributes: {'aria-hidden': 'true'}}),
+            element('span', {className: 'visually-hidden', text: shortLabel}),
+        ]});
+    }
     if (slot.state !== 'free') {
         return element('li', {className: `sauna-slot sauna-slot-${slot.state}`, attributes: {title: label}, children: [
             element('span', {className: 'sauna-slot-time', text: slot.startTime, attributes: {'aria-hidden': 'true'}}),

@@ -520,7 +520,7 @@ const showSaunaTerms = async () => {
     priceInput.min = '0';
     priceInput.max = '1000';
     priceInput.step = '0.01';
-    const unit = field('für eine Dauer von (Minuten)', 'sauna-terms-unit', terms.priceUnitMinutes, 'number');
+    const unit = field('für eine Dauer von (Minuten) – zugleich Mindestdauer einer Anfrage', 'sauna-terms-unit', terms.priceUnitMinutes, 'number');
     const unitInput = unit.querySelector('input');
     unitInput.min = '15';
     unitInput.max = '1440';

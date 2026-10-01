@@ -115,6 +115,11 @@ readonly class SaunaBooking
         return hash('sha256', $identity);
     }
 
+    public function durationMinutes(): int
+    {
+        return SaunaOpeningHours::toMinutes($this->endTime) - SaunaOpeningHours::toMinutes($this->startTime);
+    }
+
     public function overlaps(\DateTimeImmutable $date, string $startTime, string $endTime): bool
     {
         return $this->date->format('Y-m-d') === $date->format('Y-m-d')
