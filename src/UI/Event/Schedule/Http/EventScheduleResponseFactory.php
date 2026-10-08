@@ -37,6 +37,7 @@ readonly class EventScheduleResponseFactory
                     'meetTime' => $activity->meetTime,
                     'meetPlace' => $activity->meetPlace,
                     'remark' => $activity->remark,
+                    'selectable' => $activity->selectable,
                 ],
                 $schedule->activities,
             ),

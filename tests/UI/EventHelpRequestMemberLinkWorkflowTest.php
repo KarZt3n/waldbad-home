@@ -284,8 +284,8 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
             'helpButtonLabel' => 'Ich möchte helfen!',
             'visible' => true,
             'activities' => [
-                ['activityId' => $activity1Id, 'requiredHelpers' => 3, 'time' => '09:00', 'meetTime' => '08:45', 'meetPlace' => 'Eingang', 'remark' => null],
-                ['activityId' => $activity2Id, 'requiredHelpers' => 3, 'time' => '09:00', 'meetTime' => '08:45', 'meetPlace' => 'Eingang', 'remark' => null],
+                ['activityId' => $activity1Id, 'requiredHelpers' => 3, 'selectable' => true, 'time' => '09:00', 'meetTime' => '08:45', 'meetPlace' => 'Eingang', 'remark' => null],
+                ['activityId' => $activity2Id, 'requiredHelpers' => 3, 'selectable' => true, 'time' => '09:00', 'meetTime' => '08:45', 'meetPlace' => 'Eingang', 'remark' => null],
             ],
             'callToActions' => [],
         ], $headers);

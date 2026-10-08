@@ -42,6 +42,7 @@ readonly class EventScheduleMapper
                     meetTime: $activity->getMeetTime(),
                     meetPlace: $activity->getMeetPlace(),
                     remark: $activity->getRemark(),
+                    selectable: $activity->isSelectable(),
                 ),
                 $entity->getActivities(),
             ),
@@ -127,6 +128,7 @@ readonly class EventScheduleMapper
                 meetTime: $activity->meetTime,
                 meetPlace: $activity->meetPlace,
                 remark: $activity->remark,
+                selectable: $activity->selectable,
             ),
             $schedule->activities,
         );

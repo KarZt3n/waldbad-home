@@ -183,30 +183,44 @@ const openEventHelpDialog = async (block) => {
     const message = formMessage();
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Helferanmeldung schließen'}});
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
-    const activityChoices = (availability.items || []).map((activity) => {
+    const activityDetails = (activity, helperStatus = null) => {
+        const scheduleParts = [];
+        if (activity.time) scheduleParts.push(`Start: ${activity.time}`);
+        if (activity.meetTime) scheduleParts.push(`Ende: ${activity.meetTime}`);
+        if (activity.meetPlace) scheduleParts.push(`Treffpunkt: ${activity.meetPlace}`);
+        return element('span', {children: [
+            element('strong', {text: activity.name}),
+            ...(helperStatus ? [element('small', {text: helperStatus})] : []),
+            ...(activity.description ? [element('small', {text: activity.description})] : []),
+            ...(scheduleParts.length ? [element('small', {className: 'event-activity-schedule', text: scheduleParts.join(' · ')})] : []),
+            ...(activity.remark ? [element('small', {className: 'event-activity-remark', text: activity.remark})] : []),
+        ]});
+    };
+    // Nur auswählbare Aktivitäten erscheinen als Checkbox mit Helferzahl, alle übrigen als reine Auflistung.
+    const activityInputs = [];
+    const activityEntries = (availability.items || []).map((activity) => {
+        if (activity.selectable === false) {
+            // Unsichtbare Platzhalter-Checkbox (ohne Name, nicht fokussierbar), damit der Text exakt so weit
+            // eingerückt ist wie bei auswählbaren Aktivitäten – unabhängig von der Checkbox-Größe des Browsers.
+            const spacer = element('input', {className: 'event-activity-choice-spacer', attributes: {
+                type: 'checkbox', disabled: 'disabled', tabindex: '-1', 'aria-hidden': 'true',
+            }});
+            return element('div', {className: 'event-activity-choice is-listed', children: [spacer, activityDetails(activity)]});
+        }
         const isFull = activity.registeredHelpers >= activity.requiredHelpers;
         const input = element('input', {attributes: {
             type: 'checkbox', name: 'activityIds', value: activity.id,
             ...(isFull ? {disabled: 'disabled'} : {}),
         }});
-        const scheduleParts = [];
-        if (activity.time) scheduleParts.push(`Start: ${activity.time}`);
-        if (activity.meetTime) scheduleParts.push(`Ende: ${activity.meetTime}`);
-        if (activity.meetPlace) scheduleParts.push(`Treffpunkt: ${activity.meetPlace}`);
+        input.checked = activity.preselected === true && !isFull;
+        activityInputs.push(input);
         return element('label', {className: `event-activity-choice${isFull ? ' is-full' : ''}`, children: [
             input,
-            element('span', {children: [
-                element('strong', {text: activity.name}),
-                element('small', {text: isFull
-                    ? `Belegt · ${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`
-                    : `${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`}),
-                ...(activity.description ? [element('small', {text: activity.description})] : []),
-                ...(scheduleParts.length ? [element('small', {className: 'event-activity-schedule', text: scheduleParts.join(' · ')})] : []),
-                ...(activity.remark ? [element('small', {className: 'event-activity-remark', text: activity.remark})] : []),
-            ]}),
+            activityDetails(activity, isFull
+                ? `Belegt · ${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`
+                : `${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`),
         ]});
     });
-    const activityInputs = activityChoices.map((choice) => choice.querySelector('input'));
     const selectableActivityInputs = activityInputs.filter((input) => !input.disabled);
     const updateActivityRequirement = () => {
         const hasSelection = selectableActivityInputs.some((input) => input.checked);
@@ -214,7 +228,7 @@ const openEventHelpDialog = async (block) => {
     };
     selectableActivityInputs.forEach((input) => input.addEventListener('change', updateActivityRequirement));
     updateActivityRequirement();
-    const allActivitiesFull = activityChoices.length > 0 && selectableActivityInputs.length === 0;
+    const allActivitiesFull = activityInputs.length > 0 && selectableActivityInputs.length === 0;
     const submitButton = element('button', {
         className: 'button',
         text: allActivitiesFull ? 'Aktuell keine Plätze frei' : 'Helferanmeldung absenden',
@@ -228,9 +242,9 @@ const openEventHelpDialog = async (block) => {
         ]}),
         element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
         field('E-Mail (optional)', 'email', '', 'email'),
-        ...(activityChoices.length ? [element('fieldset', {className: 'event-activity-choices', children: [
-            element('legend', {text: 'Wobei möchtest du helfen?'}),
-            ...activityChoices,
+        ...(activityEntries.length ? [element('fieldset', {className: 'event-activity-choices', children: [
+            element('legend', {text: activityInputs.length ? 'Wobei möchtest du helfen?' : 'Das steht an'}),
+            ...activityEntries,
         ]})] : []),
         field('Nachricht / Wobei möchtest du helfen? (optional)', 'message', '', 'textarea'),
         element('label', {className: 'check-field', children: [privacy, element('span', {text: 'Ich stimme der Verarbeitung meiner Angaben zur Organisation dieser Veranstaltung zu.'})]}),

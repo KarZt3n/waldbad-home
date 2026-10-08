@@ -44,7 +44,10 @@ readonly class SubmitEventHelpRequestUseCase
         $event = $this->eventProvider->findPublished($eventIdentifier)
             ?? throw new BusinessRuleViolationException('Für diese Veranstaltung ist keine Helferanmeldung verfügbar.');
         $activityIds = array_values(array_unique(array_map('trim', $activityIds)));
-        $allowedIds = array_map(static fn ($assignment): string => $assignment->activityId, $event->activities);
+        $allowedIds = array_map(
+            static fn ($assignment): string => $assignment->activityId,
+            array_filter($event->activities, static fn ($assignment): bool => $assignment->selectable),
+        );
         if ($allowedIds !== [] && $activityIds === []) {
             throw new BusinessRuleViolationException('Bitte wählen Sie mindestens eine Aktivität aus.');
         }
@@ -64,7 +67,8 @@ readonly class SubmitEventHelpRequestUseCase
             }
         }
         foreach ($event->activities as $assignment) {
-            if (in_array($assignment->activityId, $activityIds, true)
+            if ($assignment->requiredHelpers !== null
+                && in_array($assignment->activityId, $activityIds, true)
                 && ($registrationCounts[$assignment->activityId] ?? 0) >= $assignment->requiredHelpers) {
                 throw new BusinessRuleViolationException('Eine ausgewählte Aktivität ist bereits vollständig belegt.');
             }

@@ -8,12 +8,14 @@ readonly class EventActivityAvailabilityResponse
         public string $id,
         public string $name,
         public string $description,
-        public int $requiredHelpers,
+        public ?int $requiredHelpers,
         public int $registeredHelpers,
         public ?string $time = null,
         public ?string $meetTime = null,
         public ?string $meetPlace = null,
         public ?string $remark = null,
+        public bool $selectable = true,
+        public bool $preselected = false,
     ) {
     }
 }

@@ -16,6 +16,8 @@ readonly class EventActivityMapper
             active: $entity->isActive(),
             defaultRequiredHelpers: $entity->getDefaultRequiredHelpers(),
             alwaysIncluded: $entity->isAlwaysIncluded(),
+            defaultSelectable: $entity->isDefaultSelectable(),
+            preselected: $entity->isPreselected(),
             createdAt: $entity->getCreatedAt(),
             updatedAt: $entity->getUpdatedAt(),
         );
@@ -30,6 +32,8 @@ readonly class EventActivityMapper
             active: $activity->active,
             defaultRequiredHelpers: $activity->defaultRequiredHelpers,
             alwaysIncluded: $activity->alwaysIncluded,
+            defaultSelectable: $activity->defaultSelectable,
+            preselected: $activity->preselected,
             createdAt: $activity->createdAt,
             updatedAt: $activity->updatedAt,
         );
@@ -43,6 +47,8 @@ readonly class EventActivityMapper
             $activity->active,
             $activity->defaultRequiredHelpers,
             $activity->alwaysIncluded,
+            $activity->defaultSelectable,
+            $activity->preselected,
             $activity->updatedAt,
         );
     }

@@ -22,8 +22,8 @@ class EventTemplateActivityEntity
         private int $position,
         #[ORM\Column(type: Types::STRING, length: 36)]
         private string $activityId,
-        #[ORM\Column(type: Types::INTEGER)]
-        private int $requiredHelpers,
+        #[ORM\Column(type: Types::INTEGER, nullable: true)]
+        private ?int $requiredHelpers,
         #[ORM\Column(type: Types::STRING, length: 5, nullable: true)]
         private ?string $time,
         #[ORM\Column(type: Types::STRING, length: 5, nullable: true)]
@@ -32,15 +32,18 @@ class EventTemplateActivityEntity
         private ?string $meetPlace,
         #[ORM\Column(type: Types::STRING, length: 500, nullable: true)]
         private ?string $remark,
+        #[ORM\Column(type: Types::BOOLEAN)]
+        private bool $selectable,
     ) {
     }
 
     public function getId(): string { return $this->id; }
     public function getPosition(): int { return $this->position; }
     public function getActivityId(): string { return $this->activityId; }
-    public function getRequiredHelpers(): int { return $this->requiredHelpers; }
+    public function getRequiredHelpers(): ?int { return $this->requiredHelpers; }
     public function getTime(): ?string { return $this->time; }
     public function getMeetTime(): ?string { return $this->meetTime; }
     public function getMeetPlace(): ?string { return $this->meetPlace; }
     public function getRemark(): ?string { return $this->remark; }
+    public function isSelectable(): bool { return $this->selectable; }
 }

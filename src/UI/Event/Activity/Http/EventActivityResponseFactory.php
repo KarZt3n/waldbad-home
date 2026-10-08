@@ -16,6 +16,8 @@ readonly class EventActivityResponseFactory
             'active' => $activity->active,
             'defaultRequiredHelpers' => $activity->defaultRequiredHelpers,
             'alwaysIncluded' => $activity->alwaysIncluded,
+            'defaultSelectable' => $activity->defaultSelectable,
+            'preselected' => $activity->preselected,
             'createdAt' => $activity->createdAt->format(\DateTimeInterface::ATOM),
             'updatedAt' => $activity->updatedAt->format(\DateTimeInterface::ATOM),
         ];

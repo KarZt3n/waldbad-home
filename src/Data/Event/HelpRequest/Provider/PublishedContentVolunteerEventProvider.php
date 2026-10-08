@@ -3,9 +3,11 @@
 namespace App\Data\Event\HelpRequest\Provider;
 
 use App\Logic\Content\Page\Manager\PageManagerInterface;
+use App\Logic\Content\Page\Model\EventActivityAssignment;
 use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\Content\Page\Model\Page;
 use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
+use App\Logic\Event\HelpRequest\Model\VolunteerEventActivity;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 
 readonly class PublishedContentVolunteerEventProvider implements VolunteerEventProviderInterface
@@ -41,7 +43,19 @@ readonly class PublishedContentVolunteerEventProvider implements VolunteerEventP
                     return null;
                 }
 
-                return new VolunteerEvent($eventIdentifier, $block->eventTitle, $block->eventDate, $block->eventTime, $block->eventActivities);
+                // Aktivitäten aus Legacy-Seitenblöcken waren stets als Checkbox auswählbar.
+                return new VolunteerEvent($eventIdentifier, $block->eventTitle, $block->eventDate, $block->eventTime, array_map(
+                    static fn (EventActivityAssignment $assignment): VolunteerEventActivity => new VolunteerEventActivity(
+                        activityId: $assignment->activityId,
+                        requiredHelpers: $assignment->requiredHelpers,
+                        selectable: true,
+                        time: $assignment->time,
+                        meetTime: $assignment->meetTime,
+                        meetPlace: $assignment->meetPlace,
+                        remark: $assignment->remark,
+                    ),
+                    $block->eventActivities,
+                ));
             }
         }
 

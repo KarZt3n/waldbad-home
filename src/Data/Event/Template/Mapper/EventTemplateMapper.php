@@ -39,6 +39,7 @@ readonly class EventTemplateMapper
                     meetTime: $activity->getMeetTime(),
                     meetPlace: $activity->getMeetPlace(),
                     remark: $activity->getRemark(),
+                    selectable: $activity->isSelectable(),
                 ),
                 $entity->getActivities(),
             ),
@@ -118,6 +119,7 @@ readonly class EventTemplateMapper
                 meetTime: $activity->meetTime,
                 meetPlace: $activity->meetPlace,
                 remark: $activity->remark,
+                selectable: $activity->selectable,
             ),
             $template->activities,
         );

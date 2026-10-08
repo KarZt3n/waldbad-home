@@ -10,6 +10,8 @@ readonly class CreateEventActivityRequest
         public bool $active,
         public ?int $defaultRequiredHelpers,
         public bool $alwaysIncluded,
+        public bool $defaultSelectable,
+        public bool $preselected,
     ) {
     }
 }

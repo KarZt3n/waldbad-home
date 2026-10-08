@@ -96,8 +96,13 @@ readonly class EventTemplateRequestMapper
 
         $mapped = [];
         foreach ($activities as $position => $activity) {
-            if (!is_array($activity) || !is_string($activity['activityId'] ?? null) || !is_int($activity['requiredHelpers'] ?? null)) {
-                throw new BadRequestHttpException('Eine Aktivität benötigt Kennung und Helferzahl.');
+            if (!is_array($activity) || !is_string($activity['activityId'] ?? null)) {
+                throw new BadRequestHttpException('Eine Aktivität benötigt eine Kennung.');
+            }
+            $requiredHelpers = $activity['requiredHelpers'] ?? null;
+            $selectable = $activity['selectable'] ?? false;
+            if (($requiredHelpers !== null && !is_int($requiredHelpers)) || !is_bool($selectable)) {
+                throw new BadRequestHttpException('Helferzahl und Auswählbarkeit einer Aktivität sind ungültig.');
             }
             $time = $activity['time'] ?? null;
             $meetTime = $activity['meetTime'] ?? null;
@@ -113,11 +118,12 @@ readonly class EventTemplateRequestMapper
                 id: $this->identifierGenerator->generate(),
                 position: $position,
                 activityId: trim($activity['activityId']),
-                requiredHelpers: $activity['requiredHelpers'],
+                requiredHelpers: $requiredHelpers,
                 time: $time === null || trim($time) === '' ? null : trim($time),
                 meetTime: $meetTime === null || trim($meetTime) === '' ? null : trim($meetTime),
                 meetPlace: $meetPlace === null || trim($meetPlace) === '' ? null : trim($meetPlace),
                 remark: $remark === null || trim($remark) === '' ? null : trim($remark),
+                selectable: $selectable,
             );
         }
 

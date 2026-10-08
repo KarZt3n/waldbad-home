@@ -2,11 +2,11 @@
 
 namespace App\Data\Event\Schedule\Provider;
 
-use App\Logic\Content\Page\Model\EventActivityAssignment;
 use App\Logic\Event\Schedule\EventScheduleProviderInterface;
 use App\Logic\Event\Schedule\Model\EventSchedule;
 use App\Logic\Event\Schedule\Model\EventScheduleActivity;
 use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
+use App\Logic\Event\HelpRequest\Model\VolunteerEventActivity;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 
 /**
@@ -44,9 +44,10 @@ readonly class EventScheduleVolunteerEventProvider implements VolunteerEventProv
             $schedule->date,
             $schedule->time,
             array_map(
-                static fn (EventScheduleActivity $activity): EventActivityAssignment => new EventActivityAssignment(
+                static fn (EventScheduleActivity $activity): VolunteerEventActivity => new VolunteerEventActivity(
                     activityId: $activity->activityId,
                     requiredHelpers: $activity->requiredHelpers,
+                    selectable: $activity->selectable,
                     time: $activity->time,
                     meetTime: $activity->meetTime,
                     meetPlace: $activity->meetPlace,

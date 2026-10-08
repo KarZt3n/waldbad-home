@@ -13,6 +13,8 @@ readonly class EventActivity
         public bool $active,
         public ?int $defaultRequiredHelpers,
         public bool $alwaysIncluded,
+        public bool $defaultSelectable,
+        public bool $preselected,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -27,7 +29,7 @@ readonly class EventActivity
         }
     }
 
-    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, bool $alwaysIncluded, \DateTimeImmutable $updatedAt): self
+    public function update(string $name, string $description, bool $active, ?int $defaultRequiredHelpers, bool $alwaysIncluded, bool $defaultSelectable, bool $preselected, \DateTimeImmutable $updatedAt): self
     {
         return new self(
             id: $this->id,
@@ -36,6 +38,8 @@ readonly class EventActivity
             active: $active,
             defaultRequiredHelpers: $defaultRequiredHelpers,
             alwaysIncluded: $alwaysIncluded,
+            defaultSelectable: $defaultSelectable,
+            preselected: $preselected,
             createdAt: $this->createdAt,
             updatedAt: $updatedAt,
         );

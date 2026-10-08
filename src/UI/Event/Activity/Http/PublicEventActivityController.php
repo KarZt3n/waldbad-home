@@ -24,6 +24,8 @@ readonly class PublicEventActivityController
                 'meetTime' => $activity->meetTime,
                 'meetPlace' => $activity->meetPlace,
                 'remark' => $activity->remark,
+                'selectable' => $activity->selectable,
+                'preselected' => $activity->preselected,
             ],
             $query->execute($eventIdentifier),
         )]);

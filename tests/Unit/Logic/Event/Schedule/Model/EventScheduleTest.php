@@ -37,7 +37,7 @@ final class EventScheduleTest extends TestCase
                     id: 'activity-assignment-1',
                     position: 0,
                     activityId: 'activity-1',
-                    requiredHelpers: 5,
+                    requiredHelpers: 5, selectable: true,
                     time: '09:30',
                     meetTime: '09:15',
                     meetPlace: 'Haupteingang',
@@ -96,8 +96,8 @@ final class EventScheduleTest extends TestCase
             imageWidthPercent: null, verticalAlignment: null, textAlignment: null, imageFit: null, helpEnabled: true,
             helpButtonLabel: null, visible: true,
             activities: [
-                new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2),
-                new EventScheduleActivity(id: 'a2', position: 1, activityId: 'activity-1', requiredHelpers: 3),
+                new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2, selectable: true),
+                new EventScheduleActivity(id: 'a2', position: 1, activityId: 'activity-1', requiredHelpers: 3, selectable: true),
             ],
             callToActions: [], createdAt: $now, updatedAt: $now,
         );
@@ -108,7 +108,7 @@ final class EventScheduleTest extends TestCase
         $this->expectException(BusinessRuleViolationException::class);
         $this->expectExceptionMessage('Treffzeit');
 
-        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2, meetTime: '9:5');
+        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2, selectable: true, meetTime: '9:5');
     }
 
     public function testActivityRequiredHelpersMustBePositive(): void
@@ -116,7 +116,31 @@ final class EventScheduleTest extends TestCase
         $this->expectException(BusinessRuleViolationException::class);
         $this->expectExceptionMessage('zwischen 1 und 999');
 
-        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 0);
+        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 0, selectable: true);
+    }
+
+    public function testActivityIsListedOnlyWithoutRequiredHelpersByDefault(): void
+    {
+        $activity = new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: null);
+
+        self::assertFalse($activity->selectable);
+        self::assertNull($activity->requiredHelpers);
+    }
+
+    public function testSelectableActivityRequiresRequiredHelpers(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('auswählbare Aktivität');
+
+        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: null, selectable: true);
+    }
+
+    public function testListedActivityMustNotHaveRequiredHelpers(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('keine benötigte Helferzahl');
+
+        new EventScheduleActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 3);
     }
 
     public function testReviseKeepsIdentityAndKind(): void

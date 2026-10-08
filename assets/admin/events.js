@@ -837,6 +837,10 @@ const openActivityDialog = (activity, onSaved) => {
     active.checked = activity?.active !== false;
     const alwaysIncluded = element('input', {attributes: {type: 'checkbox'}});
     alwaysIncluded.checked = activity?.alwaysIncluded === true;
+    const defaultSelectable = element('input', {attributes: {type: 'checkbox'}});
+    defaultSelectable.checked = activity?.defaultSelectable === true;
+    const preselected = element('input', {attributes: {type: 'checkbox'}});
+    preselected.checked = activity?.preselected === true;
     const message = formMessage();
     const submit = element('button', {className: 'button', text: activity ? 'Änderungen speichern' : 'Aktivität anlegen', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -876,6 +880,10 @@ const openActivityDialog = (activity, onSaved) => {
         element('label', {className: 'check-field', children: [active, element('span', {text: 'Aktivität ist auswählbar'})]}),
         element('label', {className: 'check-field', children: [alwaysIncluded, element('span', {text: 'Immer in neue Veranstaltungen einbinden'})]}),
         element('small', {text: 'Wird beim Anlegen einer neuen Veranstaltung automatisch zugeordnet.'}),
+        element('label', {className: 'check-field', children: [defaultSelectable, element('span', {text: 'Standardmäßig als Checkbox auswählbar'})]}),
+        element('small', {text: 'Ohne diese Option wird die Aktivität im Helferformular nur aufgelistet – ohne Checkbox und ohne Helferzahl. Pro Veranstaltung änderbar.'}),
+        element('label', {className: 'check-field', children: [preselected, element('span', {text: 'Im Helferformular vorausgewählt'})]}),
+        element('small', {text: 'Die Checkbox ist beim Öffnen von „Ich möchte helfen!“ bereits angehakt, sofern die Aktivität dort auswählbar und noch nicht voll belegt ist.'}),
         message,
         element('div', {className: 'confirm-dialog-actions', children: actions}),
     ]});
@@ -894,6 +902,8 @@ const openActivityDialog = (activity, onSaved) => {
                     active: active.checked,
                     defaultRequiredHelpers: defaultRequiredHelpersInput.value === '' ? null : Number.parseInt(defaultRequiredHelpersInput.value, 10),
                     alwaysIncluded: alwaysIncluded.checked,
+                    defaultSelectable: defaultSelectable.checked,
+                    preselected: preselected.checked,
                 }),
             });
             toast(activity ? 'Aktivität wurde gespeichert.' : 'Aktivität wurde angelegt.');
@@ -930,6 +940,8 @@ const showActivities = async () => {
                     ...(activity.defaultRequiredHelpers ? [element('small', {text: `Standard: ${activity.defaultRequiredHelpers} Helfer`})] : []),
                 ]}),
                 ...(activity.alwaysIncluded ? [element('span', {className: 'status-badge', text: 'Immer eingebunden'})] : []),
+                ...(activity.defaultSelectable ? [element('span', {className: 'status-badge', text: 'Checkbox'})] : []),
+                ...(activity.preselected ? [element('span', {className: 'status-badge', text: 'Vorausgewählt'})] : []),
                 element('span', {className: `status-badge ${activity.active ? 'status-active' : 'status-inactive'}`, text: activity.active ? 'Aktiv' : 'Inaktiv'}),
                 ...(canEditModule('activities') ? [element('span', {className: 'activity-list-edit', text: 'Bearbeiten ›'})] : []),
             ],
@@ -943,6 +955,46 @@ const showActivities = async () => {
             ? rows
             : [emptyState('Noch keine Aktivitäten angelegt.')]}),
     );
+};
+
+const newActivityAssignment = (activity) => ({
+    activityId: activity.id,
+    selectable: activity.defaultSelectable === true,
+    requiredHelpers: String(activity.defaultRequiredHelpers ?? 1),
+    time: null, meetTime: null, meetPlace: null, remark: null,
+});
+
+/**
+ * Validiert die Helferzahlen der als Checkbox auswählbaren Zuordnungen und liefert die Nutzlast;
+ * nicht auswählbare Zuordnungen werden nur aufgelistet und haben keine Helferzahl. Gibt `null` zurück,
+ * wenn eine Helferzahl ungültig ist.
+ */
+const activityAssignmentPayload = (activities, activityList, message) => {
+    const countInputs = activityList.querySelectorAll('.event-activity-field-count input:not(:disabled)');
+    const invalidCount = Array.from(countInputs).find((input) => {
+        const value = Number(input.value);
+        const valid = input.value.trim() !== '' && Number.isInteger(value) && value > 0 && value <= 999;
+        input.setCustomValidity(valid ? '' : 'Bitte eine ganze Zahl zwischen 1 und 999 eingeben.');
+        input.toggleAttribute('aria-invalid', !valid);
+        if (valid) activities[Number(input.dataset.assignmentIndex)].requiredHelpers = value;
+        return !valid;
+    });
+    if (invalidCount) {
+        message.textContent = 'Die Anzahl der benötigten Helfer muss zwischen 1 und 999 liegen.';
+        invalidCount.reportValidity();
+        invalidCount.focus();
+        return null;
+    }
+
+    return activities.map((activity) => ({
+        activityId: activity.activityId,
+        selectable: activity.selectable === true,
+        requiredHelpers: activity.selectable === true ? Number(activity.requiredHelpers) : null,
+        time: activity.time || null,
+        meetTime: activity.meetTime || null,
+        meetPlace: activity.meetPlace || null,
+        remark: activity.remark || null,
+    }));
 };
 
 /**
@@ -979,12 +1031,23 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
                 const selectedActivity = activityCatalog.find((activity) => activity.id === select.value);
                 if (selectedActivity?.defaultRequiredHelpers) {
                     assignment.requiredHelpers = String(selectedActivity.defaultRequiredHelpers);
-                    count.value = String(selectedActivity.defaultRequiredHelpers);
                 }
+                if (selectedActivity) assignment.selectable = selectedActivity.defaultSelectable === true;
+                renderActivityRows();
+            });
+            const selectable = element('input', {attributes: {type: 'checkbox', title: 'Im Helferformular als Checkbox auswählbar'}});
+            selectable.checked = assignment.selectable === true;
+            selectable.addEventListener('change', () => {
+                assignment.selectable = selectable.checked;
+                renderActivityRows();
             });
             const count = element('input', {className: 'event-activity-detail-input', attributes: {
-                type: 'number', inputmode: 'numeric', value: String(assignment.requiredHelpers ?? 1),
+                type: 'number', inputmode: 'numeric',
+                value: assignment.selectable === true ? String(assignment.requiredHelpers ?? 1) : '',
+                placeholder: assignment.selectable === true ? '' : '–',
                 'aria-label': 'Anzahl benötigter Helfer',
+                'data-assignment-index': String(assignmentIndex),
+                ...(assignment.selectable === true ? {} : {disabled: 'disabled'}),
             }});
             count.addEventListener('input', () => {
                 assignment.requiredHelpers = count.value;
@@ -1004,28 +1067,29 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
             const remarkInput = element('input', {className: 'event-activity-detail-input', attributes: {type: 'text', maxlength: '500', 'aria-label': 'Bemerkung (optional)'}});
             remarkInput.value = assignment.remark || '';
             remarkInput.addEventListener('input', () => assignment.remark = remarkInput.value || null);
-            assignment.remarkExpanded ??= false;
-            const remarkToggleLabel = assignment.remarkExpanded
-                ? 'Bemerkungsfeld ausblenden'
-                : (assignment.remark ? 'Bemerkung bearbeiten' : 'Bemerkung hinzufügen');
-            const remarkToggle = element('button', {
-                className: `secondary-button event-activity-remark-toggle${assignment.remark ? ' has-value' : ''}`,
+            assignment.detailsExpanded ??= false;
+            const hasDetails = Boolean(assignment.time || assignment.meetTime || assignment.meetPlace || assignment.remark);
+            const detailsToggleLabel = assignment.detailsExpanded
+                ? 'Weitere Einstellungen ausblenden'
+                : (hasDetails ? 'Weitere Einstellungen bearbeiten' : 'Weitere Einstellungen hinzufügen');
+            const detailsToggle = element('button', {
+                className: `secondary-button event-activity-details-toggle${hasDetails ? ' has-value' : ''}`,
                 attributes: {
                     type: 'button',
-                    title: remarkToggleLabel,
-                    'aria-label': remarkToggleLabel,
-                    'aria-expanded': String(assignment.remarkExpanded),
-                    ...(assignment.remarkExpanded ? {'aria-controls': fieldId('remark')} : {}),
+                    title: detailsToggleLabel,
+                    'aria-label': detailsToggleLabel,
+                    'aria-expanded': String(assignment.detailsExpanded),
+                    ...(assignment.detailsExpanded ? {'aria-controls': fieldId('details')} : {}),
                 },
                 children: [
-                    element('span', {className: 'event-activity-remark-toggle-icon', text: assignment.remarkExpanded ? '−' : '＋', attributes: {'aria-hidden': 'true'}}),
-                    element('span', {className: 'event-activity-remark-toggle-label', text: 'Bemerkung'}),
+                    element('span', {className: 'event-activity-details-toggle-icon', text: assignment.detailsExpanded ? '−' : '＋', attributes: {'aria-hidden': 'true'}}),
+                    element('span', {className: 'event-activity-details-toggle-label', text: 'Weitere Einstellungen'}),
                 ],
             });
-            remarkToggle.addEventListener('click', () => {
-                assignment.remarkExpanded = !assignment.remarkExpanded;
+            detailsToggle.addEventListener('click', () => {
+                assignment.detailsExpanded = !assignment.detailsExpanded;
                 renderActivityRows();
-                if (assignment.remarkExpanded) activityList.querySelector(`#${CSS.escape(fieldId('remark'))}`)?.focus();
+                if (assignment.detailsExpanded) activityList.querySelector(`#${CSS.escape(fieldId('start'))}`)?.focus();
             });
             const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Zuordnung entfernen', 'aria-label': 'Zuordnung entfernen'}});
             remove.addEventListener('click', () => {
@@ -1035,13 +1099,16 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
 
             return element('div', {className: 'event-schedule-activity-row', children: [
                 activityField('Aktivität', 'activity', select),
+                activityField('Checkbox', 'selectable', selectable),
                 activityField('Anzahl', 'count', count),
-                activityField('Start', 'start', timeInput),
-                activityField('Ende', 'end', meetTimeInput),
-                activityField('Treffort (optional)', 'meet-place', meetPlaceInput),
-                remarkToggle,
+                detailsToggle,
                 remove,
-                ...(assignment.remarkExpanded ? [activityField('Bemerkung (optional)', 'remark', remarkInput)] : []),
+                ...(assignment.detailsExpanded ? [element('div', {className: 'event-activity-details', attributes: {id: fieldId('details')}, children: [
+                    activityField('Start', 'start', timeInput),
+                    activityField('Ende', 'end', meetTimeInput),
+                    activityField('Treffort (optional)', 'meet-place', meetPlaceInput),
+                    activityField('Bemerkung (optional)', 'remark', remarkInput),
+                ]})] : []),
             ]});
         }));
     };
@@ -1052,7 +1119,7 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
             toast('Keine weitere aktive Aktivität verfügbar.', 'error');
             return;
         }
-        activities.push({activityId: available.id, requiredHelpers: String(available.defaultRequiredHelpers ?? 1), time: null, meetTime: null, meetPlace: null, remark: null});
+        activities.push(newActivityAssignment(available));
         renderActivityRows();
     });
     const addNewActivity = element('button', {className: 'secondary-button', text: '＋ Neue Aktivität anlegen', attributes: {type: 'button'}});
@@ -1064,7 +1131,7 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
             handlers.activities = refreshed.items;
             const createdActivity = activityCatalog.find((activity) => !knownIds.has(activity.id));
             if (createdActivity) {
-                activities.push({activityId: createdActivity.id, requiredHelpers: String(createdActivity.defaultRequiredHelpers ?? 1), time: null, meetTime: null, meetPlace: null, remark: null});
+                activities.push(newActivityAssignment(createdActivity));
             }
             toast('Aktivität wurde angelegt und zugeordnet.');
             renderActivityRows();
@@ -1073,7 +1140,7 @@ const buildActivityAssignmentEditor = (activities, handlers, dialogKey, message)
     renderActivityRows();
     const editor = element('fieldset', {className: 'event-activity-editor', children: [
         element('legend', {text: 'Aktivitäten für die Helferanmeldung'}),
-        element('small', {text: 'Start, Ende, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt.'}),
+        element('small', {text: 'Start, Ende, Treffort und Bemerkung werden Helfern beim Anmelden angezeigt. Nur Aktivitäten mit „Checkbox“ sind auswählbar und haben eine Helferzahl; alle anderen werden lediglich aufgelistet.'}),
         activityList,
         element('div', {className: 'event-activity-editor-actions', children: [addActivity, addNewActivity]}),
     ]});
@@ -1216,11 +1283,7 @@ const openEventDialog = (schedule, kind, onSaved, handlers, prefill = null) => {
             ? prefill.activities.map((activity) => ({...activity}))
             : (handlers.activities || [])
                 .filter((activity) => activity.active && activity.alwaysIncluded)
-                .map((activity) => ({
-                    activityId: activity.id,
-                    requiredHelpers: String(activity.defaultRequiredHelpers ?? 1),
-                    time: null, meetTime: null, meetPlace: null, remark: null,
-                }));
+                .map(newActivityAssignment);
     const {editor: activityEditor, list: activityList} = buildActivityAssignmentEditor(activities, handlers, dialogKey, message);
     const helpConfiguration = element('div', {className: 'event-help-configuration', children: [helpLabel, activityEditor]});
     helpConfiguration.hidden = !helpEnabled.checked;
@@ -1309,19 +1372,8 @@ const openEventDialog = (schedule, kind, onSaved, handlers, prefill = null) => {
         event.preventDefault();
         submit.disabled = true;
         try {
-            const countInputs = activityList.querySelectorAll('.event-activity-field-count input');
-            const invalidCount = Array.from(countInputs).find((input, index) => {
-                const value = Number(input.value);
-                const valid = input.value.trim() !== '' && Number.isInteger(value) && value > 0 && value <= 999;
-                input.setCustomValidity(valid ? '' : 'Bitte eine ganze Zahl zwischen 1 und 999 eingeben.');
-                input.toggleAttribute('aria-invalid', !valid);
-                if (valid) activities[index].requiredHelpers = value;
-                return !valid;
-            });
-            if (invalidCount) {
-                message.textContent = 'Die Anzahl der benötigten Helfer muss zwischen 1 und 999 liegen.';
-                invalidCount.reportValidity();
-                invalidCount.focus();
+            const activityPayload = activityAssignmentPayload(activities, activityList, message);
+            if (activityPayload === null) {
                 submit.disabled = false;
                 return;
             }
@@ -1336,14 +1388,7 @@ const openEventDialog = (schedule, kind, onSaved, handlers, prefill = null) => {
                 helpEnabled: helpEnabled.checked,
                 helpButtonLabel: helpLabelInput.value || null,
                 visible: visible.checked,
-                activities: activities.map((activity) => ({
-                    activityId: activity.activityId,
-                    requiredHelpers: activity.requiredHelpers,
-                    time: activity.time || null,
-                    meetTime: activity.meetTime || null,
-                    meetPlace: activity.meetPlace || null,
-                    remark: activity.remark || null,
-                })),
+                activities: activityPayload,
                 callToActions,
             };
             if (schedule) {
@@ -1567,19 +1612,8 @@ const openEventTemplateDialog = (template, kind, onSaved, handlers) => {
         event.preventDefault();
         submit.disabled = true;
         try {
-            const countInputs = activityList.querySelectorAll('.event-activity-field-count input');
-            const invalidCount = Array.from(countInputs).find((input, index) => {
-                const value = Number(input.value);
-                const valid = input.value.trim() !== '' && Number.isInteger(value) && value > 0 && value <= 999;
-                input.setCustomValidity(valid ? '' : 'Bitte eine ganze Zahl zwischen 1 und 999 eingeben.');
-                input.toggleAttribute('aria-invalid', !valid);
-                if (valid) activities[index].requiredHelpers = value;
-                return !valid;
-            });
-            if (invalidCount) {
-                message.textContent = 'Die Anzahl der benötigten Helfer muss zwischen 1 und 999 liegen.';
-                invalidCount.reportValidity();
-                invalidCount.focus();
+            const activityPayload = activityAssignmentPayload(activities, activityList, message);
+            if (activityPayload === null) {
                 submit.disabled = false;
                 return;
             }
@@ -1591,14 +1625,7 @@ const openEventTemplateDialog = (template, kind, onSaved, handlers) => {
                 mediaSource: draft.mediaSource,
                 helpEnabled: helpEnabled.checked,
                 helpButtonLabel: helpLabelInput.value || null,
-                activities: activities.map((activity) => ({
-                    activityId: activity.activityId,
-                    requiredHelpers: activity.requiredHelpers,
-                    time: activity.time || null,
-                    meetTime: activity.meetTime || null,
-                    meetPlace: activity.meetPlace || null,
-                    remark: activity.remark || null,
-                })),
+                activities: activityPayload,
                 callToActions,
             };
             if (template) {

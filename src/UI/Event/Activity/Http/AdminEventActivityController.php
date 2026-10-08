@@ -44,6 +44,8 @@ final class AdminEventActivityController extends AbstractController
             active: $data->getBoolean('active', true),
             defaultRequiredHelpers: $this->defaultRequiredHelpers($data->get('defaultRequiredHelpers')),
             alwaysIncluded: $data->getBoolean('alwaysIncluded', false),
+            defaultSelectable: $data->getBoolean('defaultSelectable', false),
+            preselected: $data->getBoolean('preselected', false),
         ))), JsonResponse::HTTP_CREATED);
     }
 
@@ -60,6 +62,8 @@ final class AdminEventActivityController extends AbstractController
             active: $data->getBoolean('active', true),
             defaultRequiredHelpers: $this->defaultRequiredHelpers($data->get('defaultRequiredHelpers')),
             alwaysIncluded: $data->getBoolean('alwaysIncluded', false),
+            defaultSelectable: $data->getBoolean('defaultSelectable', false),
+            preselected: $data->getBoolean('preselected', false),
         ))));
     }
 

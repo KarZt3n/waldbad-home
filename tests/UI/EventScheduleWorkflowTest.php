@@ -36,7 +36,7 @@ final class EventScheduleWorkflowTest extends WebTestCase
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
 
         $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
-            'name' => 'Rasen mähen', 'description' => '', 'active' => true,
+            'name' => 'Rasen mähen', 'description' => '', 'active' => true, 'preselected' => true,
         ], $headers);
         self::assertResponseStatusCodeSame(201);
         $activityId = $this->responseData()['id'];
@@ -55,6 +55,7 @@ final class EventScheduleWorkflowTest extends WebTestCase
             'activities' => [[
                 'activityId' => $activityId,
                 'requiredHelpers' => 2,
+                'selectable' => true,
                 'time' => '09:30',
                 'meetTime' => '09:15',
                 'meetPlace' => 'Haupteingang',
@@ -92,6 +93,8 @@ final class EventScheduleWorkflowTest extends WebTestCase
         self::assertCount(1, $availability);
         self::assertSame('09:15', $availability[0]['meetTime']);
         self::assertSame(0, $availability[0]['registeredHelpers']);
+        self::assertTrue($availability[0]['selectable']);
+        self::assertTrue($availability[0]['preselected']);
 
         $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
             'eventIdentifier' => $scheduleId,
@@ -126,6 +129,58 @@ final class EventScheduleWorkflowTest extends WebTestCase
 
         $this->client->request('GET', '/api/admin/v1/events');
         self::assertSame(0, $this->responseData()['total']);
+    }
+
+    public function testListedActivitiesAreNotSelectableAndNeedNoHelperCount(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-activities', [
+            'name' => 'Außenanlagen', 'description' => 'Rasenflächen harken, Bänke streichen', 'active' => true, 'preselected' => true,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseData();
+        self::assertFalse($created['defaultSelectable']);
+        $listedActivityId = $created['id'];
+        self::assertIsString($listedActivityId);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Arbeitseinsatz',
+            'date' => (new \DateTimeImmutable())->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => null,
+            'visible' => true,
+            'activities' => [['activityId' => $listedActivityId, 'requiredHelpers' => null, 'selectable' => false]],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $this->client->request('GET', '/api/public/v1/event-activities/'.$scheduleId);
+        $availability = $this->availabilityItems();
+        self::assertCount(1, $availability);
+        self::assertFalse($availability[0]['selectable']);
+        self::assertNull($availability[0]['requiredHelpers']);
+        self::assertFalse($availability[0]['preselected']);
+
+        $signUp = [
+            'eventIdentifier' => $scheduleId,
+            'firstName' => 'Helfer',
+            'lastName' => 'Auflistung',
+            'birthDate' => '1990-06-15',
+            'message' => '',
+            'activityIds' => [$listedActivityId],
+            'privacyAccepted' => true,
+        ];
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', $signUp);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [...$signUp, 'activityIds' => []]);
+        self::assertResponseStatusCodeSame(202);
     }
 
     private function loginAsAdmin(): string

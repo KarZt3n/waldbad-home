@@ -29,6 +29,8 @@ readonly class CreateEventActivityUseCase
             active: $request->active,
             defaultRequiredHelpers: $request->defaultRequiredHelpers,
             alwaysIncluded: $request->alwaysIncluded,
+            defaultSelectable: $request->defaultSelectable,
+            preselected: $request->preselected,
             createdAt: $now,
             updatedAt: $now,
         )));

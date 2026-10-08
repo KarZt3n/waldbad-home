@@ -10,16 +10,23 @@ readonly class EventScheduleActivity
         public string $id,
         public int $position,
         public string $activityId,
-        public int $requiredHelpers,
+        public ?int $requiredHelpers,
         public ?string $time = null,
         public ?string $meetTime = null,
         public ?string $meetPlace = null,
         public ?string $remark = null,
+        public bool $selectable = false,
     ) {
         if (trim($this->activityId) === '') {
             throw new BusinessRuleViolationException('Eine Aktivität benötigt eine Kennung.');
         }
-        if ($this->requiredHelpers < 1 || $this->requiredHelpers > 999) {
+        if ($this->selectable && $this->requiredHelpers === null) {
+            throw new BusinessRuleViolationException('Für eine auswählbare Aktivität muss die benötigte Helferzahl angegeben werden.');
+        }
+        if (!$this->selectable && $this->requiredHelpers !== null) {
+            throw new BusinessRuleViolationException('Eine nicht auswählbare Aktivität hat keine benötigte Helferzahl.');
+        }
+        if ($this->requiredHelpers !== null && ($this->requiredHelpers < 1 || $this->requiredHelpers > 999)) {
             throw new BusinessRuleViolationException('Die benötigte Helferzahl muss zwischen 1 und 999 liegen.');
         }
         if ($this->time !== null && !self::isValidTime($this->time)) {

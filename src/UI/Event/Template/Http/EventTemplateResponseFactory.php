@@ -34,6 +34,7 @@ readonly class EventTemplateResponseFactory
                     'meetTime' => $activity->meetTime,
                     'meetPlace' => $activity->meetPlace,
                     'remark' => $activity->remark,
+                    'selectable' => $activity->selectable,
                 ],
                 $template->activities,
             ),

@@ -114,6 +114,7 @@ readonly class ImportEventContentBlocksUseCase
                 meetTime: $assignment->meetTime,
                 meetPlace: $assignment->meetPlace,
                 remark: $assignment->remark,
+                selectable: true,
             );
         }
 

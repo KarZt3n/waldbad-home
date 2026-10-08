@@ -13,6 +13,8 @@ readonly class EventActivityResponse
         public bool $active,
         public ?int $defaultRequiredHelpers,
         public bool $alwaysIncluded,
+        public bool $defaultSelectable,
+        public bool $preselected,
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
     ) {
@@ -27,6 +29,8 @@ readonly class EventActivityResponse
             active: $activity->active,
             defaultRequiredHelpers: $activity->defaultRequiredHelpers,
             alwaysIncluded: $activity->alwaysIncluded,
+            defaultSelectable: $activity->defaultSelectable,
+            preselected: $activity->preselected,
             createdAt: $activity->createdAt,
             updatedAt: $activity->updatedAt,
         );

@@ -64,6 +64,8 @@ final class DeleteEventActivityUseCaseTest extends TestCase
             active: true,
             defaultRequiredHelpers: 2,
             alwaysIncluded: false,
+            defaultSelectable: false,
+            preselected: false,
             createdAt: new \DateTimeImmutable(),
             updatedAt: new \DateTimeImmutable(),
         );

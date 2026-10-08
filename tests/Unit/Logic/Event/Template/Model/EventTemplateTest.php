@@ -30,7 +30,7 @@ final class EventTemplateTest extends TestCase
             helpEnabled: true,
             helpButtonLabel: 'Ich möchte helfen!',
             activities: [
-                new EventTemplateActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 5, meetPlace: 'Haupteingang'),
+                new EventTemplateActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 5, selectable: true, meetPlace: 'Haupteingang'),
             ],
             callToActions: [
                 new EventTemplateCallToAction(id: 'cta-1', position: 0, label: 'Mehr erfahren', url: '/verein', pageId: null),
@@ -69,8 +69,8 @@ final class EventTemplateTest extends TestCase
             mediaUrl: null, mediaAlt: null, mediaSource: null, layout: null, imageWidthPercent: null,
             verticalAlignment: null, textAlignment: null, imageFit: null, helpEnabled: true, helpButtonLabel: null,
             activities: [
-                new EventTemplateActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2),
-                new EventTemplateActivity(id: 'a2', position: 1, activityId: 'activity-1', requiredHelpers: 3),
+                new EventTemplateActivity(id: 'a1', position: 0, activityId: 'activity-1', requiredHelpers: 2, selectable: true),
+                new EventTemplateActivity(id: 'a2', position: 1, activityId: 'activity-1', requiredHelpers: 3, selectable: true),
             ],
             callToActions: [], createdAt: $now, updatedAt: $now,
         );
