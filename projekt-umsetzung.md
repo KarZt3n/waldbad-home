@@ -361,6 +361,7 @@ Die fachlichen Rechte werden pro Modul zugewiesen. Das Modul `pages` kennt `View
 - Passwort-zurücksetzen-Prozess auslösen
 - aktive Sitzungen widerrufen
 - letzten erfolgreichen Login anzeigen
+- Sitzungsverlauf anzeigen: je Anmeldung Person, Anmeldezeitpunkt, letzte Verlängerung, Ende und Grund (abgemeldet, wegen Inaktivität abgemeldet, abgelaufen, gesperrt) sowie Browser; IP-Adressen werden nicht gespeichert
 - sicherheitsrelevante Aktionen auditieren
 - Benutzer nicht hart löschen, wenn ihnen Audit-Einträge zugeordnet sind
 

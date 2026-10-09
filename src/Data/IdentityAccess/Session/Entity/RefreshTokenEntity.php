@@ -28,6 +28,8 @@ class RefreshTokenEntity
         private \DateTimeImmutable $createdAt,
         #[ORM\Column(name: 'revoked_at', type: Types::DATETIME_IMMUTABLE, nullable: true)]
         private ?\DateTimeImmutable $revokedAt = null,
+        #[ORM\Column(name: 'session_id', type: Types::STRING, length: 36, nullable: true)]
+        private ?string $sessionId = null,
     ) {
     }
 
@@ -64,6 +66,11 @@ class RefreshTokenEntity
     public function getRevokedAt(): ?\DateTimeImmutable
     {
         return $this->revokedAt;
+    }
+
+    public function getSessionId(): ?string
+    {
+        return $this->sessionId;
     }
 
     public function revoke(\DateTimeImmutable $at): void

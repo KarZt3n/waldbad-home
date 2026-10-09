@@ -386,6 +386,68 @@ const contributionPositions = (entry) => {
         ];
 };
 
+const formatWorkHours = (minutes) => `${(minutes / 60).toLocaleString('de-DE', {maximumFractionDigits: 2})} Std.`;
+// Wie in „Meine Mitgliedschaft“ (`member-self-service.js`): angerechnet werden höchstens die
+// benötigten Stunden des Haushalts, mehr Stunden erhöhen die Gutschrift nicht.
+const creditedWorkMinutes = (credit) => Math.min(credit.workedMinutes, credit.liableMemberCount * credit.requiredHoursPerAssignment * 60);
+
+/**
+ * Reiter „Arbeitseinsätze“: Gutschrift je Beitragsjahr ganz oben, darunter je Jahr ein Accordion mit
+ * den Veranstaltungen bzw. Einsätzen des Haushalts, die wiederum aufklappbar ihre Hilfezeiträume zeigen.
+ */
+const renderMemberWorkAssignments = (years) => {
+    const currentYear = new Date().getFullYear();
+    const creditTable = element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
+        element('thead', {children: [element('tr', {children: ['Beitragsjahr', 'Geleistet (Familie)', 'Benötigt', 'Gutschrift']
+            .map((text) => element('th', {text}))})]}),
+        element('tbody', {children: years.map(({year, credit}) => {
+            const requiredHours = credit.liableMemberCount * credit.requiredHoursPerAssignment;
+            return element('tr', {children: [
+                element('td', {children: [element('strong', {text: String(year)})]}),
+                element('td', {text: formatWorkHours(credit.workedMinutes)}),
+                element('td', {text: credit.liableMemberCount ? `${requiredHours} Std. (${credit.liableMemberCount}× ${credit.requiredHoursPerAssignment} Std.)` : 'Kein Zuschlag'}),
+                element('td', {children: [element('strong', {text: credit.liableMemberCount ? formatEuro(credit.creditCents) : '–'})]}),
+            ]});
+        })}),
+    ]})]});
+
+    const participationItem = (participation) => element('details', {className: 'member-work-assignment-event', children: [
+        element('summary', {children: [
+            element('span', {children: [
+                element('strong', {text: participation.eventTitle}),
+                element('small', {text: [formatDateDE(participation.eventDate), participation.memberName].filter(Boolean).join(' · ')}),
+            ]}),
+            element('span', {className: 'status-badge', text: formatWorkHours(participation.minutes)}),
+        ]}),
+        element('ul', {children: participation.intervals.map((interval) => element('li', {text: `${interval.fromTime} – ${interval.toTime} Uhr`}))}),
+    ]});
+
+    const yearSections = years.map(({year, credit, participations}) => element('details', {
+        className: 'event-helper-archive member-work-assignment-year',
+        attributes: year === currentYear ? {open: 'open'} : {},
+        children: [
+            element('summary', {children: [
+                element('strong', {text: `Beitragsjahr ${year}`}),
+                element('span', {className: 'status-badge', text: credit.liableMemberCount
+                    ? `${formatWorkHours(creditedWorkMinutes(credit))} angerechnet · ${formatEuro(credit.creditCents)}`
+                    : `${formatWorkHours(credit.workedMinutes)} geleistet`}),
+            ]}),
+            element('div', {className: 'member-work-assignment-events', children: participations.length
+                ? participations.map(participationItem)
+                : [element('p', {className: 'empty-copy', text: 'In diesem Jahr wurden noch keine Arbeitsstunden erfasst.'})]}),
+        ],
+    }));
+
+    return [
+        element('fieldset', {children: [
+            element('legend', {text: 'Gutschrift je Beitragsjahr'}),
+            creditTable,
+            element('small', {text: 'Wie in „Meine Mitgliedschaft“ zählen die Stunden des ganzen Haushalts (innerhalb der Familie übertragbar); die Gutschrift ist auf den Arbeitseinsatz-Zuschlag des Haushalts begrenzt. Zuschlagspflicht und Betrag richten sich nach dem heutigen Stand, auch für zurückliegende Jahre. Erfasst werden Helferanmeldungen mit Status „Teilgenommen“, die dem Mitglied zugeordnet sind.'}),
+        ]}),
+        ...yearSections,
+    ];
+};
+
 const payerListItem = (entry, currentId, openOther) => {
     const openButton = memberOpenButton(entry, currentId, openOther);
     const positions = contributionPositions(entry);
@@ -813,6 +875,22 @@ const openMemberDialog = async (member, onSaved) => {
         });
     }
 
+    const workAssignmentSection = member
+        ? element('div', {className: 'member-work-assignments', children: [element('p', {className: 'empty-copy', text: 'Arbeitseinsätze werden geladen …'})]})
+        : null;
+    let workAssignmentsRequested = false;
+    const loadWorkAssignments = async () => {
+        if (!workAssignmentSection || workAssignmentsRequested) return;
+        workAssignmentsRequested = true;
+        try {
+            const data = await request(`/api/admin/v1/members/${member.id}/work-assignments`);
+            workAssignmentSection.replaceChildren(...renderMemberWorkAssignments(data.years));
+        } catch (error) {
+            workAssignmentsRequested = false;
+            workAssignmentSection.replaceChildren(element('p', {className: 'empty-copy', text: error.message}));
+        }
+    };
+
     const tabs = [
         ['stammdaten', 'Stammdaten', [
             element('fieldset', {children: [
@@ -867,6 +945,7 @@ const openMemberDialog = async (member, onSaved) => {
             ...(contributionSection ? [contributionSection] : []),
             ...(payerSection ? [payerSection] : []),
         ]],
+        ...(member ? [['arbeitseinsaetze', 'Arbeitseinsätze', [workAssignmentSection]]] : []),
         ...(member ? [['bemerkungen', 'Bemerkungen', [
             element('fieldset', {children: [element('legend', {text: 'Bemerkungen'}), remarksList, newRemark, addRemarkButton]}),
         ]]] : []),
@@ -881,7 +960,12 @@ const openMemberDialog = async (member, onSaved) => {
     const updateTabStrip = () => {
         tabStrip.replaceChildren(...tabs.map(([key, label]) => {
             const button = element('button', {className: `sub-tab${key === activeTab ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
-            button.addEventListener('click', () => { activeTab = key; updateTabStrip(); updatePanels(); });
+            button.addEventListener('click', () => {
+                activeTab = key;
+                updateTabStrip();
+                updatePanels();
+                if (key === 'arbeitseinsaetze') loadWorkAssignments();
+            });
 
             return button;
         }));

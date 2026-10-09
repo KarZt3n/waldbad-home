@@ -26,8 +26,15 @@ const renderAdmin = async () => {
         try {
             session = await request('/api/auth/v1/me');
         } catch {
-            renderLogin();
-            return;
+            // Das Access-Token lebt nur 15 Minuten; wird die Redaktion nach einer längeren Pause, aber
+            // innerhalb der Refresh-Frist neu geladen, wird die Sitzung über das Refresh-Token
+            // fortgesetzt, dessen Antwort dieselbe Form wie `/me` hat.
+            try {
+                session = await request('/api/auth/v1/refresh', {method: 'POST'});
+            } catch {
+                renderLogin();
+                return;
+            }
         }
     }
 

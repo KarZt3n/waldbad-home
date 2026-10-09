@@ -7,8 +7,11 @@ use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Common\SecureTokenGeneratorInterface;
 use App\Logic\IdentityAccess\Session\Dto\IssuedSession;
 use App\Logic\IdentityAccess\Session\Manager\AccessTokenManagerInterface;
+use App\Logic\IdentityAccess\Session\Manager\LoginSessionManagerInterface;
 use App\Logic\IdentityAccess\Session\Manager\RefreshTokenManagerInterface;
 use App\Logic\IdentityAccess\Session\Model\AccessToken;
+use App\Logic\IdentityAccess\Session\Model\LoginSession;
+use App\Logic\IdentityAccess\Session\Model\LoginSessionEndReason;
 use App\Logic\IdentityAccess\Session\Model\RefreshToken;
 
 /**
@@ -21,6 +24,9 @@ use App\Logic\IdentityAccess\Session\Model\RefreshToken;
  *   wenn der Browser den Tab im Hintergrund gedrosselt oder eingefroren hat —, aber niemals über die
  *   bei der Erstanmeldung festgelegte absolute Obergrenze (`$absoluteExpiresAt`, 12 Stunden) hinaus.
  *   Das Deckeln passiert hier, nicht beim Aufrufer.
+ *
+ * Führt außerdem die Sitzungshistorie (`LoginSession`): Die Erstanmeldung legt sie an, jede Rotation
+ * verlängert sie, `endSession()`/`endAllSessionsOfUser()` halten fest, wie sie endete.
  */
 readonly class SessionTokenIssuer
 {
@@ -31,25 +37,58 @@ readonly class SessionTokenIssuer
     public function __construct(
         private AccessTokenManagerInterface $accessTokens,
         private RefreshTokenManagerInterface $refreshTokens,
+        private LoginSessionManagerInterface $loginSessions,
         private SecureTokenGeneratorInterface $tokenGenerator,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
     ) {
     }
 
-    public function issueInitial(string $userId): IssuedSession
+    public function issueInitial(string $userId, ?string $userAgent = null): IssuedSession
     {
         $now = $this->clock->now();
+        $absoluteExpiresAt = $now->modify('+'.self::REFRESH_TOKEN_ABSOLUTE_HOURS.' hours');
+        $session = $this->loginSessions->save(new LoginSession(
+            id: $this->identifierGenerator->generate(),
+            userId: $userId,
+            startedAt: $now,
+            lastActivityAt: $now,
+            expiresAt: $this->refreshTokenExpiresAt($now, $absoluteExpiresAt),
+            userAgent: $userAgent,
+        ));
 
-        return $this->issue($userId, $now, $now->modify('+'.self::REFRESH_TOKEN_ABSOLUTE_HOURS.' hours'));
+        return $this->issue($userId, $now, $absoluteExpiresAt, $session->id);
     }
 
     public function rotate(RefreshToken $current): IssuedSession
     {
-        return $this->issue($current->userId, $this->clock->now(), $current->absoluteExpiresAt);
+        $now = $this->clock->now();
+        $issued = $this->issue($current->userId, $now, $current->absoluteExpiresAt, $current->sessionId);
+        $session = $current->sessionId === null ? null : $this->loginSessions->find($current->sessionId);
+        if ($session !== null) {
+            $this->loginSessions->save($session->extend($now, $issued->refreshTokenExpiresAt));
+        }
+
+        return $issued;
     }
 
-    private function issue(string $userId, \DateTimeImmutable $now, \DateTimeImmutable $absoluteExpiresAt): IssuedSession
+    public function endSession(RefreshToken $token, LoginSessionEndReason $reason): void
+    {
+        $session = $token->sessionId === null ? null : $this->loginSessions->find($token->sessionId);
+        if ($session !== null && !$session->isEnded()) {
+            $this->loginSessions->save($session->end($this->clock->now(), $reason));
+        }
+    }
+
+    public function endAllSessionsOfUser(string $userId, LoginSessionEndReason $reason): void
+    {
+        $now = $this->clock->now();
+        foreach ($this->loginSessions->findOpenForUser($userId) as $session) {
+            $this->loginSessions->save($session->end($now, $reason));
+        }
+    }
+
+    private function issue(string $userId, \DateTimeImmutable $now, \DateTimeImmutable $absoluteExpiresAt, ?string $sessionId): IssuedSession
     {
         $rawAccessToken = $this->tokenGenerator->generate();
         $accessTokenExpiresAt = $now->modify('+'.self::ACCESS_TOKEN_MINUTES.' minutes');
@@ -62,7 +101,7 @@ readonly class SessionTokenIssuer
         ));
 
         $rawRefreshToken = $this->tokenGenerator->generate();
-        $refreshTokenExpiresAt = min($now->modify('+'.self::REFRESH_TOKEN_SLIDING_MINUTES.' minutes'), $absoluteExpiresAt);
+        $refreshTokenExpiresAt = $this->refreshTokenExpiresAt($now, $absoluteExpiresAt);
         $this->refreshTokens->save(new RefreshToken(
             id: $this->identifierGenerator->generate(),
             userId: $userId,
@@ -70,8 +109,14 @@ readonly class SessionTokenIssuer
             expiresAt: $refreshTokenExpiresAt,
             absoluteExpiresAt: $absoluteExpiresAt,
             createdAt: $now,
+            sessionId: $sessionId,
         ));
 
         return new IssuedSession($rawAccessToken, $accessTokenExpiresAt, $rawRefreshToken, $refreshTokenExpiresAt);
+    }
+
+    private function refreshTokenExpiresAt(\DateTimeImmutable $now, \DateTimeImmutable $absoluteExpiresAt): \DateTimeImmutable
+    {
+        return min($now->modify('+'.self::REFRESH_TOKEN_SLIDING_MINUTES.' minutes'), $absoluteExpiresAt);
     }
 }

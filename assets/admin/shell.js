@@ -8,7 +8,7 @@
 // Binding — zum Zeitpunkt, an dem ein Bereich `workspace` tatsächlich verwendet, ist die Shell
 // immer schon fertig aufgebaut.
 
-import {app, element, request, setCsrfToken, setUnauthenticatedHandler, toast} from '../core.js';
+import {app, element, millisecondsSinceSessionRefresh, refreshSession, request, setCsrfToken, setUnauthenticatedHandler, toast} from '../core.js';
 import {emptyState} from './ui.js';
 import {hasModule, isGlobalAdministrator, setSessionState} from './session.js';
 import {clearPinSessionUnlocks, ensurePinUnlocked} from './pin.js';
@@ -47,9 +47,16 @@ let sessionRefreshTimer = null;
 const resetSessionIdleTimer = () => {
     if (sessionIdleTimer) clearTimeout(sessionIdleTimer);
     sessionIdleTimer = setTimeout(() => {
-        request('/api/auth/v1/logout', {method: 'POST'}).catch(() => {});
+        request('/api/auth/v1/logout', {method: 'POST', body: JSON.stringify({reason: 'inactivity'})}).catch(() => {});
         forceLogout('Du wurdest wegen Inaktivität abgemeldet.');
     }, SESSION_IDLE_TIMEOUT_MS);
+};
+
+// Gedrosselte oder eingefrorene Hintergrund-Tabs holen den verpassten Refresh nach, sobald sie
+// wieder sichtbar werden, statt erst beim nächsten Request in ein abgelaufenes Access-Token zu laufen.
+const refreshSessionWhenVisible = () => {
+    if (document.visibilityState !== 'visible' || millisecondsSinceSessionRefresh() < SESSION_REFRESH_INTERVAL_MS) return;
+    refreshSession().catch(() => {});
 };
 
 const stopSessionTimers = () => {
@@ -58,17 +65,19 @@ const stopSessionTimers = () => {
     sessionIdleTimer = null;
     sessionRefreshTimer = null;
     SESSION_ACTIVITY_EVENTS.forEach((eventName) => document.removeEventListener(eventName, resetSessionIdleTimer));
+    document.removeEventListener('visibilitychange', refreshSessionWhenVisible);
 };
 
 const startSessionTimers = () => {
     stopSessionTimers();
     resetSessionIdleTimer();
     SESSION_ACTIVITY_EVENTS.forEach((eventName) => document.addEventListener(eventName, resetSessionIdleTimer, {passive: true}));
+    document.addEventListener('visibilitychange', refreshSessionWhenVisible);
     sessionRefreshTimer = setInterval(() => {
         // Ein Fehlschlag hier (z. B. weil der Refresh-Token abgelaufen ist) landet als 401 im
         // `request()`-Wrapper, der die Sitzung dann selbst beendet (siehe `setUnauthenticatedHandler`
         // unten) — hier reicht es, die sonst unbehandelte Promise-Ablehnung abzufangen.
-        request('/api/auth/v1/refresh', {method: 'POST'}).catch(() => {});
+        refreshSession().catch(() => {});
     }, SESSION_REFRESH_INTERVAL_MS);
 };
 

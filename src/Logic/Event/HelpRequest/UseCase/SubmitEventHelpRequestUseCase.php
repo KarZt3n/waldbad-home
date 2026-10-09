@@ -113,9 +113,10 @@ readonly class SubmitEventHelpRequestUseCase
                 // Für dieses Mitglied besteht zu dieser Veranstaltung bereits eine Anmeldung — statt
                 // eines weiteren Datensatzes werden die hier gewählten Aktivitäten in die jüngste
                 // bestehende Anmeldung übernommen (mehrere bereits bestehende Duplikate werden dabei
-                // gleich mit zusammengeführt); `$request` selbst wird nicht gespeichert.
+                // gleich mit zusammengeführt); `$request` selbst wird nicht gespeichert. War die bestehende
+                // Anmeldung als „Nicht teilgenommen“ erfasst, ist sie durch die neue Anfrage wieder offen.
                 $survivor = count($existing) > 1 ? $this->duplicateMerger->merge($existing, $now) : $existing[0];
-                $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator);
+                $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator)->reopen($now);
                 $response = EventHelpRequestResponse::fromRequest($this->manager->save($merged));
             }
         }

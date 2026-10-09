@@ -6,6 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\IdentityAccess\Session\Dto\AuthenticatedSession;
 use App\Logic\IdentityAccess\Session\Exception\InvalidSessionException;
 use App\Logic\IdentityAccess\Session\Manager\RefreshTokenManagerInterface;
+use App\Logic\IdentityAccess\Session\Model\LoginSessionEndReason;
 use App\Logic\IdentityAccess\Session\Model\RefreshToken;
 use App\Logic\IdentityAccess\Session\Service\SessionTokenIssuer;
 use App\Logic\IdentityAccess\User\Manager\UserManagerInterface;
@@ -43,6 +44,7 @@ readonly class RefreshSessionUseCase
         if ($token->isRevoked()) {
             if (!$this->isWithinReuseGracePeriod($token, $now)) {
                 $this->refreshTokens->revokeAllForUser($token->userId, $now);
+                $this->issuer->endAllSessionsOfUser($token->userId, LoginSessionEndReason::Revoked);
                 throw new InvalidSessionException();
             }
         } elseif ($token->isExpired($now)) {
@@ -55,6 +57,7 @@ readonly class RefreshSessionUseCase
             if (!$token->isRevoked()) {
                 $this->refreshTokens->revoke($token->id, $now);
             }
+            $this->issuer->endSession($token, LoginSessionEndReason::Revoked);
             throw new InvalidSessionException();
         }
 

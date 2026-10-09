@@ -7,6 +7,8 @@ use App\Logic\Common\Messaging\AsyncEventPublisherInterface;
 use App\Logic\IdentityAccess\LoginToken\Event\LoginRequestedEvent;
 use App\Logic\IdentityAccess\Session\Dto\AuthenticatedSession;
 use App\Logic\IdentityAccess\Session\Dto\IssuedSession;
+use App\Logic\IdentityAccess\Session\Model\LoginSession;
+use App\Logic\IdentityAccess\Session\Model\LoginSessionEndReason;
 use App\Logic\IdentityAccess\Session\UseCase\LogoutUseCase;
 use App\Logic\IdentityAccess\Session\UseCase\RedeemLoginTokenUseCase;
 use App\Logic\IdentityAccess\Session\UseCase\RefreshSessionUseCase;
@@ -87,7 +89,7 @@ readonly class AuthenticationController
             throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
         }
 
-        return $this->sessionResponse($request, $useCase->execute($token));
+        return $this->sessionResponse($request, $useCase->execute($token, $this->userAgent($request)));
     }
 
     #[Route('/refresh', name: 'api_auth_refresh', methods: ['POST'])]
@@ -106,9 +108,15 @@ readonly class AuthenticationController
     {
         $rawAccessToken = $request->cookies->get(CookieAccessTokenExtractor::COOKIE_NAME);
         $rawRefreshToken = $request->cookies->get(self::REFRESH_TOKEN_COOKIE);
+        // Der Inaktivitäts-Logout der Redaktion (`assets/admin/shell.js`) meldet seinen Grund für die
+        // Sitzungshistorie mit; unbekannte Werte gelten als reguläre Abmeldung.
+        $reason = $request->getContentTypeFormat() === 'json' && $request->getContent() !== ''
+            ? LoginSessionEndReason::tryFrom($request->getPayload()->getString('reason'))
+            : null;
         $useCase->execute(
             is_string($rawAccessToken) && $rawAccessToken !== '' ? $rawAccessToken : null,
             is_string($rawRefreshToken) && $rawRefreshToken !== '' ? $rawRefreshToken : null,
+            $reason === LoginSessionEndReason::Inactivity ? $reason : LoginSessionEndReason::Logout,
         );
 
         $response = new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
@@ -165,6 +173,13 @@ readonly class AuthenticationController
             httpOnly: true,
             sameSite: 'lax',
         ));
+    }
+
+    private function userAgent(Request $request): ?string
+    {
+        $userAgent = trim((string) $request->headers->get('User-Agent', ''));
+
+        return $userAgent === '' ? null : mb_substr($userAgent, 0, LoginSession::MAX_USER_AGENT_LENGTH);
     }
 
     private function unauthenticatedResponse(): JsonResponse

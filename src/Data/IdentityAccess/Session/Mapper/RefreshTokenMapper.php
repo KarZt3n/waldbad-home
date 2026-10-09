@@ -17,6 +17,7 @@ readonly class RefreshTokenMapper
             absoluteExpiresAt: $entity->getAbsoluteExpiresAt(),
             createdAt: $entity->getCreatedAt(),
             revokedAt: $entity->getRevokedAt(),
+            sessionId: $entity->getSessionId(),
         );
     }
 
@@ -30,6 +31,7 @@ readonly class RefreshTokenMapper
             absoluteExpiresAt: $token->absoluteExpiresAt,
             createdAt: $token->createdAt,
             revokedAt: $token->revokedAt,
+            sessionId: $token->sessionId,
         );
     }
 }

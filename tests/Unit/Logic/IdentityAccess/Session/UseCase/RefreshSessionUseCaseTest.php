@@ -6,6 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\IdentityAccess\Session\Dto\IssuedSession;
 use App\Logic\IdentityAccess\Session\Exception\InvalidSessionException;
 use App\Logic\IdentityAccess\Session\Manager\RefreshTokenManagerInterface;
+use App\Logic\IdentityAccess\Session\Model\LoginSessionEndReason;
 use App\Logic\IdentityAccess\Session\Model\RefreshToken;
 use App\Logic\IdentityAccess\Session\Service\SessionTokenIssuer;
 use App\Logic\IdentityAccess\Session\UseCase\RefreshSessionUseCase;
@@ -42,10 +43,12 @@ final class RefreshSessionUseCaseTest extends TestCase
         $tokens->method('findByHash')->willReturn($this->token(revokedAt: new \DateTimeImmutable('2026-06-01T09:55:00+02:00')));
         $tokens->expects(self::once())->method('revokeAllForUser')->with('user-1', $now);
         $tokens->expects(self::never())->method('revoke');
+        $issuer = $this->createMock(SessionTokenIssuer::class);
+        $issuer->expects(self::once())->method('endAllSessionsOfUser')->with('user-1', LoginSessionEndReason::Revoked);
 
         $this->expectException(InvalidSessionException::class);
 
-        $this->useCase($tokens, now: $now)->execute('raw-refresh-token');
+        $this->useCase($tokens, issuer: $issuer, now: $now)->execute('raw-refresh-token');
     }
 
     /**
@@ -97,10 +100,12 @@ final class RefreshSessionUseCaseTest extends TestCase
 
         $users = $this->createStub(UserManagerInterface::class);
         $users->method('get')->willReturn($this->user(active: false));
+        $issuer = $this->createMock(SessionTokenIssuer::class);
+        $issuer->expects(self::once())->method('endSession')->with(self::isInstanceOf(RefreshToken::class), LoginSessionEndReason::Revoked);
 
         $this->expectException(InvalidSessionException::class);
 
-        $this->useCase($tokens, $users, now: $now)->execute('raw-refresh-token');
+        $this->useCase($tokens, $users, $issuer, $now)->execute('raw-refresh-token');
     }
 
     /**

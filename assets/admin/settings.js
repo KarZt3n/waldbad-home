@@ -434,15 +434,58 @@ const showEmailSettingsManagement = async () => {
     const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
     workspace.replaceChildren(tabStrip, panel);
 };
+const LOGIN_SESSION_END_LABELS = {
+    logout: 'Abgemeldet',
+    inactivity: 'Wegen Inaktivität abgemeldet',
+    expired: 'Abgelaufen',
+    revoked: 'Gesperrt',
+};
+const formatSessionTime = (value) => value
+    ? new Date(value).toLocaleString('de-DE', {dateStyle: 'short', timeStyle: 'short'})
+    : '–';
+// Grobe Einordnung der Browserkennung für die Übersicht; die vollständige Kennung steht im Tooltip.
+const describeUserAgent = (userAgent) => {
+    if (!userAgent) return '–';
+    const browser = [['Edg/', 'Edge'], ['Firefox/', 'Firefox'], ['Chrome/', 'Chrome'], ['Safari/', 'Safari']]
+        .find(([marker]) => userAgent.includes(marker))?.[1] || 'Browser';
+    const system = [['iPhone', 'iPhone'], ['iPad', 'iPad'], ['Android', 'Android'], ['Windows', 'Windows'], ['Mac OS X', 'macOS'], ['Linux', 'Linux']]
+        .find(([marker]) => userAgent.includes(marker))?.[1];
+    return system ? `${browser} · ${system}` : browser;
+};
+const loginSessionHistory = (sessions) => element('details', {className: 'login-session-history', children: [
+    element('summary', {children: [
+        element('strong', {text: 'Sitzungsverlauf'}),
+        element('span', {className: 'status-badge', text: String(sessions.length)}),
+    ]}),
+    sessions.length
+        ? element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
+            element('thead', {children: [element('tr', {children: ['Person', 'Angemeldet', 'Zuletzt verlängert', 'Beendet', 'Status', 'Browser']
+                .map((text) => element('th', {text}))})]}),
+            element('tbody', {children: sessions.map((session) => element('tr', {children: [
+                element('td', {text: session.userDisplayName || session.userEmail || 'Gelöschter Benutzer', attributes: session.userEmail ? {title: session.userEmail} : {}}),
+                element('td', {text: formatSessionTime(session.startedAt)}),
+                element('td', {text: formatSessionTime(session.lastActivityAt)}),
+                element('td', {text: formatSessionTime(session.endedAt)}),
+                element('td', {children: [element('span', {
+                    className: `status-badge ${session.endReason ? 'status-inactive' : 'status-active'}`,
+                    text: session.endReason ? LOGIN_SESSION_END_LABELS[session.endReason] || session.endReason : 'Aktiv',
+                })]}),
+                element('td', {text: describeUserAgent(session.userAgent), attributes: session.userAgent ? {title: session.userAgent} : {}}),
+            ]}))}),
+        ]})]})
+        : emptyState('Noch keine Anmeldungen erfasst.'),
+]});
 const showUsers = async () => {
-    const [data, pageOptions] = await Promise.all([
+    const [data, pageOptions, loginSessions] = await Promise.all([
         request('/api/admin/v1/users'),
         request('/api/admin/v1/users/page-options'),
+        request('/api/admin/v1/login-sessions'),
     ]);
     workspace.replaceChildren(
         sectionHeading('Benutzerverwaltung', 'Zugänge und Rollen verwalten'),
         ...(canEditModule('user_management') ? [userCreationForm(showUsers, pageOptions.items)] : []),
         element('div', {className: 'card-list', children: data.items.map((user) => userCard(user, showUsers, pageOptions.items))}),
+        loginSessionHistory(loginSessions.items),
     );
 };
 

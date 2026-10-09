@@ -16,6 +16,9 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
  * gelöscht — eine erneute Vorlage eines bereits rotierten Tokens deutet auf einen gestohlenen
  * Token hin und lässt `RefreshSessionUseCase` vorsorglich alle Refresh-Tokens des Benutzers sperren
  * (außer innerhalb einer kurzen Gnadenfrist nach der Rotation, siehe dort).
+ *
+ * `$sessionId` verbindet alle Rotationen einer Anmeldung mit ihrer `LoginSession` (Sitzungshistorie);
+ * Tokens aus der Zeit vor der Sitzungshistorie haben keine.
  */
 readonly class RefreshToken
 {
@@ -27,6 +30,7 @@ readonly class RefreshToken
         public \DateTimeImmutable $absoluteExpiresAt,
         public \DateTimeImmutable $createdAt,
         public ?\DateTimeImmutable $revokedAt = null,
+        public ?string $sessionId = null,
     ) {
         if (trim($this->userId) === '') {
             throw new BusinessRuleViolationException('Die Benutzer-ID ist erforderlich.');

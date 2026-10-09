@@ -18,7 +18,28 @@ const setCsrfToken = (value) => { csrfToken = value; };
 let unauthenticatedHandler = null;
 const setUnauthenticatedHandler = (handler) => { unauthenticatedHandler = handler; };
 
-const request = async (url, options = {}, isCsrfRetry = false) => {
+// Access-Tokens laufen nach 15 Minuten ab (siehe `SessionTokenIssuer`); der proaktive Refresh in
+// `admin/shell.js` kann ausfallen, wenn der Browser den Tab im Hintergrund drosselt oder einfriert.
+// Ein 401 innerhalb einer Sitzung wird deshalb zuerst mit einem Refresh beantwortet und der Request
+// einmal wiederholt – erst wenn auch der Refresh scheitert, ist die Sitzung wirklich vorbei.
+// Gleichzeitige Aufrufer teilen sich denselben Refresh, damit das Refresh-Token nur einmal rotiert.
+const SESSION_REFRESH_URL = '/api/auth/v1/refresh';
+let sessionRefreshInFlight = null;
+let lastSessionRefreshAt = Date.now();
+const refreshSession = () => {
+    sessionRefreshInFlight ??= request(SESSION_REFRESH_URL, {method: 'POST'}, true)
+        .then((refreshed) => {
+            lastSessionRefreshAt = Date.now();
+            if (refreshed?.csrfToken) setCsrfToken(refreshed.csrfToken);
+            return refreshed;
+        })
+        .finally(() => { sessionRefreshInFlight = null; });
+
+    return sessionRefreshInFlight;
+};
+const millisecondsSinceSessionRefresh = () => Date.now() - lastSessionRefreshAt;
+
+const request = async (url, options = {}, isRetry = false) => {
     const method = options.method || 'GET';
     const usesFormData = options.body instanceof FormData;
     const response = await fetch(url, {
@@ -35,24 +56,23 @@ const request = async (url, options = {}, isCsrfRetry = false) => {
     const data = response.status === 204 || !contentType.includes('application/json') ? null : await response.json();
     if (!response.ok) {
         const errorCode = data?.error?.code || null;
-        // Der im Speicher gehaltene CSRF-Token kann veralten, ohne dass die Sitzung selbst abgelaufen
-        // ist (siehe `AdminCsrfSubscriber` — dessen Prüfung hängt an der serverseitigen PHP-Session,
-        // die z. B. nach längerer Inaktivität im Hintergrund verworfen werden kann). Statt die Person
-        // zum manuellen Neuladen zu zwingen, wird einmalig ein frischer Token geholt und der Request
-        // automatisch wiederholt — schlägt auch das fehl, ist die Sitzung tatsächlich vorbei und der
-        // reguläre Fehler unten greift.
-        if (response.status === 403 && errorCode === 'invalid_csrf_token' && csrfToken && !isCsrfRetry) {
+        // Abgelaufener Access-Token (401, siehe `refreshSession`) oder veralteter CSRF-Token (403, siehe
+        // `AdminCsrfSubscriber` — dessen Prüfung hängt an der serverseitigen PHP-Session, die z. B. nach
+        // längerer Inaktivität verworfen werden kann): Statt die Person abzumelden bzw. zum Neuladen zu
+        // zwingen, wird einmalig refresht und der Request automatisch wiederholt — schlägt auch das
+        // fehl, ist die Sitzung tatsächlich vorbei und der reguläre Fehler unten greift.
+        const retriesWithRefresh = (response.status === 403 && errorCode === 'invalid_csrf_token')
+            || (response.status === 401 && !url.startsWith('/api/auth/v1/'));
+        if (retriesWithRefresh && csrfToken && !isRetry) {
             try {
-                const refreshed = await request('/api/auth/v1/refresh', {method: 'POST'});
+                const refreshed = await refreshSession();
                 if (refreshed?.csrfToken) {
-                    setCsrfToken(refreshed.csrfToken);
-
                     return request(url, options, true);
                 }
             } catch {
-                // Sitzung endgültig abgelaufen — der 401-Handler oben hat bereits reagiert (der
-                // Refresh-Aufruf lief selbst durch `request()`); hier bleibt nur der Fallthrough zum
-                // ursprünglichen CSRF-Fehler unten.
+                // Sitzung endgültig abgelaufen — der 401-Handler unten hat beim Refresh-Aufruf bereits
+                // reagiert (der lief selbst durch `request()`); hier bleibt nur der Fallthrough zum
+                // ursprünglichen Fehler.
             }
         }
         const error = new Error(data?.error?.message || data?.detail || data?.message || 'Die Anfrage ist fehlgeschlagen.');
@@ -278,6 +298,8 @@ export {
     app,
     csrfToken,
     setCsrfToken,
+    refreshSession,
+    millisecondsSinceSessionRefresh,
     setUnauthenticatedHandler,
     request,
     SALUTATION_LABELS,

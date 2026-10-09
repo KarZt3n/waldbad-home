@@ -104,6 +104,39 @@ readonly class EventHelpRequest
     }
 
     /**
+     * Meldet sich eine Person erneut zur selben Veranstaltung an, obwohl ihre Anmeldung bereits als
+     * „Nicht teilgenommen“ erfasst wurde, ist die Anmeldung wieder offen. Andere Status bleiben
+     * unverändert – insbesondere werden erfasste Teilnahmezeiten nie verworfen.
+     */
+    public function reopen(\DateTimeImmutable $updatedAt): self
+    {
+        if ($this->status !== EventHelpRequestStatus::NotParticipated) {
+            return $this;
+        }
+
+        return new self(
+            id: $this->id,
+            eventIdentifier: $this->eventIdentifier,
+            eventTitle: $this->eventTitle,
+            eventDate: $this->eventDate,
+            eventTime: $this->eventTime,
+            firstName: $this->firstName,
+            lastName: $this->lastName,
+            message: $this->message,
+            status: EventHelpRequestStatus::New,
+            participationMinutes: null,
+            participationIntervals: [],
+            selectedActivities: $this->selectedActivities,
+            submittedAt: $this->submittedAt,
+            updatedAt: $updatedAt,
+            isMember: $this->isMember,
+            email: $this->email,
+            birthDate: $this->birthDate,
+            memberId: $this->memberId,
+        );
+    }
+
+    /**
      * Korrigiert Vor-/Nachname nachträglich in der Verwaltung — z. B. wenn ein Tippfehler bei der
      * Anmeldung das automatische Zuordnen zu einem Mitglied verhindert hat (siehe
      * `MemberIdentityMatcher`) und der Name manuell aus dem verknüpften Mitgliedsdatensatz

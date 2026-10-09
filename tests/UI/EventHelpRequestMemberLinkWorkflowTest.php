@@ -328,6 +328,60 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         self::assertSame($expectedActivityIds, $selectedActivityIds);
     }
 
+    public function testRenewedSubmissionReopensHelpRequestMarkedAsNotParticipated(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember('Erika', 'Musterfrau', 'erika@example.test', '1990-06-15'), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $memberId = $this->responseData()['id'];
+        self::assertIsString($memberId);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Arbeitseinsatz',
+            'date' => (new \DateTimeImmutable())->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => null,
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $submit = function () use ($scheduleId): void {
+            $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+                'eventIdentifier' => $scheduleId, 'firstName' => 'Erika', 'lastName' => 'Musterfrau',
+                'birthDate' => '1990-06-15', 'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
+            ]);
+            self::assertResponseStatusCodeSame(202);
+        };
+        $submit();
+        $requestId = $this->responseData()['id'];
+        self::assertIsString($requestId);
+
+        $this->client->jsonRequest('POST', "/api/admin/v1/event-help-requests/{$requestId}/participation", [
+            'participated' => false, 'intervals' => [],
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('not_participated', $this->responseData()['status']);
+
+        $submit();
+
+        $this->client->request('GET', '/api/admin/v1/event-help-requests', server: $headers);
+        $responseItems = $this->responseData()['items'];
+        self::assertIsArray($responseItems);
+        $items = $this->itemsLinkedTo($responseItems, $memberId);
+        self::assertCount(1, $items);
+        self::assertSame($requestId, $items[0]['id']);
+        self::assertSame('new', $items[0]['status']);
+        self::assertNull($items[0]['participationMinutes']);
+    }
+
     /**
      * Deckt das Beispiel aus der Anforderung ab: Ist der Name allein mehrdeutig (zwei gleichnamige
      * Mitglieder in unterschiedlichen Haushalten) und passt das Geburtsdatum zu keinem der beiden

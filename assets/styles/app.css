@@ -1222,6 +1222,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-archive > summary:hover { background: var(--forest-100); }
 .event-helper-archive[open] > summary { border-bottom: 1px solid var(--line); background: var(--forest-100); }
 .event-helper-archive-list { padding: 1rem; }
+.member-work-assignments { display: grid; gap: 1rem; }
+.member-work-assignment-events { display: grid; gap: .5rem; padding: 1rem; }
+.member-work-assignment-event { border: 1px solid var(--line); border-radius: .75rem; background: var(--white); }
+.member-work-assignment-event > summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 1rem; cursor: pointer; }
+.member-work-assignment-event > summary > span:first-child { display: grid; gap: .1rem; }
+.member-work-assignment-event > summary small { color: var(--muted); }
+.member-work-assignment-event[open] > summary { border-bottom: 1px solid var(--line); }
+.member-work-assignment-event ul { margin: 0; padding: .7rem 1rem .8rem 2.2rem; }
 .event-helper-group { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--line); border-radius: 1rem; background: var(--white); }
 .event-helper-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
@@ -1778,6 +1786,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .radio-field:has(input:disabled) { color: var(--muted); cursor: not-allowed; }
 
 .table-scroll-area { max-width: 100%; overflow-x: auto; }
+.login-session-history { margin-top: 2rem; }
+.login-session-history > summary { display: flex; gap: .6rem; align-items: center; margin-bottom: 1rem; cursor: pointer; }
 .data-table { width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); }
 .data-table th, .data-table td { padding: .75rem 1rem; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
 .data-table th { color: var(--muted); font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }

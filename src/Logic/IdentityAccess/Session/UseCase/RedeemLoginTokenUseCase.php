@@ -25,7 +25,7 @@ readonly class RedeemLoginTokenUseCase
     ) {
     }
 
-    public function execute(string $rawToken): AuthenticatedSession
+    public function execute(string $rawToken, ?string $userAgent = null): AuthenticatedSession
     {
         $now = $this->clock->now();
         $token = $this->loginTokens->findByHash(hash('sha256', $rawToken)) ?? throw new InvalidLoginTokenException();
@@ -41,6 +41,6 @@ readonly class RedeemLoginTokenUseCase
         $this->loginTokens->markConsumed($token->id, $now);
         $user = $this->users->save($user->recordLogin($now));
 
-        return new AuthenticatedSession($user, $this->issuer->issueInitial($user->id));
+        return new AuthenticatedSession($user, $this->issuer->issueInitial($user->id, $userAgent));
     }
 }

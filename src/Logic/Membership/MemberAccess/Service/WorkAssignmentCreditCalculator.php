@@ -36,6 +36,19 @@ readonly class WorkAssignmentCreditCalculator
      */
     public function calculate(array $householdMembers): WorkAssignmentCreditResponse
     {
+        return $this->calculateForPeriod($householdMembers, $this->config->periodFrom(), $this->config->periodTo());
+    }
+
+    /**
+     * Wie `calculate()`, aber für einen frei gewählten Zeitraum [$periodFrom, $periodTo) — z. B. ein
+     * zurückliegendes Beitragsjahr in der Mitgliederverwaltung. Zuschlagspflicht und Betrag des
+     * Zuschlags werden dabei aus dem heutigen Stand übernommen, da es keine Beitragshistorie je Jahr
+     * gibt; die benötigten Stunden richten sich nach dem Stichtag des Zeitraums.
+     *
+     * @param list<Member> $householdMembers
+     */
+    public function calculateForPeriod(array $householdMembers, \DateTimeImmutable $periodFrom, \DateTimeImmutable $periodTo): WorkAssignmentCreditResponse
+    {
         $liableMembers = array_values(array_filter(
             $householdMembers,
             static fn (Member $member): bool => $member->workAssignmentSurchargeCents !== null,
@@ -45,8 +58,6 @@ readonly class WorkAssignmentCreditCalculator
             $liableMembers,
         ));
 
-        $periodFrom = $this->config->periodFrom();
-        $periodTo = $this->config->periodTo();
         // Die Stundenzahl richtet sich nach dem Beginn des Zeitraums, nicht nach "heute" — sie soll
         // widerspiegeln, was für den Zuschlag galt, der in genau diesem Zeitraum berechnet wurde.
         $requiredHours = $this->config->requiredHoursAt($periodFrom);
