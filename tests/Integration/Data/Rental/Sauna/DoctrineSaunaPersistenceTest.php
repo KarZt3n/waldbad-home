@@ -4,11 +4,14 @@ namespace App\Tests\Integration\Data\Rental\Sauna;
 
 use App\Data\Rental\Sauna\Booking\Processor\DoctrineSaunaBookingProcessor;
 use App\Data\Rental\Sauna\Booking\Provider\DoctrineSaunaBookingProvider;
+use App\Data\Rental\Sauna\Duty\Processor\DoctrineSaunaDutyProcessor;
+use App\Data\Rental\Sauna\Duty\Provider\DoctrineSaunaDutyProvider;
 use App\Data\Rental\Sauna\Season\Processor\DoctrineSaunaSeasonProcessor;
 use App\Data\Rental\Sauna\Season\Provider\DoctrineSaunaSeasonProvider;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingParticipant;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
+use App\Logic\Rental\Sauna\Duty\Model\SaunaDuty;
 use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
@@ -123,6 +126,23 @@ final class DoctrineSaunaPersistenceTest extends KernelTestCase
             ['Erika Musterfrau', 'Mia Muster'],
             array_map(static fn (SaunaBookingParticipant $participant): string => $participant->firstName.' '.$participant->lastName, $found[1]->participants),
         );
+    }
+
+    public function testDutiesAreFoundByDateRangeSortedAndRemoved(): void
+    {
+        $processor = $this->service(DoctrineSaunaDutyProcessor::class);
+        $provider = $this->service(DoctrineSaunaDutyProvider::class);
+        $processor->save(new SaunaDuty('duty-late', new \DateTimeImmutable('2026-10-10'), '17:00', 'member-1', '1001', 'Vera', 'Vorstand'));
+        $processor->save(new SaunaDuty('duty-early', new \DateTimeImmutable('2026-10-10'), '15:00', 'member-2', '1002', 'Otto', 'Kasse'));
+        $processor->save(new SaunaDuty('duty-outside', new \DateTimeImmutable('2026-10-11'), '15:00', 'member-1', '1001', 'Vera', 'Vorstand'));
+        $this->entityManager->clear();
+
+        $duties = $provider->findBetween(new \DateTimeImmutable('2026-10-10'), new \DateTimeImmutable('2026-10-10'));
+        self::assertSame(['duty-early', 'duty-late'], array_map(static fn (SaunaDuty $duty): string => $duty->id, $duties));
+        self::assertSame('1002', $duties[0]->memberNumber);
+
+        $processor->delete('duty-early');
+        self::assertNull($provider->find('duty-early'));
     }
 
     /**

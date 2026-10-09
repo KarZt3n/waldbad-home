@@ -383,6 +383,72 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
     }
 
     /**
+     * „Ich bringe jemanden mit“: Jede mitgebrachte Person wird als eigene Helferanmeldung
+     * gespeichert und – wie die anmeldende Person – automatisch einem Mitglied zugeordnet.
+     */
+    public function testCompanionsAreStoredAsSeparateHelpRequests(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember('Max', 'Mustermann', 'max@example.test', '1988-03-02'), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $companionMemberId = $this->responseData()['id'];
+        self::assertIsString($companionMemberId);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Arbeitseinsatz',
+            'date' => (new \DateTimeImmutable())->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => null,
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => $scheduleId, 'firstName' => 'Erika', 'lastName' => 'Musterfrau',
+            'birthDate' => '1990-06-15', 'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
+            'companions' => [
+                ['firstName' => 'Max', 'lastName' => 'Mustermann', 'birthDate' => '1988-03-02'],
+                ['firstName' => 'Lena', 'lastName' => 'Beispiel', 'birthDate' => '2012-09-30'],
+            ],
+        ]);
+        self::assertResponseStatusCodeSame(202);
+
+        $this->client->request('GET', '/api/admin/v1/event-help-requests', server: $headers);
+        $responseItems = $this->responseData()['items'];
+        self::assertIsArray($responseItems);
+        $names = [];
+        foreach ($responseItems as $item) {
+            self::assertIsArray($item);
+            self::assertIsString($item['firstName']);
+            $names[] = $item['firstName'];
+        }
+        sort($names);
+        self::assertSame(['Erika', 'Lena', 'Max'], $names);
+
+        $linked = $this->itemsLinkedTo($responseItems, $companionMemberId);
+        self::assertCount(1, $linked);
+        self::assertSame('Mitgebracht von Erika Musterfrau.', $linked[0]['message']);
+    }
+
+    public function testRejectsCompanionWithoutBirthDate(): void
+    {
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => 'event-1', 'firstName' => 'Erika', 'lastName' => 'Musterfrau',
+            'birthDate' => '1990-06-15', 'message' => '', 'activityIds' => [], 'privacyAccepted' => true,
+            'companions' => [['firstName' => 'Max', 'lastName' => 'Mustermann', 'birthDate' => '']],
+        ]);
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    /**
      * Deckt das Beispiel aus der Anforderung ab: Ist der Name allein mehrdeutig (zwei gleichnamige
      * Mitglieder in unterschiedlichen Haushalten) und passt das Geburtsdatum zu keinem der beiden
      * (Tippfehler), löst die angegebene E-Mail-Adresse die Mehrdeutigkeit auf — auch wenn sie nicht

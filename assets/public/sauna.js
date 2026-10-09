@@ -55,8 +55,7 @@ const bookerName = (guest) => {
 };
 
 /**
- * Personenzahl samt Vor- und Nachnamen aller Personen der Gruppe — in der Kalender- wie in der
- * individuellen Anfrage. Die anfragende Person (aus `guest`) ist immer Person 1; für die übrigen
+ * Personenzahl samt Vor- und Nachnamen aller Personen der Gruppe. Die anfragende Person (aus `guest`) ist immer Person 1; für die übrigen
  * erscheint je eine Zeile. `nextId` liefert eindeutige Feld-IDs, falls mehrere Editoren in einem
  * Dialog stehen.
  */
@@ -116,9 +115,8 @@ const createParticipantsEditor = (terms, guest, nextId) => {
 };
 
 /**
- * Anfrage-Dialog für eine freie Kalender-Kachel (`selection = {day, slotIndex}`), aufgebaut wie die
- * individuelle Anfrage (anfragende Person, Personen mit Namen, Wunschtag, Nachricht) — nur mit genau
- * einem Wunschtag: Tag und Beginn stehen fest, das Ende wird aus den anschließenden freien
+ * Anfrage-Dialog für eine freie Kalender-Kachel (`selection = {day, slotIndex}`) mit anfragender
+ * Person, Personen mit Namen und Nachricht: Tag und Beginn stehen fest, das Ende wird aus den anschließenden freien
  * Einheiten gewählt.
  */
 const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
@@ -190,226 +188,10 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
     showDialog(dialog, close, form);
 };
 
-/**
- * Individuelle Anfrage: zuerst die anfragende Person, dann beliebig viele Wunschtage (je Tag eine
- * eigene Reservierung). Personenzahl und Namen aller Personen gelten entweder einmal für alle Tage
- * („Kommt ihr an allen Tagen als dieselbe Gruppe?“) oder werden je Wunschtag angegeben. Die
- * anfragende Person ist immer Person 1.
- */
-const openIndividualSaunaRequestDialog = (terms, season, onSubmitted) => {
-    const dialog = element('dialog', {className: 'event-help-dialog sauna-booking-dialog'});
-    const message = formMessage();
-    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Sauna-Anfrage schließen'}});
-    const guest = guestFields();
-    let idCounter = 0;
-    const nextId = (prefix) => `${prefix}-${++idCounter}`;
-    const participantsEditor = () => createParticipantsEditor(terms, guest, nextId);
-
-    const sameGroupYes = element('input', {attributes: {type: 'radio', name: 'sameGroup', value: 'yes', checked: 'checked'}});
-    const sameGroupNo = element('input', {attributes: {type: 'radio', name: 'sameGroup', value: 'no'}});
-    const sameGroup = () => sameGroupYes.checked;
-    const groupEditor = participantsEditor();
-    const groupSection = element('div', {className: 'sauna-group', children: [groupEditor.element]});
-
-    let days = [];
-    const dayList = element('div', {className: 'sauna-wish-list'});
-    const addDayButton = element('button', {className: 'secondary-button sauna-wish-add', text: '＋ Wunschtag hinzufügen', attributes: {type: 'button'}});
-    const createDay = () => {
-        const dayId = nextId('sauna-day');
-        // Nur Tage der Saison sind anfragbar (serverseitig ebenso geprüft).
-        const today = toIsoDate(new Date());
-        const dateInput = element('input', {attributes: {
-            type: 'date',
-            id: `${dayId}-date`,
-            required: 'required',
-            min: season.startsOn > today ? season.startsOn : today,
-            ...(season.endsOn ? {max: season.endsOn} : {}),
-        }});
-        // Nur volle Stunden. „von“ nur so spät, dass bis 23 Uhr noch die Mindestdauer bleibt; „bis“
-        // erst ab Beginn + Mindestdauer (aufgerundet auf die volle Stunde) und damit vorausgewählt.
-        const startInput = timeSelect(`${dayId}-start`, 'von');
-        const endInput = timeSelect(`${dayId}-end`, 'bis');
-        startInput.setRange({from: 0, to: LAST_HOUR_OF_DAY - terms.priceUnitMinutes}, null);
-        endInput.setRange(null, null);
-        startInput.onChange(() => {
-            const earliestEnd = startInput.value ? toMinutes(startInput.value) + terms.priceUnitMinutes : null;
-            endInput.setRange(earliestEnd === null ? null : {from: earliestEnd, to: LAST_HOUR_OF_DAY}, earliestEnd);
-        });
-        const editor = participantsEditor();
-        const personsSection = element('div', {className: 'sauna-day-persons', children: [editor.element]});
-        const summaryText = element('strong');
-        const summaryPrice = element('span', {className: 'sauna-wish-price'});
-        const remove = element('button', {className: 'text-button danger sauna-wish-remove', text: 'Wunschtag entfernen', attributes: {type: 'button'}});
-        const details = element('details', {className: 'sauna-wish', children: [
-            element('summary', {children: [summaryText, summaryPrice]}),
-            element('div', {className: 'sauna-wish-body', children: [
-                element('label', {className: 'field', attributes: {for: `${dayId}-date`}, children: [element('span', {text: 'Wunschtag'}), dateInput]}),
-                element('div', {className: 'form-grid', children: [
-                    element('label', {className: 'field', attributes: {for: `${dayId}-start`}, children: [element('span', {text: 'von'}), startInput.element]}),
-                    element('label', {className: 'field', attributes: {for: `${dayId}-end`}, children: [element('span', {text: 'bis'}), endInput.element]}),
-                ]}),
-                personsSection,
-                remove,
-            ]}),
-        ]});
-        const entry = {details, dateInput, startInput, endInput, editor, personsSection, summaryText, summaryPrice, remove};
-        remove.addEventListener('click', () => {
-            days = days.filter((candidate) => candidate !== entry);
-            renderDays();
-        });
-
-        return entry;
-    };
-    const personCountFor = (entry) => (sameGroup() ? groupEditor : entry.editor).count();
-    const updateSummaries = () => {
-        groupEditor.refreshBooker();
-        days.forEach((entry, index) => {
-            entry.editor.refreshBooker();
-            const {dateInput, startInput, endInput} = entry;
-            const weekday = dateInput.value ? WEEKDAY_LABELS[(new Date(`${dateInput.value}T00:00:00`).getDay() + 6) % 7].slice(0, 2) : '';
-            const when = dateInput.value ? `${weekday}, ${formatDateDE(dateInput.value)}` : 'noch kein Tag gewählt';
-            const time = startInput.value && endInput.value ? ` · ${startInput.value}–${endInput.value} Uhr` : '';
-            const duration = startInput.value && endInput.value ? toMinutes(endInput.value) - toMinutes(startInput.value) : 0;
-            entry.summaryText.textContent = `Wunschtag ${index + 1}: ${when}${time} · ${personCountFor(entry)} Personen`;
-            entry.summaryPrice.textContent = duration > 0 ? formatEuro(priceFor(terms, duration)) : '';
-            entry.remove.hidden = days.length === 1;
-        });
-    };
-    const updateGroupMode = () => {
-        groupSection.hidden = !sameGroup();
-        groupEditor.setRequired(sameGroup());
-        days.forEach((entry) => {
-            entry.personsSection.hidden = sameGroup();
-            entry.editor.setRequired(!sameGroup());
-        });
-        updateSummaries();
-    };
-    function renderDays() {
-        dayList.replaceChildren(...days.map((entry) => entry.details));
-        updateGroupMode();
-    }
-    addDayButton.addEventListener('click', () => {
-        days.forEach((entry) => { entry.details.open = false; });
-        const entry = createDay();
-        entry.details.open = true;
-        days.push(entry);
-        renderDays();
-        entry.dateInput.focus();
-    });
-    const first = createDay();
-    first.details.open = true;
-    days.push(first);
-
-    const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
-    const submit = element('button', {className: 'button', text: 'Sauna-Anfrage absenden', attributes: {type: 'submit'}});
-    const form = element('form', {className: 'public-form event-help-form', children: [
-        element('header', {children: [
-            element('p', {className: 'eyebrow', text: 'Sauna-Anfrage'}),
-            element('h2', {text: 'Individuelle Anfrage'}),
-            element('p', {text: groupHint(terms)}),
-        ]}),
-        ...guest,
-        element('fieldset', {className: 'radio-group sauna-same-group', children: [
-            element('legend', {text: 'Kommt ihr an allen Wunschtagen als dieselbe Gruppe?'}),
-            element('label', {className: 'radio-field', children: [sameGroupYes, element('span', {text: 'Ja, Personen einmal angeben'})]}),
-            element('label', {className: 'radio-field', children: [sameGroupNo, element('span', {text: 'Nein, Personen je Wunschtag angeben'})]}),
-        ]}),
-        groupSection,
-        element('div', {className: 'sauna-wishes', children: [
-            element('h3', {text: 'Wunschtage'}),
-            element('p', {className: 'field-hint', text: 'Jeder Wunschtag wird für dich reserviert und vom Verein bestätigt.'}),
-            dayList,
-            addDayButton,
-        ]}),
-        field('Nachricht (optional, z. B. Anlass)', 'message', '', 'textarea'),
-        privacyField(privacy),
-        message,
-        submit,
-    ]});
-    requireGuestFields(form);
-    renderDays();
-    [sameGroupYes, sameGroupNo].forEach((radio) => radio.addEventListener('change', updateGroupMode));
-    form.addEventListener('input', updateSummaries);
-    form.addEventListener('change', updateSummaries);
-    // Pflichtfelder in einem zugeklappten Wunschtag: aufklappen, damit der Browser das Feld zeigen kann.
-    form.addEventListener('invalid', (event) => { event.target.closest('details')?.setAttribute('open', ''); }, true);
-    const markDays = (indexes) => days.forEach((entry, index) => {
-        const marked = indexes.includes(index);
-        entry.details.classList.toggle('is-invalid', marked);
-        if (marked) {
-            entry.details.open = true;
-        }
-    });
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        markDays([]);
-        const invalidDay = days.findIndex(({startInput, endInput}) => toMinutes(endInput.value) <= toMinutes(startInput.value));
-        if (invalidDay >= 0) {
-            markDays([invalidDay]);
-            message.textContent = `Wunschtag ${invalidDay + 1}: Das Ende muss nach dem Beginn liegen.`;
-            return;
-        }
-        const data = new FormData(form);
-        await submitRequest(submit, message, dialog, onSubmitted, {
-            individual: true,
-            days: days.map((entry) => {
-                const editor = sameGroup() ? groupEditor : entry.editor;
-
-                return {
-                    date: entry.dateInput.value,
-                    startTime: entry.startInput.value,
-                    endTime: entry.endInput.value,
-                    personCount: editor.count(),
-                    participants: editor.participants(),
-                };
-            }),
-            ...guestPayload(data),
-        }, (error) => markDays(error.details?.days || []));
-    });
-    showDialog(dialog, close, form);
-};
-
 const groupHint = (terms) => `Die Sauna wird nur an Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen vergeben; eine Einzelnutzung ist nicht möglich. Deine Anfrage ist erst verbindlich, wenn der Verein sie angenommen hat.`;
 const personCountSelect = (terms, name, id) => element('select', {attributes: {...(name ? {name} : {}), id}, children: Array
     .from({length: terms.maxPersons - terms.minPersons + 1}, (_, index) => terms.minPersons + index)
     .map((count) => element('option', {text: `${count} Personen`, attributes: {value: String(count)}}))});
-const LAST_HOUR_OF_DAY = 23 * 60;
-
-/**
- * Uhrzeit für individuelle Anfragen als Auswahl voller Stunden (`HH:00`); `value` ist leer, solange
- * nichts gewählt ist. `setRange()` beschränkt die wählbaren Stunden (z. B. „bis“ erst ab Beginn +
- * Mindestdauer, aufgerundet auf die volle Stunde) und wählt `preselect`, wenn die bisherige Wahl
- * außerhalb liegt; ohne Bereich (`null`) ist die Auswahl gesperrt.
- */
-const timeSelect = (id, label) => {
-    const hour = element('select', {attributes: {id, required: 'required', 'aria-label': label}});
-    const select = (range, minutes) => {
-        const options = [];
-        for (let value = Math.ceil(range.from / 60) * 60; value <= range.to; value += 60) {
-            const time = `${String(value / 60).padStart(2, '0')}:00`;
-            options.push(element('option', {text: `${time} Uhr`, attributes: {value: time}}));
-        }
-        hour.replaceChildren(element('option', {text: '--:--', attributes: {value: ''}}), ...options);
-        hour.value = minutes === null ? '' : `${String(Math.floor(minutes / 60)).padStart(2, '0')}:00`;
-    };
-    select({from: 0, to: LAST_HOUR_OF_DAY}, null);
-
-    return {
-        element: hour,
-        get value() { return hour.value; },
-        onChange: (callback) => hour.addEventListener('change', callback),
-        setRange: (range, preselect) => {
-            hour.disabled = range === null || Math.ceil(range.from / 60) * 60 > range.to;
-            if (hour.disabled) {
-                select({from: 0, to: LAST_HOUR_OF_DAY}, null);
-                return;
-            }
-            const current = hour.value ? toMinutes(hour.value) : null;
-            const earliest = Math.ceil(range.from / 60) * 60;
-            select(range, current !== null && current >= earliest && current <= range.to ? current : (preselect === null ? null : Math.ceil(preselect / 60) * 60));
-        },
-    };
-};
 const guestFields = () => [
     element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
     field('E-Mail (optional)', 'email', '', 'email'),
@@ -512,16 +294,6 @@ const renderSaunaExtension = (preview = false) => {
     const next = element('button', {className: 'secondary-button', text: 'Nächster Monat ›', attributes: {type: 'button'}});
     const grid = element('div', {className: 'sauna-month'});
     const termsInfo = element('p', {className: 'sauna-terms'});
-    let currentTerms = null;
-    let currentSeason = null;
-    const individualRequest = element('button', {className: 'button sauna-individual-button', text: 'Individuelle Anfrage', attributes: {type: 'button', disabled: 'disabled'}});
-    individualRequest.addEventListener('click', () => {
-        if (currentTerms && currentSeason) openIndividualSaunaRequestDialog(currentTerms, currentSeason, load);
-    });
-    const individualHint = element('div', {className: 'sauna-individual', children: [
-        element('p', {text: 'Keine passende Zeit im Kalender? Frag deinen Wunschtermin mit freier Uhrzeit an.'}),
-        individualRequest,
-    ]});
     const legend = element('p', {className: 'sauna-legend', children: [
         element('span', {className: 'sauna-legend-item sauna-legend-free', text: 'Frei – zum Anfragen anklicken'}),
         element('span', {className: 'sauna-legend-item sauna-legend-booked', text: 'Belegt'}),
@@ -550,9 +322,6 @@ const renderSaunaExtension = (preview = false) => {
                 }
             }
             termsInfo.textContent = termsSummary(calendar.terms);
-            currentTerms = calendar.terms;
-            currentSeason = calendar.season;
-            individualRequest.disabled = false;
             if (!calendar.days.some((day) => day.slots.length > 0)) {
                 grid.replaceChildren(element('p', {className: 'empty-copy', text: 'In diesem Monat sind keine Saunazeiten geplant.'}));
                 return;
@@ -578,7 +347,6 @@ const renderSaunaExtension = (preview = false) => {
 
     const bookingArea = element('div', {className: 'sauna-booking-area', children: [
         termsInfo,
-        individualHint,
         element('div', {className: 'sauna-toolbar', children: [today, heading, element('div', {className: 'sauna-toolbar-actions', children: [previous, next]})]}),
         grid,
         legend,

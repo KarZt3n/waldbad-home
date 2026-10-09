@@ -234,6 +234,51 @@ const openEventHelpDialog = async (block) => {
         text: allActivitiesFull ? 'Aktuell keine Plätze frei' : 'Helferanmeldung absenden',
         attributes: {type: 'submit', ...(allActivitiesFull ? {disabled: 'disabled'} : {})},
     });
+    // „Ich bringe jemanden mit“: Jede weitere Person wird als eigene Helferanmeldung mit denselben Aktivitäten gespeichert.
+    const maxCompanions = 8;
+    const companions = element('div', {className: 'event-help-companions'});
+    const addCompanion = element('button', {className: 'secondary-button event-help-add-companion', text: '＋ Ich bringe jemanden mit', attributes: {type: 'button'}});
+    const refreshCompanions = () => {
+        [...companions.children].forEach((card, index) => {
+            card.querySelector('.event-help-companion-title').textContent = `Weitere Person ${index + 1}`;
+        });
+        addCompanion.disabled = companions.children.length >= maxCompanions;
+    };
+    addCompanion.addEventListener('click', () => {
+        if (companions.children.length >= maxCompanions) return;
+        const id = `event-help-companion-${Math.random().toString(36).slice(2)}`;
+        const companionField = (label, key, type = 'text') => {
+            const wrapper = field(label, `${id}-${key}`, '', type);
+            const input = wrapper.querySelector('input');
+            input.dataset.companionField = key;
+            input.required = true;
+            return wrapper;
+        };
+        const remove = element('button', {className: 'text-button danger', text: 'Entfernen', attributes: {type: 'button'}});
+        const card = element('fieldset', {className: 'event-help-companion', children: [
+            element('div', {className: 'event-help-companion-heading', children: [
+                element('legend', {className: 'event-help-companion-title', text: 'Weitere Person'}),
+                remove,
+            ]}),
+            element('div', {className: 'form-grid form-grid-3', children: [
+                companionField('Vorname', 'firstName'),
+                companionField('Nachname', 'lastName'),
+                companionField('Geburtsdatum', 'birthDate', 'date'),
+            ]}),
+        ]});
+        remove.addEventListener('click', () => {
+            card.remove();
+            refreshCompanions();
+        });
+        companions.append(card);
+        refreshCompanions();
+        card.querySelector('[data-companion-field="firstName"]').focus();
+    });
+    const companionPayload = () => [...companions.children].map((card) => ({
+        firstName: card.querySelector('[data-companion-field="firstName"]').value,
+        lastName: card.querySelector('[data-companion-field="lastName"]').value,
+        birthDate: card.querySelector('[data-companion-field="birthDate"]').value,
+    }));
     const form = element('form', {className: 'public-form event-help-form', children: [
         element('header', {children: [
             element('p', {className: 'eyebrow', text: 'Helferanmeldung'}),
@@ -241,7 +286,8 @@ const openEventHelpDialog = async (block) => {
             element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
         ]}),
         element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
-        field('E-Mail (optional)', 'email', '', 'email'),
+        companions,
+        addCompanion,
         ...(activityEntries.length ? [element('fieldset', {className: 'event-activity-choices', children: [
             element('legend', {text: activityInputs.length ? 'Wobei möchtest du helfen?' : 'Das steht an'}),
             ...activityEntries,
@@ -267,8 +313,8 @@ const openEventHelpDialog = async (block) => {
                 message: data.get('message'),
                 activityIds: data.getAll('activityIds'),
                 privacyAccepted: data.get('privacyAccepted') === 'on',
-                email: data.get('email'),
                 birthDate: data.get('birthDate'),
+                companions: companionPayload(),
             })});
             toast(response.message);
             dialog.close();

@@ -6,11 +6,14 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Event\Activity\Manager\EventActivityManagerInterface;
+use App\Logic\Event\Activity\Model\EventActivity;
+use App\Logic\Event\HelpRequest\Dto\EventHelpCompanionInput;
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestResponse;
 use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
+use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestConfirmationMailer;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestDuplicateMerger;
 use App\Logic\Membership\Member\Service\MemberIdentityMatcher;
@@ -30,7 +33,12 @@ readonly class SubmitEventHelpRequestUseCase
     ) {
     }
 
-    /** @param list<string> $activityIds */
+    public const int MAX_COMPANIONS = 8;
+
+    /**
+     * @param list<string> $activityIds
+     * @param list<EventHelpCompanionInput> $companions
+     */
     public function execute(
         string $eventIdentifier,
         string $firstName,
@@ -39,10 +47,14 @@ readonly class SubmitEventHelpRequestUseCase
         \DateTimeImmutable $birthDate,
         array $activityIds = [],
         ?string $email = null,
+        array $companions = [],
     ): EventHelpRequestResponse
     {
         $event = $this->eventProvider->findPublished($eventIdentifier)
             ?? throw new BusinessRuleViolationException('Für diese Veranstaltung ist keine Helferanmeldung verfügbar.');
+        if (count($companions) > self::MAX_COMPANIONS) {
+            throw new BusinessRuleViolationException(sprintf('Es können höchstens %d weitere Personen mitgebracht werden.', self::MAX_COMPANIONS));
+        }
         $activityIds = array_values(array_unique(array_map('trim', $activityIds)));
         $allowedIds = array_map(
             static fn ($assignment): string => $assignment->activityId,
@@ -56,9 +68,8 @@ readonly class SubmitEventHelpRequestUseCase
                 throw new BusinessRuleViolationException('Die ausgewählte Aktivität gehört nicht zu dieser Veranstaltung.');
             }
         }
-        $allExisting = $this->manager->all();
         $registrationCounts = [];
-        foreach ($allExisting as $existingRequest) {
+        foreach ($this->manager->all() as $existingRequest) {
             if ($existingRequest->eventIdentifier !== $eventIdentifier) {
                 continue;
             }
@@ -66,49 +77,86 @@ readonly class SubmitEventHelpRequestUseCase
                 $registrationCounts[$selectedActivity->activityId] = ($registrationCounts[$selectedActivity->activityId] ?? 0) + 1;
             }
         }
+        // Mitgebrachte Personen übernehmen die Aktivitäten der anmeldenden Person und belegen je einen eigenen Platz.
+        $personCount = 1 + count($companions);
         foreach ($event->activities as $assignment) {
             if ($assignment->requiredHelpers !== null
                 && in_array($assignment->activityId, $activityIds, true)
-                && ($registrationCounts[$assignment->activityId] ?? 0) >= $assignment->requiredHelpers) {
-                throw new BusinessRuleViolationException('Eine ausgewählte Aktivität ist bereits vollständig belegt.');
+                && ($registrationCounts[$assignment->activityId] ?? 0) + $personCount > $assignment->requiredHelpers) {
+                throw new BusinessRuleViolationException($personCount > 1
+                    ? 'Für eine ausgewählte Aktivität sind nicht mehr genügend Plätze für alle angemeldeten Personen frei.'
+                    : 'Eine ausgewählte Aktivität ist bereits vollständig belegt.');
             }
         }
+        $selectedActivities = array_map(function (string $activityId): EventActivity {
+            $activity = $this->activityManager->get($activityId);
+            if (!$activity->active) {
+                throw new BusinessRuleViolationException('Eine ausgewählte Aktivität ist nicht mehr verfügbar.');
+            }
 
-        $now = $this->clock->now();
+            return $activity;
+        }, $activityIds);
+
         $trimmedFirstName = trim($firstName);
         $trimmedLastName = trim($lastName);
         $trimmedEmail = $email !== null && trim($email) !== '' ? trim($email) : null;
-        $member = $this->memberMatcher->match($trimmedFirstName, $trimmedLastName, $birthDate, $trimmedEmail);
+        $response = $this->register($event, $trimmedFirstName, $trimmedLastName, trim($message), $birthDate, $selectedActivities, $trimmedEmail);
+        foreach ($companions as $companion) {
+            $this->register(
+                $event,
+                trim($companion->firstName),
+                trim($companion->lastName),
+                sprintf('Mitgebracht von %s %s.', $trimmedFirstName, $trimmedLastName),
+                $companion->birthDate,
+                $selectedActivities,
+                null,
+            );
+        }
+
+        return $response;
+    }
+
+    /** @param list<EventActivity> $activities */
+    private function register(
+        VolunteerEvent $event,
+        string $firstName,
+        string $lastName,
+        string $message,
+        \DateTimeImmutable $birthDate,
+        array $activities,
+        ?string $email,
+    ): EventHelpRequestResponse
+    {
+        $now = $this->clock->now();
+        $member = $this->memberMatcher->match($firstName, $lastName, $birthDate, $email);
         $request = new EventHelpRequest(
             id: $this->identifierGenerator->generate(),
-            eventIdentifier: $eventIdentifier,
+            eventIdentifier: $event->identifier,
             eventTitle: $event->title,
             eventDate: $event->date,
             eventTime: $event->time,
-            firstName: $trimmedFirstName,
-            lastName: $trimmedLastName,
-            message: trim($message),
+            firstName: $firstName,
+            lastName: $lastName,
+            message: $message,
             status: EventHelpRequestStatus::New,
             participationMinutes: null,
             participationIntervals: [],
-            selectedActivities: array_map(function (string $activityId): SelectedEventActivity {
-                $activity = $this->activityManager->get($activityId);
-                if (!$activity->active) {
-                    throw new BusinessRuleViolationException('Eine ausgewählte Aktivität ist nicht mehr verfügbar.');
-                }
-
-                return new SelectedEventActivity($this->identifierGenerator->generate(), $activity->id, $activity->name);
-            }, $activityIds),
+            selectedActivities: array_map(
+                fn (EventActivity $activity): SelectedEventActivity => new SelectedEventActivity($this->identifierGenerator->generate(), $activity->id, $activity->name),
+                $activities,
+            ),
             submittedAt: $now,
             updatedAt: $now,
-            email: $trimmedEmail,
+            email: $email,
             birthDate: $birthDate,
             memberId: $member?->id,
         );
 
         $response = null;
         if ($member !== null) {
-            $existing = $this->duplicateMerger->findExisting($allExisting, $member->id, $eventIdentifier);
+            // Bewusst je Person neu geladen: Eine zuvor in dieser Anfrage gespeicherte oder
+            // zusammengeführte Anmeldung (z. B. derselben mitgebrachten Person doppelt) muss berücksichtigt werden.
+            $existing = $this->duplicateMerger->findExisting($this->manager->all(), $member->id, $event->identifier);
             if ($existing !== []) {
                 // Für dieses Mitglied besteht zu dieser Veranstaltung bereits eine Anmeldung — statt
                 // eines weiteren Datensatzes werden die hier gewählten Aktivitäten in die jüngste
@@ -124,7 +172,7 @@ readonly class SubmitEventHelpRequestUseCase
 
         // Nur beim automatischen Matching hier beim Absenden, nicht beim nachträglichen manuellen
         // Verknüpfen in der Verwaltung (siehe `EventHelpRequestConfirmationMailer`).
-        $this->confirmationMailer->send($trimmedFirstName, $trimmedLastName, $event, $member, $trimmedEmail);
+        $this->confirmationMailer->send($firstName, $lastName, $event, $member, $email);
 
         return $response;
     }

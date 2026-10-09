@@ -1,10 +1,10 @@
 // Modul „Vermietung“: aktuell mit dem Untermodul Sauna — Sauna-Anmeldungen (Status offen/angenommen/
 // abgelehnt), Sauna-Saisons (Zeitraum, Dauer einer Buchungseinheit, Wochenplan Mo–So) und Kosten
-// (Preis je Buchung, Gruppengröße) als Unter-Reiter unter einer gemeinsamen Route
+// (Preis je Buchung, Gruppengröße) sowie der Dienstplan (Einlass, Übergang, Abschließen) als Unter-Reiter unter einer gemeinsamen Route
 // (`/admin/vermietung/...`).
 
 import {confirmAction, element, field, formatDateDE, formatEuro, formMessage, request, toast} from '../core.js';
-import {actionButton, emptyState, sectionHeading} from './ui.js';
+import {actionButton, emptyState, searchField, sectionHeading} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -591,6 +591,250 @@ const showSaunaTerms = async () => {
     );
 };
 
+const DUTY_MONTH_LABEL = new Intl.DateTimeFormat('de-DE', {month: 'long', year: 'numeric'});
+const DUTY_DAY_LABEL = new Intl.DateTimeFormat('de-DE', {weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric'});
+const isoDate = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+
+const DUTY_KIND_LABELS = {entry: 'Einlass', transition: 'Übergang', closing: 'Abschließen'};
+
+/** Art und Status eines Dienstzeitpunkts; bei Buchungen zusätzlich, ob der Dienst schon besetzt ist. */
+const dutyPointStatus = (point) => {
+    const staffed = point.duties.length > 0;
+    const kind = DUTY_KIND_LABELS[point.kind];
+    switch (point.state) {
+        case 'required':
+            return {className: staffed ? 'is-required is-staffed' : 'is-required is-missing', label: `${kind} · ${staffed ? 'Dienst besetzt' : 'Dienst fehlt'}`};
+        case 'requested':
+            return {className: `is-requested${staffed ? ' is-staffed' : ''}`, label: `${kind} · ${staffed ? 'Dienst besetzt' : 'angefragt, Dienst voraussichtlich nötig'}`};
+        case 'running':
+            return {className: 'is-running', label: `Läuft – gebucht ${point.runningBookings[0].startTime}–${point.runningBookings[0].endTime} Uhr, kein Wechsel`};
+        case 'unscheduled':
+            return {className: 'is-unscheduled', label: 'Kein Dienst mehr vorgesehen'};
+        default:
+            return {className: 'is-free', label: 'Nicht gebucht'};
+    }
+};
+
+/**
+ * Dialog „Dienst eintragen“: Die Person wird immer über die Mitgliedersuche ausgewählt (Vorstand
+ * zuerst), damit der Dienstplan eindeutig einem Mitglied zugeordnet ist.
+ */
+const openSaunaDutyAssignDialog = (day, point, onAssigned) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const message = formMessage();
+    let selected = null;
+    let lastTerm = '';
+    const selection = element('p', {className: 'member-link-status', text: 'Noch keine Person ausgewählt.'});
+    const results = element('div', {className: 'member-link-results'});
+    // Siehe `openLinkMemberDialog` (events.js): verhindert, dass der Blur des Suchfelds die Liste unter dem Klick neu rendert.
+    results.addEventListener('mousedown', (event) => event.preventDefault());
+    const save = element('button', {className: 'button button-compact', text: 'Eintragen', attributes: {type: 'submit', disabled: 'disabled'}});
+    const renderResults = (candidates) => {
+        results.replaceChildren(...(candidates.length ? candidates.map((candidate) => {
+            const details = [candidate.memberNumber, candidate.street, candidate.birthDate ? formatDateDE(candidate.birthDate) : null].filter(Boolean).join(' • ');
+            const pick = element('button', {
+                className: `secondary-button member-link-candidate${selected?.id === candidate.id ? ' is-selected' : ''}`,
+                attributes: {type: 'button'},
+                children: [
+                    element('strong', {text: `${candidate.firstName} ${candidate.lastName}${candidate.boardMember ? ' · Vorstand' : ''}`}),
+                    element('small', {text: details}),
+                ],
+            });
+            pick.addEventListener('click', () => {
+                selected = candidate;
+                selection.textContent = `Ausgewählt: ${candidate.firstName} ${candidate.lastName} (${candidate.memberNumber})`;
+                save.disabled = false;
+                results.querySelectorAll('.member-link-candidate').forEach((button) => button.classList.toggle('is-selected', button === pick));
+            });
+
+            return pick;
+        }) : [emptyState('Keine Mitglieder gefunden.')]));
+    };
+    // Die Auswahl bleibt bei einer neuen Suche bestehen: Der Klick auf „Eintragen“ verlässt das
+    // Suchfeld und löst dabei ein erneutes `change` aus, das sonst die Auswahl verwerfen würde.
+    const search = searchField('Name oder Mitgliedsnummer suchen …', '', async (term) => {
+        if (term === lastTerm) return;
+        lastTerm = term;
+        if (term === '') { results.replaceChildren(); return; }
+        const data = await request(`/api/admin/v1/sauna-duties/candidates?search=${encodeURIComponent(term)}`);
+        renderResults(data.items);
+    });
+    const searchInput = search.querySelector('input');
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        searchInput.dispatchEvent(new Event('change'));
+    });
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    cancel.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Saunadienst eintragen'}),
+        element('h2', {text: `${DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))} · ${point.time} Uhr`}),
+        element('p', {text: dutyPointStatus(point).label}),
+        search,
+        results,
+        selection,
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, save]}),
+    ]});
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!selected) return;
+        save.disabled = true;
+        try {
+            await request('/api/admin/v1/sauna-duties', {method: 'POST', body: JSON.stringify({date: day.date, time: point.time, memberId: selected.id})});
+            toast(`${selected.firstName} ${selected.lastName} ist für ${point.time} Uhr eingetragen.`);
+            dialog.close();
+            await onAssigned();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            save.disabled = false;
+        }
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    searchInput.focus();
+};
+
+/**
+ * Dienstplan: je Saunatag alle Dienstzeitpunkte aus dem Saison-Raster (z. B. 15:00, 17:00, …, 23:00)
+ * sowie abweichende Buchungsbeginne und -enden. Ein Dienst gilt einem Zeitpunkt, nicht einem
+ * Zeitraum: Einlass, Übergang zur nächsten Buchung oder Abschließen. Dienste zu gebuchten Zeiten
+ * sind rot (fehlt) bzw. grün (besetzt) hervorgehoben; nicht gebuchte Zeiten bleiben neutral.
+ */
+const showSaunaDuties = async () => {
+    const canEdit = canEditModule('rental_sauna');
+    const today = new Date();
+    const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    let month = currentMonth;
+    let bookedOnly = false;
+    const heading = element('h3', {className: 'sauna-month-label', attributes: {'aria-live': 'polite'}});
+    const previous = element('button', {className: 'secondary-button', text: '‹ Vorheriger Monat', attributes: {type: 'button'}});
+    const current = element('button', {className: 'secondary-button', text: 'Aktueller Monat', attributes: {type: 'button'}});
+    const next = element('button', {className: 'secondary-button', text: 'Nächster Monat ›', attributes: {type: 'button'}});
+    const bookedOnlyInput = element('input', {attributes: {type: 'checkbox'}});
+    const summary = element('p', {className: 'sauna-duty-summary', attributes: {role: 'status'}});
+    const list = element('div', {className: 'sauna-duty-days'});
+
+    const dutyChip = (duty) => {
+        const chip = element('span', {className: 'sauna-duty-person', children: [
+            element('span', {text: `${duty.firstName} ${duty.lastName}`}),
+            element('small', {text: duty.memberNumber}),
+        ]});
+        if (canEdit) {
+            const remove = element('button', {className: 'sauna-duty-remove', text: '×', attributes: {type: 'button', 'aria-label': `${duty.firstName} ${duty.lastName} austragen`}});
+            remove.addEventListener('click', async () => {
+                const confirmed = await confirmAction('Dienst austragen?', `${duty.firstName} ${duty.lastName} wird für ${duty.time} Uhr am ${formatDateDE(duty.date)} ausgetragen.`, 'Austragen');
+                if (!confirmed) return;
+                try {
+                    await request(`/api/admin/v1/sauna-duties/${duty.id}`, {method: 'DELETE'});
+                    toast('Der Dienst wurde ausgetragen.', 'info');
+                    await load();
+                } catch (error) {
+                    toast(error.message, 'error');
+                }
+            });
+            chip.append(remove);
+        }
+
+        return chip;
+    };
+    const bookingLine = (direction) => (booking) => element('small', {
+        className: 'sauna-duty-booking',
+        text: `${direction}: ${booking.firstName} ${booking.lastName} · ${booking.personCount} ${booking.personCount === 1 ? 'Person' : 'Personen'} · ${booking.startTime}–${booking.endTime} Uhr${booking.status === 'open' ? ' · offen' : ''}`,
+    });
+    const renderPoint = (day, point) => {
+        const status = dutyPointStatus(point);
+        const assign = canEdit && point.state !== 'unscheduled'
+            ? element('button', {className: 'text-button sauna-duty-assign', text: '＋ Eintragen', attributes: {type: 'button'}})
+            : null;
+        assign?.addEventListener('click', () => openSaunaDutyAssignDialog(day, point, load));
+
+        return element('article', {className: `sauna-duty-point ${status.className}`, children: [
+            element('header', {children: [
+                element('strong', {className: 'sauna-duty-time', text: `${point.time} Uhr`}),
+                element('span', {className: 'sauna-duty-state', text: status.label}),
+            ]}),
+            ...point.endingBookings.map(bookingLine('Geht')),
+            ...point.startingBookings.map(bookingLine('Kommt')),
+            element('div', {className: 'sauna-duty-people', children: [
+                ...point.duties.map(dutyChip),
+                ...(assign ? [assign] : []),
+            ]}),
+        ]});
+    };
+    const isBooked = (point) => point.state === 'required' || point.state === 'requested';
+
+    const load = async () => {
+        previous.disabled = month <= currentMonth;
+        heading.textContent = DUTY_MONTH_LABEL.format(month);
+        const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+        list.replaceChildren(emptyState('Dienstplan wird geladen …'));
+        try {
+            const roster = await request(`/api/admin/v1/sauna-duties?from=${isoDate(month)}&days=${daysInMonth}`);
+            const days = roster.days
+                .map((day) => ({...day, points: bookedOnly ? day.points.filter((point) => isBooked(point) || point.duties.length) : day.points}))
+                .filter((day) => day.points.length || (day.closed && !bookedOnly));
+            const missing = roster.days.flatMap((day) => day.points).filter((point) => point.state === 'required' && !point.duties.length).length;
+            summary.textContent = missing
+                ? `${missing} ${missing === 1 ? 'Dienst' : 'Dienste'} zu gebuchten Zeiten in diesem Monat noch unbesetzt.`
+                : 'Alle Dienste zu gebuchten Zeiten in diesem Monat sind besetzt.';
+            summary.classList.toggle('has-missing', missing > 0);
+            if (!days.length) {
+                list.replaceChildren(emptyState(bookedOnly ? 'In diesem Monat gibt es keine gebuchten Saunazeiten.' : 'In diesem Monat sind keine Saunazeiten geplant.'));
+                return;
+            }
+            const todayIso = isoDate(new Date());
+            list.replaceChildren(...days.map((day) => element('section', {
+                className: `sauna-duty-day${day.date < todayIso ? ' is-past' : ''}${day.date === todayIso ? ' is-today' : ''}`,
+                children: [
+                    element('h4', {text: DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))}),
+                    ...(day.closed
+                        ? [element('p', {className: 'sauna-duty-closed', text: `Geschlossen${day.closedReason ? ` (${day.closedReason})` : ''}`})]
+                        : [element('div', {className: 'sauna-duty-points', children: day.points.map((point) => renderPoint(day, point))})]),
+                ],
+            })));
+        } catch (error) {
+            list.replaceChildren(emptyState(`Der Dienstplan konnte nicht geladen werden: ${error.message}`));
+        }
+    };
+    const showMonth = (offset) => {
+        month = offset === 0 ? currentMonth : new Date(month.getFullYear(), month.getMonth() + offset, 1);
+        load();
+    };
+    previous.addEventListener('click', () => showMonth(-1));
+    current.addEventListener('click', () => showMonth(0));
+    next.addEventListener('click', () => showMonth(1));
+    bookedOnlyInput.addEventListener('change', () => {
+        bookedOnly = bookedOnlyInput.checked;
+        load();
+    });
+
+    const legend = element('p', {className: 'sauna-duty-legend', children: [
+        element('span', {className: 'sauna-duty-legend-item is-required is-missing', text: 'Gebucht – Dienst fehlt'}),
+        element('span', {className: 'sauna-duty-legend-item is-required is-staffed', text: 'Gebucht – Dienst besetzt'}),
+        element('span', {className: 'sauna-duty-legend-item is-requested', text: 'Angefragt'}),
+        element('span', {className: 'sauna-duty-legend-item is-running', text: 'Buchung läuft, kein Wechsel'}),
+        element('span', {className: 'sauna-duty-legend-item is-free', text: 'Nicht gebucht'}),
+    ]});
+    workspace.replaceChildren(
+        sectionHeading('Sauna-Dienstplan', 'Wer hat Dienst – zum Einlass (hereinlassen, abkassieren), beim Übergang zwischen zwei Buchungen und zum Abschließen nach der letzten Buchung? Gebuchte Zeiten müssen besetzt sein.'),
+        element('div', {className: 'sauna-duty', children: [
+            element('div', {className: 'sauna-toolbar', children: [current, heading, element('div', {className: 'sauna-toolbar-actions', children: [previous, next]})]}),
+            element('div', {className: 'sauna-duty-filters', children: [
+                element('label', {className: 'check-field', children: [bookedOnlyInput, element('span', {text: 'Nur gebuchte Zeiten'})]}),
+                summary,
+            ]}),
+            legend,
+            list,
+        ]}),
+    );
+    await load();
+};
+
 /**
  * Untermodule der Vermietung (erste Reiterebene) mit ihren Bereichen (zweite Reiterebene), z. B.
  * `/admin/vermietung/sauna/anmeldungen`. Weitere Mietobjekte werden hier als eigener Eintrag mit
@@ -599,6 +843,7 @@ const showSaunaTerms = async () => {
 const RENTAL_SUBMODULES = [
     {slug: 'sauna', label: 'Sauna', module: 'rental_sauna', sections: [
         {slug: 'anmeldungen', label: 'Anmeldungen', show: () => showSaunaBookings()},
+        {slug: 'dienstplan', label: 'Dienstplan', show: () => showSaunaDuties()},
         {slug: 'saison', label: 'Saison', show: () => showSaunaSeasons()},
         {slug: 'kosten', label: 'Kosten', show: () => showSaunaTerms()},
     ]},
