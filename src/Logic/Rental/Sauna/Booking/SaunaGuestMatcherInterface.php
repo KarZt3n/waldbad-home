@@ -10,5 +10,5 @@ use App\Logic\Rental\Sauna\Booking\Model\SaunaGuestMatch;
  */
 interface SaunaGuestMatcherInterface
 {
-    public function match(string $firstName, string $lastName, \DateTimeImmutable $birthDate, ?string $email): ?SaunaGuestMatch;
+    public function match(string $firstName, string $lastName, ?\DateTimeImmutable $birthDate, ?string $email): ?SaunaGuestMatch;
 }

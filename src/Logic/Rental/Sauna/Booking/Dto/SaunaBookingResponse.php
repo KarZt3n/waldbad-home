@@ -21,7 +21,7 @@ readonly class SaunaBookingResponse
         public int $priceCents,
         public string $firstName,
         public string $lastName,
-        public \DateTimeImmutable $birthDate,
+        public ?\DateTimeImmutable $birthDate,
         public ?string $email,
         public string $message,
         public SaunaBookingStatus $status,

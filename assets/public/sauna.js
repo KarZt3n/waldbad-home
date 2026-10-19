@@ -46,71 +46,75 @@ const bookingEndTime = (slots, slotIndex, terms) => {
     return null;
 };
 
-/** Name der anfragenden Person aus den Gastfeldern (`guestFields()`), solange leer „du“. */
-const bookerName = (guest) => {
-    const first = guest[0].querySelector('[name="firstName"]').value.trim();
-    const last = guest[0].querySelector('[name="lastName"]').value.trim();
-
-    return first || last ? `${first} ${last}`.trim() : 'du';
-};
-
 /**
- * Personenzahl samt Vor- und Nachnamen aller Personen der Gruppe. Die anfragende Person (aus `guest`) ist immer Person 1; für die übrigen
- * erscheint je eine Zeile. `nextId` liefert eindeutige Feld-IDs, falls mehrere Editoren in einem
- * Dialog stehen.
+ * Weitere Personen der Gruppe — wie „Ich bringe jemanden mit“ bei der Helferanmeldung, aber nur mit
+ * Vor- und Nachname. Die anfragende Person (aus `guest`) zählt als Person 1; für die übrigen
+ * Personen bis zur Mindestgröße (`terms.minPersons`) stehen von Anfang an feste Karten im Formular,
+ * weitere lassen sich bis `terms.maxPersons` hinzufügen und wieder entfernen. `onChange` meldet jede
+ * Änderung der Personenzahl.
  */
-const createParticipantsEditor = (terms, guest, nextId) => {
-    const countId = nextId('sauna-persons');
-    const count = personCountSelect(terms, null, countId);
-    const list = element('ol', {className: 'sauna-participants'});
-    let rows = [];
-    // Ausgeblendete Abschnitte (Gruppe vs. je Wunschtag) dürfen keine Pflichtfelder enthalten.
-    let required = true;
-    const renderRows = () => {
-        const wanted = Number.parseInt(count.value, 10) - 1;
-        while (rows.length < wanted) {
-            const rowId = nextId('sauna-participant');
-            const firstName = element('input', {attributes: {type: 'text', id: `${rowId}-first`, maxlength: '120', autocomplete: 'off'}});
-            const lastName = element('input', {attributes: {type: 'text', id: `${rowId}-last`, maxlength: '120', autocomplete: 'off'}});
-            firstName.required = required;
-            lastName.required = required;
-            rows.push({firstName, lastName, element: element('li', {children: [element('div', {className: 'form-grid', children: [
-                element('label', {className: 'field', attributes: {for: `${rowId}-first`}, children: [element('span', {text: 'Vorname'}), firstName]}),
-                element('label', {className: 'field', attributes: {for: `${rowId}-last`}, children: [element('span', {text: 'Nachname'}), lastName]}),
-            ]})]})});
-        }
-        rows = rows.slice(0, wanted);
-        const booker = element('li', {className: 'sauna-participant-booker', children: [
-            element('span', {className: 'sauna-participant-booker-name', text: bookerName(guest)}),
-            element('small', {text: ' (anfragende Person)'}),
-        ]});
-        list.replaceChildren(booker, ...rows.map((row) => row.element));
+const createCompanionsEditor = (terms, guest, onChange) => {
+    const minCompanions = terms.minPersons - 1;
+    const maxCompanions = terms.maxPersons - 1;
+    const companions = element('div', {className: 'event-help-companions'});
+    const add = element('button', {className: 'secondary-button event-help-add-companion', text: '＋ Ich bringe jemanden mit', attributes: {type: 'button'}});
+    const refresh = () => {
+        [...companions.children].forEach((card, index) => {
+            card.querySelector('.event-help-companion-title').textContent = `Person ${index + 2}`;
+            card.querySelector('.event-help-companion-remove').hidden = index < minCompanions;
+        });
+        add.hidden = companions.children.length >= maxCompanions;
     };
-    count.addEventListener('change', renderRows);
-    renderRows();
+    const addCard = () => {
+        const id = `sauna-companion-${Math.random().toString(36).slice(2)}`;
+        const companionField = (label, key) => {
+            const wrapper = field(label, `${id}-${key}`);
+            const input = wrapper.querySelector('input');
+            input.dataset.companionField = key;
+            input.maxLength = 120;
+            input.required = true;
+            return wrapper;
+        };
+        const remove = element('button', {className: 'text-button danger event-help-companion-remove', text: 'Entfernen', attributes: {type: 'button'}});
+        const card = element('fieldset', {className: 'event-help-companion', children: [
+            element('div', {className: 'event-help-companion-heading', children: [
+                element('legend', {className: 'event-help-companion-title'}),
+                remove,
+            ]}),
+            element('div', {className: 'form-grid', children: [companionField('Vorname', 'firstName'), companionField('Nachname', 'lastName')]}),
+        ]});
+        remove.addEventListener('click', () => {
+            card.remove();
+            refresh();
+            onChange();
+        });
+        companions.append(card);
+
+        return card;
+    };
+    for (let index = 0; index < minCompanions; index++) addCard();
+    add.addEventListener('click', () => {
+        if (companions.children.length >= maxCompanions) return;
+        const card = addCard();
+        refresh();
+        onChange();
+        card.querySelector('[data-companion-field="firstName"]').focus();
+    });
+    refresh();
 
     return {
-        element: element('div', {className: 'sauna-participants-editor', children: [
-            element('label', {className: 'field', attributes: {for: countId}, children: [element('span', {text: 'Personen in der Gruppe'}), count]}),
-            element('p', {className: 'field-hint', text: 'Bitte die Namen aller Personen angeben.'}),
-            list,
-        ]}),
-        count: () => Number.parseInt(count.value, 10),
-        refreshBooker: () => { list.querySelector('.sauna-participant-booker-name').textContent = bookerName(guest); },
+        elements: [companions, add],
+        count: () => companions.children.length + 1,
         participants: () => [
             {
                 firstName: guest[0].querySelector('[name="firstName"]').value,
                 lastName: guest[0].querySelector('[name="lastName"]').value,
             },
-            ...rows.map((row) => ({firstName: row.firstName.value, lastName: row.lastName.value})),
+            ...[...companions.children].map((card) => ({
+                firstName: card.querySelector('[data-companion-field="firstName"]').value,
+                lastName: card.querySelector('[data-companion-field="lastName"]').value,
+            })),
         ],
-        setRequired: (value) => {
-            required = value;
-            rows.forEach((row) => {
-                row.firstName.required = value;
-                row.lastName.required = value;
-            });
-        },
     };
 };
 
@@ -128,14 +132,12 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
     const slot = day.slots[slotIndex];
     const when = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}`;
     const guest = guestFields();
-    let idCounter = 0;
-    const editor = createParticipantsEditor(terms, guest, (prefix) => `${prefix}-calendar-${++idCounter}`);
     const endTime = bookingEndTime(day.slots, slotIndex, terms);
     const summaryText = element('strong');
     const summaryPrice = element('span', {className: 'sauna-wish-price', text: formatEuro(priceFor(terms, terms.priceUnitMinutes))});
+    const editor = createCompanionsEditor(terms, guest, () => updateSummary());
     const updateSummary = () => {
         summaryText.textContent = `Wunschtag: ${when.slice(0, 2)}, ${formatDateDE(day.date)} · ${slot.startTime}–${endTime} Uhr · ${editor.count()} Personen`;
-        editor.refreshBooker();
     };
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
     const submit = element('button', {className: 'button', text: 'Sauna-Anfrage absenden', attributes: {type: 'submit'}});
@@ -146,7 +148,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
             element('p', {text: groupHint(terms)}),
         ]}),
         ...guest,
-        element('div', {className: 'sauna-group', children: [editor.element]}),
+        ...editor.elements,
         element('div', {className: 'sauna-wishes', children: [
             element('h3', {text: 'Wunschtag'}),
             element('p', {className: 'field-hint', text: 'Der Wunschtag wird für dich reserviert und vom Verein bestätigt.'}),
@@ -161,7 +163,6 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
                 ]}),
             ]}),
         ]}),
-        field('Nachricht (optional, z. B. Anlass)', 'message', '', 'textarea'),
         privacyField(privacy),
         message,
         submit,
@@ -186,20 +187,13 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
 };
 
 const groupHint = (terms) => `Die Sauna wird nur an Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen vergeben; eine Einzelnutzung ist nicht möglich. Deine Anfrage ist erst verbindlich, wenn der Verein sie angenommen hat.`;
-const personCountSelect = (terms, name, id) => element('select', {attributes: {...(name ? {name} : {}), id}, children: Array
-    .from({length: terms.maxPersons - terms.minPersons + 1}, (_, index) => terms.minPersons + index)
-    .map((count) => element('option', {text: `${count} Personen`, attributes: {value: String(count)}}))});
 const guestFields = () => [
-    element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
-    field('E-Mail (optional)', 'email', '', 'email'),
+    element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
 ];
-const requireGuestFields = (form) => ['firstName', 'lastName', 'birthDate'].forEach((name) => { form.querySelector(`[name="${name}"]`).required = true; });
+const requireGuestFields = (form) => ['firstName', 'lastName'].forEach((name) => { form.querySelector(`[name="${name}"]`).required = true; });
 const guestPayload = (data) => ({
     firstName: data.get('firstName'),
     lastName: data.get('lastName'),
-    birthDate: data.get('birthDate'),
-    email: data.get('email'),
-    message: data.get('message'),
     privacyAccepted: data.get('privacyAccepted') === 'on',
 });
 const privacyField = (privacy) => element('label', {className: 'check-field', children: [privacy, element('span', {text: 'Ich stimme der Verarbeitung meiner Angaben zur Bearbeitung dieser Sauna-Anfrage zu.'})]});

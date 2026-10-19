@@ -27,7 +27,7 @@ readonly class SaunaBookingResponseFactory
             'priceCents' => $booking->priceCents,
             'firstName' => $booking->firstName,
             'lastName' => $booking->lastName,
-            'birthDate' => $booking->birthDate->format('Y-m-d'),
+            'birthDate' => $booking->birthDate?->format('Y-m-d'),
             'email' => $booking->email,
             'message' => $booking->message,
             'status' => $booking->status->value,

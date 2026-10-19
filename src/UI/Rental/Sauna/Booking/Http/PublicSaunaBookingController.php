@@ -53,8 +53,8 @@ readonly class PublicSaunaBookingController
         $rawBirthDate = trim($data->getString('birthDate'));
         $email = trim($data->getString('email'));
         $message = trim($data->getString('message'));
-        if ($firstName === '' || $lastName === '' || $rawBirthDate === '' || !$data->getBoolean('privacyAccepted')) {
-            throw new BadRequestHttpException('Termin, Vorname, Nachname, Geburtsdatum und Datenschutzbestätigung sind erforderlich.');
+        if ($firstName === '' || $lastName === '' || !$data->getBoolean('privacyAccepted')) {
+            throw new BadRequestHttpException('Termin, Vorname, Nachname und Datenschutzbestätigung sind erforderlich.');
         }
         if (mb_strlen($firstName) > 120 || mb_strlen($lastName) > 120 || mb_strlen($email) > 180 || mb_strlen($message) > 2000) {
             throw new BadRequestHttpException('Die Sauna-Anmeldung überschreitet die erlaubte Länge.');
@@ -62,7 +62,7 @@ readonly class PublicSaunaBookingController
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new BadRequestHttpException('Die E-Mail-Adresse ist ungültig.');
         }
-        $birthDate = $this->date($rawBirthDate, 'Das Geburtsdatum');
+        $birthDate = $rawBirthDate === '' ? null : $this->date($rawBirthDate, 'Das Geburtsdatum');
         $individual = $data->getBoolean('individual');
         $days = $individual ? $this->days($data->all('days')) : [];
         if (!$individual) {
@@ -178,7 +178,7 @@ readonly class PublicSaunaBookingController
         $startTime = trim($rawStartTime);
         $endTime = trim($rawEndTime);
         if (trim($rawDate) === '' || $startTime === '' || $endTime === '') {
-            throw new BadRequestHttpException('Termin, Vorname, Nachname, Geburtsdatum und Datenschutzbestätigung sind erforderlich.');
+            throw new BadRequestHttpException('Termin, Vorname, Nachname und Datenschutzbestätigung sind erforderlich.');
         }
         $timePattern = '/^(?:[01]\d|2[0-3]):[0-5]\d$/';
         if (preg_match($timePattern, $startTime) !== 1 || preg_match($timePattern, $endTime) !== 1) {

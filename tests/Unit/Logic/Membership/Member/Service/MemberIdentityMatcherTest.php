@@ -29,6 +29,21 @@ final class MemberIdentityMatcherTest extends TestCase
         self::assertSame($member, $match);
     }
 
+    public function testWithoutBirthDateMatchesUniqueNameAndLeavesAmbiguousNameToEmail(): void
+    {
+        $wanted = $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', 'erika@example.test', '1990-01-01');
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$wanted]);
+        self::assertSame($wanted, (new MemberIdentityMatcher($members))->match('Erika', 'Musterfrau', null, null));
+
+        $ambiguous = $this->createStub(MemberManagerInterface::class);
+        $ambiguous->method('search')->willReturn([$wanted, $this->member('m2', 'FAM-2', 'Erika', 'Musterfrau', null, '1991-02-02')]);
+        $ambiguous->method('findByPrimaryMemberNumber')->willReturn([]);
+        $matcher = new MemberIdentityMatcher($ambiguous);
+        self::assertNull($matcher->match('Erika', 'Musterfrau', null, null));
+        self::assertSame($wanted, $matcher->match('Erika', 'Musterfrau', null, 'erika@example.test'));
+    }
+
     public function testDoesNotMatchWhenNeitherNameNorBirthDateFitAnyCandidate(): void
     {
         $member = $this->member('m1', 'FAM-1', 'Erika', 'Musterfrau', null, '1990-01-01');

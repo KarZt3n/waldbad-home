@@ -37,8 +37,8 @@ class SaunaBookingEntity
         private string $firstName,
         #[ORM\Column(type: Types::STRING, length: 120)]
         private string $lastName,
-        #[ORM\Column(type: Types::DATE_IMMUTABLE)]
-        private \DateTimeImmutable $birthDate,
+        #[ORM\Column(type: Types::DATE_IMMUTABLE, nullable: true)]
+        private ?\DateTimeImmutable $birthDate,
         #[ORM\Column(type: Types::STRING, length: 180, nullable: true)]
         private ?string $email,
         #[ORM\Column(type: Types::TEXT)]
@@ -83,7 +83,7 @@ class SaunaBookingEntity
     public function getPriceCents(): int { return $this->priceCents; }
     public function getFirstName(): string { return $this->firstName; }
     public function getLastName(): string { return $this->lastName; }
-    public function getBirthDate(): \DateTimeImmutable { return $this->birthDate; }
+    public function getBirthDate(): ?\DateTimeImmutable { return $this->birthDate; }
     public function getEmail(): ?string { return $this->email; }
     public function getMessage(): string { return $this->message; }
     public function getStatus(): string { return $this->status; }

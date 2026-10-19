@@ -72,11 +72,20 @@ final class SaunaBookingTest extends TestCase
         self::assertNotSame($guest->requesterKey(), $this->booking(memberId: 'member-7')->requesterKey());
     }
 
+    public function testRequesterKeyWithoutBirthDateGroupsGuestsByNameOnly(): void
+    {
+        $withoutBirthDate = $this->booking(birthDate: null);
+
+        self::assertNull($withoutBirthDate->birthDate);
+        self::assertSame($withoutBirthDate->requesterKey(), $this->booking(firstName: 'ERIKA', birthDate: null, id: 'booking-2')->requesterKey());
+        self::assertNotSame($withoutBirthDate->requesterKey(), $this->booking()->requesterKey());
+    }
+
     private function booking(
         ?string $email = null,
         string $firstName = 'Erika',
         string $lastName = 'Musterfrau',
-        string $birthDate = '1990-01-01',
+        ?string $birthDate = '1990-01-01',
         ?string $memberId = null,
         string $id = 'booking-1',
     ): SaunaBooking {
@@ -91,7 +100,7 @@ final class SaunaBookingTest extends TestCase
             priceCents: 2000,
             firstName: $firstName,
             lastName: $lastName,
-            birthDate: new \DateTimeImmutable($birthDate),
+            birthDate: $birthDate === null ? null : new \DateTimeImmutable($birthDate),
             email: $email,
             message: '',
             status: SaunaBookingStatus::Open,

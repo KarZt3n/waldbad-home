@@ -10,7 +10,7 @@ readonly class SubmitIndividualSaunaRequest
     public function __construct(
         public string $firstName,
         public string $lastName,
-        public \DateTimeImmutable $birthDate,
+        public ?\DateTimeImmutable $birthDate,
         public ?string $email,
         public string $message,
         public array $days,

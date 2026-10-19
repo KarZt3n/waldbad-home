@@ -6,8 +6,8 @@ use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\Member;
 
 /**
- * Ordnet eine öffentlich eingereichte Personenangabe (Vor-/Nachname, Geburtsdatum, optionale
- * E-Mail) einem Mitgliedsdatensatz zu — genutzt für Helferanmeldungen (`EventHelpRequest::$memberId`)
+ * Ordnet eine öffentlich eingereichte Personenangabe (Vor-/Nachname, optionales Geburtsdatum,
+ * optionale E-Mail) einem Mitgliedsdatensatz zu — genutzt für Helferanmeldungen (`EventHelpRequest::$memberId`)
  * sowie modulübergreifend über `FindMatchingMemberQuery` (z. B. für Sauna-Anmeldungen). Bleibt am
  * Ende mehr als ein Kandidat (oder keiner) übrig, gibt es keinen Treffer; die aufrufende Stelle
  * entscheidet, ob manuell nachverknüpft wird (siehe `LinkEventHelpRequestMemberUseCase`).
@@ -17,6 +17,7 @@ use App\Logic\Membership\Member\Model\Member;
  * 2. Vor-/Nachname + Geburtsdatum (löst Namensgleichheit mehrerer Mitglieder auf).
  * 3. Nur Vorname + Geburtsdatum bzw. nur Nachname + Geburtsdatum (löst einen Tippfehler in genau
  *    einem der beiden Namensfelder auf, sofern das Geburtsdatum stimmt).
+ *    Stufen 2 und 3 entfallen, wenn kein Geburtsdatum angegeben ist (z. B. Sauna-Anfragen).
  * 4. Bleiben danach noch mehrere Kandidaten übrig, engt die optionale E-Mail-Adresse weiter ein —
  *    geprüft gegen den ganzen Haushalt (siehe `emailBelongsToHousehold()`), nicht nur den Kandidaten
  *    selbst: Familienangehörige tragen beim Helfen häufig die E-Mail-Adresse des Hauptmitglieds ein
@@ -29,11 +30,11 @@ readonly class MemberIdentityMatcher
     {
     }
 
-    public function match(string $firstName, string $lastName, \DateTimeImmutable $birthDate, ?string $email): ?Member
+    public function match(string $firstName, string $lastName, ?\DateTimeImmutable $birthDate, ?string $email): ?Member
     {
         $normalizedFirstName = mb_strtolower(trim($firstName));
         $normalizedLastName = mb_strtolower(trim($lastName));
-        $normalizedBirthDate = $birthDate->format('Y-m-d');
+        $normalizedBirthDate = $birthDate?->format('Y-m-d');
         $normalizedEmail = $email !== null && trim($email) !== '' ? mb_strtolower(trim($email)) : null;
 
         $isFirstName = static fn (Member $candidate): bool => mb_strtolower(trim($candidate->firstName)) === $normalizedFirstName;
@@ -49,25 +50,29 @@ readonly class MemberIdentityMatcher
             return $byName[0];
         }
 
-        // 2) Vor-/Nachname + Geburtsdatum.
-        $byNameAndBirthDate = array_values(array_filter($byName, $isBirthDate));
-        if (count($byNameAndBirthDate) === 1) {
-            return $byNameAndBirthDate[0];
-        }
+        $byNameAndBirthDate = [];
+        $relaxed = [];
+        if ($normalizedBirthDate !== null) {
+            // 2) Vor-/Nachname + Geburtsdatum.
+            $byNameAndBirthDate = array_values(array_filter($byName, $isBirthDate));
+            if (count($byNameAndBirthDate) === 1) {
+                return $byNameAndBirthDate[0];
+            }
 
-        // 3) Tippfehler in Vor- ODER Nachname: nur eines der beiden muss zusammen mit dem
-        // Geburtsdatum eindeutig passen.
-        $byFirstNameAndBirthDate = array_filter(
-            $this->members->search($firstName),
-            static fn (Member $candidate): bool => $isFirstName($candidate) && $isBirthDate($candidate),
-        );
-        $byLastNameAndBirthDate = array_filter(
-            $this->members->search($lastName),
-            static fn (Member $candidate): bool => $isLastName($candidate) && $isBirthDate($candidate),
-        );
-        $relaxed = $this->uniqueById([...$byFirstNameAndBirthDate, ...$byLastNameAndBirthDate]);
-        if (count($relaxed) === 1) {
-            return $relaxed[0];
+            // 3) Tippfehler in Vor- ODER Nachname: nur eines der beiden muss zusammen mit dem
+            // Geburtsdatum eindeutig passen.
+            $byFirstNameAndBirthDate = array_filter(
+                $this->members->search($firstName),
+                static fn (Member $candidate): bool => $isFirstName($candidate) && $isBirthDate($candidate),
+            );
+            $byLastNameAndBirthDate = array_filter(
+                $this->members->search($lastName),
+                static fn (Member $candidate): bool => $isLastName($candidate) && $isBirthDate($candidate),
+            );
+            $relaxed = $this->uniqueById([...$byFirstNameAndBirthDate, ...$byLastNameAndBirthDate]);
+            if (count($relaxed) === 1) {
+                return $relaxed[0];
+            }
         }
 
         // 4) Weiterhin mehrdeutig -> optionale E-Mail-Adresse als letztes Unterscheidungsmerkmal,

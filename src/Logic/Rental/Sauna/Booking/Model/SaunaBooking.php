@@ -22,7 +22,8 @@ readonly class SaunaBooking
         public int $priceCents,
         public string $firstName,
         public string $lastName,
-        public \DateTimeImmutable $birthDate,
+        /** Seit dem Formular nur mit Namen nicht mehr erfasst; ältere Anfragen und die API können es enthalten. */
+        public ?\DateTimeImmutable $birthDate,
         public ?string $email,
         public string $message,
         public SaunaBookingStatus $status,
@@ -53,7 +54,7 @@ readonly class SaunaBooking
         if ($this->email !== null && (mb_strlen($this->email) > 180 || filter_var($this->email, FILTER_VALIDATE_EMAIL) === false)) {
             throw new BusinessRuleViolationException('Die E-Mail-Adresse ist ungültig.');
         }
-        if ($this->birthDate->format('Y-m-d') > $this->submittedAt->format('Y-m-d')) {
+        if ($this->birthDate !== null && $this->birthDate->format('Y-m-d') > $this->submittedAt->format('Y-m-d')) {
             throw new BusinessRuleViolationException('Das Geburtsdatum darf nicht in der Zukunft liegen.');
         }
         if (SaunaOpeningHours::toMinutes($this->startTime) >= SaunaOpeningHours::toMinutes($this->endTime)) {
@@ -103,14 +104,15 @@ readonly class SaunaBooking
 
     /**
      * Kennung der anfragenden Person, unter der die Verwaltung alle ihre Anmeldungen zusammenfasst:
-     * das zugeordnete Mitglied, sonst Vor-/Nachname und Geburtsdatum (unabhängig von
-     * Groß-/Kleinschreibung) — die E-Mail-Adresse ist optional und daher kein verlässliches Merkmal.
+     * das zugeordnete Mitglied, sonst Vor-/Nachname und — falls angegeben — Geburtsdatum (unabhängig
+     * von Groß-/Kleinschreibung). Ohne Geburtsdatum fallen gleichnamige Gäste zusammen; die
+     * E-Mail-Adresse ist optional und daher kein verlässliches Merkmal.
      */
     public function requesterKey(): string
     {
         $identity = $this->memberId !== null
             ? 'member:'.$this->memberId
-            : 'guest:'.mb_strtolower(trim($this->firstName)).'|'.mb_strtolower(trim($this->lastName)).'|'.$this->birthDate->format('Y-m-d');
+            : 'guest:'.mb_strtolower(trim($this->firstName)).'|'.mb_strtolower(trim($this->lastName)).'|'.($this->birthDate?->format('Y-m-d') ?? '');
 
         return hash('sha256', $identity);
     }

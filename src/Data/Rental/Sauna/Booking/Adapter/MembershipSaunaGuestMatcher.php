@@ -18,7 +18,7 @@ readonly class MembershipSaunaGuestMatcher implements SaunaGuestMatcherInterface
     {
     }
 
-    public function match(string $firstName, string $lastName, \DateTimeImmutable $birthDate, ?string $email): ?SaunaGuestMatch
+    public function match(string $firstName, string $lastName, ?\DateTimeImmutable $birthDate, ?string $email): ?SaunaGuestMatch
     {
         $member = $this->query->execute(new FindMatchingMemberRequest($firstName, $lastName, $birthDate, $email));
 

@@ -662,6 +662,18 @@ a { color: var(--forest-700); }
    für Kalender-/Uhr-Icon) und würden sonst breiter wirken als die übrigen Eingabefelder im
    selben Formularraster. */
 .field input[type="date"], .field input[type="time"] { min-width: 0; max-width: 100%; }
+/* Mobil (v. a. iOS/WebKit) ignoriert die native Darstellung `min-width: 0` und behält die eigene
+   Breite; ohne sie gelten Breite und Abstände wie bei allen Feldern. Leere Felder fallen dort sonst
+   zudem niedriger aus und der Wert steht zentriert. Die Datums-/Zeitauswahl des Systems bleibt. */
+@media (max-width: 640px) {
+    .field input[type="date"], .field input[type="time"] {
+        -webkit-appearance: none;
+        appearance: none;
+        min-height: calc(1.15em + 1.6rem + 2px);
+        min-height: calc(1lh + 1.6rem + 2px);
+    }
+    .field input::-webkit-date-and-time-value { text-align: left; }
+}
 .form-message { min-height: 1.5em; color: var(--danger); }
 .form-message.success { color: var(--forest-700); }
 
@@ -1959,11 +1971,6 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-terms-form > .button { justify-self: start; }
 .sauna-season-closed-note { margin: 0; padding: .6rem .8rem; border-radius: .5rem; color: #59645f; background: #e8ebe9; font-weight: 700; }
 .sauna-same-group { margin-top: .5rem; }
-.sauna-group, .sauna-day-persons { display: grid; gap: .5rem; }
-.sauna-group[hidden], .sauna-day-persons[hidden] { display: none; }
-.sauna-participants { display: grid; gap: .5rem; margin: 0; padding-left: 1.25rem; }
-.sauna-participant-booker { color: #33463b; }
-.sauna-participant-booker-name { font-weight: 700; }
 .sauna-wishes { display: grid; gap: .75rem; }
 .sauna-wishes h3 { margin: .5rem 0 0; font-size: 1.05rem; }
 .sauna-wishes .field-hint { margin: 0; }

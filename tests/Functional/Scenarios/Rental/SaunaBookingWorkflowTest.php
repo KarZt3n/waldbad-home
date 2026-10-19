@@ -357,6 +357,66 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         return $id;
     }
 
+    /**
+     * Das öffentliche Formular fragt nur noch Namen ab: Ohne Geburtsdatum und E-Mail-Adresse wird die
+     * Anfrage gespeichert und lässt sich annehmen — eine Bestätigung geht dann mangels Adresse nicht raus.
+     */
+    public function testNamesOnlyRequestIsStoredAndAcceptedWithoutConfirmationMail(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $day = (new \DateTimeImmutable('+2 days'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
+            'startsOn' => $day,
+            'endsOn' => null,
+            'slotDurationMinutes' => 60,
+            'openingHours' => array_map(
+                static fn (int $weekday): array => ['weekday' => $weekday, 'startTime' => '10:00', 'endTime' => '14:00'],
+                range(1, 7),
+            ),
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $day,
+            'startTime' => '10:00',
+            'endTime' => '12:00',
+            'personCount' => 2,
+            'participants' => self::names(2),
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(202);
+        $bookingId = $this->responseData()['id'];
+        self::assertIsString($bookingId);
+
+        $this->client->request('GET', '/api/admin/v1/sauna-bookings');
+        self::assertResponseIsSuccessful();
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+        self::assertIsArray($items[0]);
+        self::assertSame([null, null], [$items[0]['birthDate'], $items[0]['email']]);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/accept', [], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('accepted', $this->responseData()['status']);
+        self::assertQueuedEmailCount(0);
+
+        // Ein angegebenes Geburtsdatum (z. B. über die API) wird weiterhin geprüft.
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $day,
+            'startTime' => '12:00',
+            'endTime' => '14:00',
+            'personCount' => 2,
+            'participants' => self::names(2),
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'birthDate' => '01.01.1990',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(400);
+    }
+
     public function testBookingOutsideSeasonIsRejected(): void
     {
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
