@@ -188,7 +188,12 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
 
 const groupHint = (terms) => `Die Sauna wird nur an Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen vergeben; eine Einzelnutzung ist nicht möglich. Deine Anfrage ist erst verbindlich, wenn der Verein sie angenommen hat.`;
 const guestFields = () => [
-    element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
+    element('fieldset', {className: 'event-help-companion', children: [
+        element('div', {className: 'event-help-companion-heading', children: [
+            element('legend', {className: 'event-help-companion-title', text: 'Person 1'}),
+        ]}),
+        element('div', {className: 'form-grid', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName')]}),
+    ]}),
 ];
 const requireGuestFields = (form) => ['firstName', 'lastName'].forEach((name) => { form.querySelector(`[name="${name}"]`).required = true; });
 const guestPayload = (data) => ({

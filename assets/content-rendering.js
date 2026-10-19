@@ -240,7 +240,7 @@ const openEventHelpDialog = async (block) => {
     const addCompanion = element('button', {className: 'secondary-button event-help-add-companion', text: '＋ Ich bringe jemanden mit', attributes: {type: 'button'}});
     const refreshCompanions = () => {
         [...companions.children].forEach((card, index) => {
-            card.querySelector('.event-help-companion-title').textContent = `Weitere Person ${index + 1}`;
+            card.querySelector('.event-help-companion-title').textContent = `Person ${index + 2}`;
         });
         addCompanion.disabled = companions.children.length >= maxCompanions;
     };
@@ -285,7 +285,12 @@ const openEventHelpDialog = async (block) => {
             element('h2', {text: block.eventTitle || 'Veranstaltung'}),
             element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
         ]}),
-        element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
+        element('fieldset', {className: 'event-help-companion', children: [
+            element('div', {className: 'event-help-companion-heading', children: [
+                element('legend', {className: 'event-help-companion-title', text: 'Person 1'}),
+            ]}),
+            element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
+        ]}),
         companions,
         addCompanion,
         ...(activityEntries.length ? [element('fieldset', {className: 'event-activity-choices', children: [
