@@ -95,22 +95,11 @@ const request = async (url, options = {}, isRetry = false) => {
 
 // Verhindert, dass die Seite im Hintergrund scrollt, solange ein <dialog> geöffnet ist (nur das
 // Overlay selbst soll scrollbar sein) – reagiert automatisch auf jedes showModal()/close(), ohne
-// dass jede einzelne Dialogfunktion das selbst verwalten muss.
-let dialogScrollLockActive = false;
-let dialogScrollLockPosition = 0;
+// dass jede einzelne Dialogfunktion das selbst verwalten muss. Bewusst per `overflow: hidden` auf
+// <html> statt `position: fixed` mit negativem `top` auf <body>: Mit dem verschobenen <body> zeichnet
+// iOS Safari den Cursor in Eingabefeldern des Overlays versetzt.
 const updateDialogScrollLock = () => {
-    const anyDialogOpen = document.querySelector('dialog[open]') !== null;
-    if (anyDialogOpen === dialogScrollLockActive) return;
-    dialogScrollLockActive = anyDialogOpen;
-    if (anyDialogOpen) {
-        dialogScrollLockPosition = window.scrollY;
-        document.body.style.top = `-${dialogScrollLockPosition}px`;
-        document.body.classList.add('dialog-open');
-    } else {
-        document.body.classList.remove('dialog-open');
-        document.body.style.top = '';
-        window.scrollTo(0, dialogScrollLockPosition);
-    }
+    document.documentElement.classList.toggle('dialog-open', document.querySelector('dialog[open]') !== null);
 };
 new MutationObserver(updateDialogScrollLock).observe(document.documentElement, {
     attributes: true, attributeFilter: ['open'], subtree: true,

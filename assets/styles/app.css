@@ -28,14 +28,8 @@ body {
 }
 
 /* Solange ein <dialog> offen ist, soll nur das Overlay selbst scrollbar sein, nicht die Seite
-   dahinter (besonders auf Mobilgeräten sonst spürbar). Wird automatisch von app.js gesetzt. */
-body.dialog-open {
-    position: fixed;
-    right: 0;
-    left: 0;
-    width: 100%;
-    overflow: hidden;
-}
+   dahinter (besonders auf Mobilgeräten sonst spürbar). Wird automatisch von core.js gesetzt. */
+html.dialog-open { overflow: hidden; }
 
 button, input, textarea, select { font: inherit; }
 a { color: var(--forest-700); }
