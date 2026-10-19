@@ -15,6 +15,7 @@ readonly class SaunaTermsMapper
             minPersons: $entity->getMinPersons(),
             maxPersons: $entity->getMaxPersons(),
             updatedAt: $entity->getUpdatedAt(),
+            leadDays: $entity->getLeadDays(),
         );
     }
 
@@ -27,6 +28,7 @@ readonly class SaunaTermsMapper
             minPersons: $terms->minPersons,
             maxPersons: $terms->maxPersons,
             updatedAt: $this->updatedAt($terms),
+            leadDays: $terms->leadDays,
         );
     }
 
@@ -37,6 +39,7 @@ readonly class SaunaTermsMapper
             priceUnitMinutes: $terms->priceUnitMinutes,
             minPersons: $terms->minPersons,
             maxPersons: $terms->maxPersons,
+            leadDays: $terms->leadDays,
             updatedAt: $this->updatedAt($terms),
         );
     }

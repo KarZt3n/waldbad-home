@@ -26,6 +26,7 @@ readonly class UpdateSaunaTermsUseCase
             priceUnitMinutes: $request->priceUnitMinutes,
             minPersons: $request->minPersons,
             maxPersons: $request->maxPersons,
+            leadDays: $request->leadDays,
             updatedAt: $this->clock->now(),
         );
 

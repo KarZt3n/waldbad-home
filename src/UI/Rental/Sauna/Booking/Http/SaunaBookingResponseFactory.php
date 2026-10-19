@@ -74,7 +74,7 @@ readonly class SaunaBookingResponseFactory
      *         closedReason: string,
      *         slots: list<array{startTime: string, endTime: string, state: string}>
      *     }>,
-     *     terms: array{priceCents: int, priceUnitMinutes: int, minPersons: int, maxPersons: int, updatedAt: string|null},
+     *     terms: array{priceCents: int, priceUnitMinutes: int, minPersons: int, maxPersons: int, leadDays: int, updatedAt: string|null},
      *     season: array{startsOn: string, endsOn: string|null}|null
      * }
      */

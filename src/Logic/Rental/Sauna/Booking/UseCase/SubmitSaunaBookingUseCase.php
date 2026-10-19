@@ -31,7 +31,8 @@ readonly class SubmitSaunaBookingUseCase
             throw new BusinessRuleViolationException('Für jede Person der Gruppe sind Vorname und Nachname anzugeben.');
         }
         $booking = $this->factory->createFromRequest($request, $terms);
-        $terms->assertMinimumDuration($booking->durationMinutes());
+        $terms->assertBookingDuration($booking->durationMinutes());
+        $terms->assertLeadTime($booking->date, $booking->submittedAt);
         $this->availability->assertBookable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
 
         $saved = $this->manager->save($booking);

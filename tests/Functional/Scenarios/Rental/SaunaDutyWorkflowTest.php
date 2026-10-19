@@ -78,6 +78,15 @@ final class SaunaDutyWorkflowTest extends WebTestCase
             ),
         ], $headers);
         self::assertResponseStatusCodeSame(201);
+        // Buchungen über zwei Einheiten (4 Stunden), damit ein „laufender“ Zeitpunkt entsteht; Vorlauf 1 Tag für morgen.
+        $this->client->jsonRequest('PUT', '/api/admin/v1/sauna-terms', [
+            'priceCents' => 4000,
+            'priceUnitMinutes' => 240,
+            'minPersons' => 2,
+            'maxPersons' => 6,
+            'leadDays' => 1,
+        ], $headers);
+        self::assertResponseIsSuccessful();
 
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,

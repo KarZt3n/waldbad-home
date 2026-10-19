@@ -23,27 +23,27 @@ const formatDuration = (minutes) => minutes % 60 === 0
     : `${minutes} Minuten`;
 // Gleiche Rechnung wie `SaunaTerms::priceFor()`; maßgeblich bleibt der serverseitig gespeicherte Preis.
 const priceFor = (terms, durationMinutes) => Math.round(terms.priceCents * durationMinutes / terms.priceUnitMinutes);
-const termsSummary = (terms) => `${formatEuro(terms.priceCents)} je ${formatDuration(terms.priceUnitMinutes)} für die ganze Gruppe`
-    + ` · Mindestdauer ${formatDuration(terms.priceUnitMinutes)}`
-    + ` · Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen, keine Einzelnutzung`;
+const formatLeadDays = (days) => (days === 1 ? '1 Tag' : `${days} Tagen`);
+const termsSummary = (terms) => `${formatEuro(terms.priceCents)} je Buchung von ${formatDuration(terms.priceUnitMinutes)} für die ganze Gruppe`
+    + ` · Gruppen von ${terms.minPersons} bis ${terms.maxPersons} Personen, keine Einzelnutzung`
+    + (terms.leadDays > 0 ? ` · Anfragen mit mindestens ${formatLeadDays(terms.leadDays)} Vorlauf` : '');
 
 /**
- * Alle Endzeiten, die sich ab `slotIndex` durch lückenlos anschließende freie Buchungseinheiten
- * desselben Tages erreichen lassen und mindestens die Mindestdauer (`terms.priceUnitMinutes`)
- * umfassen — Grundlage der „bis“-Auswahl im Anfrage-Dialog. Leer, wenn ab hier keine Anfrage der
- * Mindestdauer möglich ist.
+ * Endzeit einer Buchung ab `slotIndex`: Jede Buchung dauert genau `terms.priceUnitMinutes` und
+ * muss sich durch lückenlos anschließende freie Buchungseinheiten desselben Tages erreichen lassen.
+ * `null`, wenn ab hier keine Buchung dieser Dauer möglich ist.
  */
-const reachableEndTimes = (slots, slotIndex, terms) => {
-    const endTimes = [];
-    const earliestEnd = toMinutes(slots[slotIndex].startTime) + terms.priceUnitMinutes;
+const bookingEndTime = (slots, slotIndex, terms) => {
+    const end = toMinutes(slots[slotIndex].startTime) + terms.priceUnitMinutes;
     for (let index = slotIndex; index < slots.length; index++) {
         const slot = slots[index];
-        if (slot.state !== 'free') break;
-        if (index > slotIndex && slot.startTime !== slots[index - 1].endTime) break;
-        if (toMinutes(slot.endTime) >= earliestEnd) endTimes.push(slot.endTime);
+        if (slot.state !== 'free') return null;
+        if (index > slotIndex && slot.startTime !== slots[index - 1].endTime) return null;
+        if (toMinutes(slot.endTime) === end) return slot.endTime;
+        if (toMinutes(slot.endTime) > end) return null;
     }
 
-    return endTimes;
+    return null;
 };
 
 /** Name der anfragenden Person aus den Gastfeldern (`guestFields()`), solange leer „du“. */
@@ -130,14 +130,11 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
     const guest = guestFields();
     let idCounter = 0;
     const editor = createParticipantsEditor(terms, guest, (prefix) => `${prefix}-calendar-${++idCounter}`);
-    const endSelect = element('select', {attributes: {name: 'endTime', id: 'sauna-booking-end'}, children: reachableEndTimes(day.slots, slotIndex, terms)
-        .map((endTime) => element('option', {text: `${endTime} Uhr`, attributes: {value: endTime}}))});
+    const endTime = bookingEndTime(day.slots, slotIndex, terms);
     const summaryText = element('strong');
-    const summaryPrice = element('span', {className: 'sauna-wish-price'});
+    const summaryPrice = element('span', {className: 'sauna-wish-price', text: formatEuro(priceFor(terms, terms.priceUnitMinutes))});
     const updateSummary = () => {
-        const duration = toMinutes(endSelect.value) - toMinutes(slot.startTime);
-        summaryText.textContent = `Wunschtag: ${when.slice(0, 2)}, ${formatDateDE(day.date)} · ${slot.startTime}–${endSelect.value} Uhr · ${editor.count()} Personen`;
-        summaryPrice.textContent = duration > 0 ? formatEuro(priceFor(terms, duration)) : '';
+        summaryText.textContent = `Wunschtag: ${when.slice(0, 2)}, ${formatDateDE(day.date)} · ${slot.startTime}–${endTime} Uhr · ${editor.count()} Personen`;
         editor.refreshBooker();
     };
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
@@ -159,7 +156,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
                     element('div', {className: 'field', children: [element('span', {text: 'Wunschtag'}), element('strong', {className: 'sauna-booking-start', text: when})]}),
                     element('div', {className: 'form-grid', children: [
                         element('div', {className: 'field', children: [element('span', {text: 'von'}), element('strong', {className: 'sauna-booking-start', text: `${slot.startTime} Uhr`})]}),
-                        element('label', {className: 'field', attributes: {for: 'sauna-booking-end'}, children: [element('span', {text: 'bis'}), endSelect]}),
+                        element('div', {className: 'field', children: [element('span', {text: 'bis'}), element('strong', {className: 'sauna-booking-start', text: `${endTime} Uhr`})]}),
                     ]}),
                 ]}),
             ]}),
@@ -179,7 +176,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
         await submitRequest(submit, message, dialog, onSubmitted, {
             date: day.date,
             startTime: slot.startTime,
-            endTime: endSelect.value,
+            endTime,
             personCount: editor.count(),
             participants: editor.participants(),
             ...guestPayload(data),
@@ -228,15 +225,15 @@ const showDialog = (dialog, close, form) => {
     dialog.showModal();
 };
 
-const SLOT_LABELS = {free: 'frei', booked: 'belegt', past: 'vorbei'};
+const SLOT_LABELS = {free: 'frei', booked: 'belegt', past: 'vorbei', too_soon: 'zu kurzfristig'};
 const MONTH_LABEL = new Intl.DateTimeFormat('de-DE', {month: 'long', year: 'numeric'});
 
 const renderSlot = (day, slot, index, terms, reload) => {
     const time = `${slot.startTime}–${slot.endTime}`;
     const label = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: ${SLOT_LABELS[slot.state] || slot.state}`;
-    // Ab dieser Einheit reicht die freie Zeit nicht für die Mindestdauer: nicht anklickbar.
-    if (slot.state === 'free' && reachableEndTimes(day.slots, index, terms).length === 0) {
-        const shortLabel = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: frei, aber kürzer als die Mindestdauer von ${formatDuration(terms.priceUnitMinutes)}`;
+    // Ab dieser Einheit ist keine Buchung der festen Dauer möglich: nicht anklickbar.
+    if (slot.state === 'free' && bookingEndTime(day.slots, index, terms) === null) {
+        const shortLabel = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: frei, aber kein Platz für eine Buchung von ${formatDuration(terms.priceUnitMinutes)}`;
         return element('li', {className: 'sauna-slot sauna-slot-short', attributes: {title: shortLabel}, children: [
             element('span', {className: 'sauna-slot-time', text: slot.startTime, attributes: {'aria-hidden': 'true'}}),
             element('span', {className: 'visually-hidden', text: shortLabel}),
@@ -297,6 +294,7 @@ const renderSaunaExtension = (preview = false) => {
     const legend = element('p', {className: 'sauna-legend', children: [
         element('span', {className: 'sauna-legend-item sauna-legend-free', text: 'Frei – zum Anfragen anklicken'}),
         element('span', {className: 'sauna-legend-item sauna-legend-booked', text: 'Belegt'}),
+        element('span', {className: 'sauna-legend-item sauna-legend-too-soon', text: 'Zu kurzfristig – nur mit Vorlauf anfragbar'}),
     ]});
 
     const load = async () => {

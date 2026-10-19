@@ -31,12 +31,28 @@ final class SaunaSlotAvailabilityTest extends TestCase
             new \DateTimeImmutable(self::MONDAY),
             2,
             new \DateTimeImmutable(self::MONDAY.'T17:30:00'),
+            new \DateTimeImmutable(self::MONDAY),
         );
 
         self::assertCount(2, $days);
         $states = array_map(static fn ($slot): string => $slot->startTime.' '.$slot->state->value, $days[0]->slots);
         self::assertSame(['17:00 past', '18:00 booked', '19:00 free', '20:00 free'], $states);
         self::assertSame([], $days[1]->slots);
+    }
+
+    public function testCalendarMarksFreeSlotsWithinLeadTimeAsTooSoonButKeepsBookedOnes(): void
+    {
+        $availability = $this->availability([$this->booking('open', '18:00', '19:00', SaunaBookingStatus::Open)]);
+
+        $days = $availability->calendar(
+            new \DateTimeImmutable(self::MONDAY),
+            1,
+            new \DateTimeImmutable('2026-10-04T10:00:00'),
+            new \DateTimeImmutable('2026-10-06'),
+        );
+
+        $states = array_map(static fn ($slot): string => $slot->startTime.' '.$slot->state->value, $days[0]->slots);
+        self::assertSame(['17:00 too_soon', '18:00 booked', '19:00 too_soon', '20:00 too_soon'], $states);
     }
 
     public function testRejectsRangeOverlappingAnOpenRequest(): void
@@ -80,6 +96,7 @@ final class SaunaSlotAvailabilityTest extends TestCase
             new \DateTimeImmutable(self::CLOSED_MONDAY),
             1,
             new \DateTimeImmutable('2026-09-25T10:00:00'),
+            new \DateTimeImmutable('2026-09-27'),
         );
 
         self::assertTrue($days[0]->closed);

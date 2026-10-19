@@ -25,19 +25,41 @@ use PHPUnit\Framework\TestCase;
 
 final class SubmitSaunaBookingUseCaseTest extends TestCase
 {
-    public function testStoresGroupSizeProratedPriceAndMemberMatch(): void
+    public function testStoresGroupSizePriceAndMemberMatch(): void
     {
         $bookings = $this->createMock(SaunaBookingManagerInterface::class);
         $bookings->method('findBetween')->willReturn([]);
         $bookings->expects(self::once())->method('save')
             ->with(self::callback(static fn (SaunaBooking $booking): bool => $booking->personCount === 4
-                && $booking->priceCents === 3000
+                && $booking->priceCents === 2000
                 && $booking->memberNumber === 'M-7'))
             ->willReturnArgument(0);
 
-        $response = $this->useCase($bookings)->execute($this->request(personCount: 4, endTime: '21:00'));
+        $response = $this->useCase($bookings)->execute($this->request(personCount: 4, endTime: '20:00'));
 
-        self::assertSame(3000, $response->priceCents);
+        self::assertSame(2000, $response->priceCents);
+    }
+
+    public function testRejectsBookingsLongerThanTheFixedDuration(): void
+    {
+        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
+        $bookings->method('findBetween')->willReturn([]);
+        $bookings->expects(self::never())->method('save');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Eine Sauna-Buchung dauert immer genau 2 Stunden.');
+        $this->useCase($bookings)->execute($this->request(personCount: 4, endTime: '21:00'));
+    }
+
+    public function testRejectsBookingsWithinTheLeadTime(): void
+    {
+        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
+        $bookings->method('findBetween')->willReturn([]);
+        $bookings->expects(self::never())->method('save');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Die Sauna kann nur mit 2 Tagen Vorlauf angefragt werden, frühestens für den 06.10.2026.');
+        $this->useCase($bookings, now: new \DateTimeImmutable('2026-10-04T09:00:00'))->execute($this->request(personCount: 4, endTime: '20:00'));
     }
 
     public function testNotifiesAboutTheSavedBooking(): void
@@ -49,7 +71,7 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $notifier->expects(self::once())->method('bookingSubmitted')
             ->with(self::callback(static fn (SaunaBooking $booking): bool => $booking->id === 'booking-1' && $booking->personCount === 4));
 
-        $this->useCase($bookings, $notifier)->execute($this->request(personCount: 4, endTime: '21:00'));
+        $this->useCase($bookings, $notifier)->execute($this->request(personCount: 4, endTime: '20:00'));
     }
 
     public function testRejectedRequestSendsNoNotification(): void
@@ -90,9 +112,11 @@ final class SubmitSaunaBookingUseCaseTest extends TestCase
         $this->useCase($bookings)->execute($this->request(personCount: 3, endTime: '15:00', date: '2026-10-06', startTime: '13:15'));
     }
 
-    private function useCase(SaunaBookingManagerInterface $bookings, ?SaunaBookingNotifierInterface $notifier = null): SubmitSaunaBookingUseCase
-    {
-        $now = new \DateTimeImmutable('2026-09-25T10:00:00');
+    private function useCase(
+        SaunaBookingManagerInterface $bookings,
+        ?SaunaBookingNotifierInterface $notifier = null,
+        \DateTimeImmutable $now = new \DateTimeImmutable('2026-09-25T10:00:00'),
+    ): SubmitSaunaBookingUseCase {
         $season = new SaunaSeason(
             id: 'season-1',
             startsOn: new \DateTimeImmutable('2026-10-01'),

@@ -48,7 +48,7 @@ final class SubmitIndividualSaunaRequestUseCaseTest extends TestCase
         $notifier->expects(self::once())->method('individualRequestSubmitted')->with(self::countOf(2));
 
         $response = $this->useCase($bookings, $notifier)->execute($this->request([
-            $this->day('2026-10-08', '13:15', '15:30', ['Max Muster', 'Mia Muster']),
+            $this->day('2026-10-08', '13:15', '15:15', ['Max Muster', 'Mia Muster']),
             $this->day('2026-10-11', '10:00', '12:00', ['Max Muster', 'Mia Muster', 'Tom Muster']),
         ]));
 
@@ -56,7 +56,7 @@ final class SubmitIndividualSaunaRequestUseCaseTest extends TestCase
         self::assertSame('id-1', $response->requestId);
         self::assertSame(
             [
-                ['2026-10-08', '13:15', 3, 2250, 'id-1', ['Erika Musterfrau', 'Max Muster', 'Mia Muster']],
+                ['2026-10-08', '13:15', 3, 2000, 'id-1', ['Erika Musterfrau', 'Max Muster', 'Mia Muster']],
                 ['2026-10-11', '10:00', 4, 2000, 'id-1', ['Erika Musterfrau', 'Max Muster', 'Mia Muster', 'Tom Muster']],
             ],
             array_map(static fn (SaunaBooking $booking): array => [
@@ -81,7 +81,7 @@ final class SubmitIndividualSaunaRequestUseCaseTest extends TestCase
         $bookings->expects(self::never())->method('saveAll');
 
         $exception = $this->conflict($this->useCase($bookings), $this->request([
-            $this->day('2026-10-08', '13:15', '15:30', ['Max Muster']),
+            $this->day('2026-10-08', '13:15', '15:15', ['Max Muster']),
             $this->day('2026-10-11', '10:00', '12:00', ['Max Muster']),
         ]));
 
@@ -138,17 +138,33 @@ final class SubmitIndividualSaunaRequestUseCaseTest extends TestCase
         $this->useCase($bookings)->execute($this->request([$this->day('2026-10-08', '13:00', '15:00', [])]));
     }
 
-    public function testEveryDayMustLastAtLeastTheMinimumDuration(): void
+    public function testEveryDayMustLastExactlyTheBookingDuration(): void
+    {
+        $bookings = $this->createMock(SaunaBookingManagerInterface::class);
+        $bookings->method('findBetween')->willReturn([]);
+        $bookings->expects(self::never())->method('saveAll');
+
+        $exception = $this->conflict($this->useCase($bookings), $this->request([
+            $this->day('2026-10-08', '13:00', '15:00', ['Max Muster']),
+            $this->day('2026-10-09', '13:00', '14:45', ['Max Muster']),
+            $this->day('2026-10-10', '13:00', '15:30', ['Max Muster']),
+        ]));
+
+        self::assertSame(['days' => [1, 2]], $exception->details());
+        self::assertStringContainsString('Wunschtag 2: Eine Sauna-Buchung dauert immer genau 2 Stunden.', $exception->getMessage());
+    }
+
+    public function testDaysWithinTheLeadTimeAreRejected(): void
     {
         $bookings = $this->createMock(SaunaBookingManagerInterface::class);
         $bookings->method('findBetween')->willReturn([]);
         $bookings->expects(self::never())->method('saveAll');
 
         $this->expectException(SaunaRequestDayConflictException::class);
-        $this->expectExceptionMessage('Wunschtag 2: Eine Sauna-Anfrage muss mindestens 2 Stunden dauern.');
+        $this->expectExceptionMessage('Wunschtag 1: Die Sauna kann nur mit 2 Tagen Vorlauf angefragt werden, frühestens für den 02.10.2026.');
         $this->useCase($bookings)->execute($this->request([
-            $this->day('2026-10-08', '13:00', '15:00', ['Max Muster']),
-            $this->day('2026-10-09', '13:00', '14:45', ['Max Muster']),
+            $this->day('2026-10-01', '13:00', '15:00', ['Max Muster']),
+            $this->day('2026-10-02', '13:00', '15:00', ['Max Muster']),
         ]));
     }
 

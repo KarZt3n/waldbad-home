@@ -87,13 +87,33 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons/'.$successorId.'/close', [], $headers);
         self::assertResponseIsSuccessful();
 
-        self::assertSame(['10:00 free', '11:00 free', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
+        // Mit dem Ausgangsvorlauf von 2 Tagen ist morgen zu kurzfristig.
+        self::assertSame(['10:00 too_soon', '11:00 too_soon', '12:00 too_soon', '13:00 too_soon'], $this->calendarStates($tomorrow));
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $tomorrow,
+            'startTime' => '10:00',
+            'endTime' => '12:00',
+            'personCount' => 2,
+            'participants' => self::names(2),
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'birthDate' => '1990-01-01',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        self::assertSame(
+            'Die Sauna kann nur mit 2 Tagen Vorlauf angefragt werden, frühestens für den '.(new \DateTimeImmutable('+2 days'))->format('d.m.Y').'.',
+            $error['message'],
+        );
 
         $this->client->jsonRequest('PUT', '/api/admin/v1/sauna-terms', [
             'priceCents' => 2000,
             'priceUnitMinutes' => 120,
             'minPersons' => 1,
             'maxPersons' => 6,
+            'leadDays' => 1,
         ], $headers);
         self::assertResponseStatusCodeSame(422);
 
@@ -102,12 +122,15 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'priceUnitMinutes' => 120,
             'minPersons' => 2,
             'maxPersons' => 5,
+            'leadDays' => 1,
         ], $headers);
         self::assertResponseIsSuccessful();
-        $this->client->request('GET', '/api/public/v1/sauna/calendar?from='.$tomorrow.'&days=1');
+        self::assertSame(1, $this->responseData()['leadDays']);
+        self::assertSame(['10:00 free', '11:00 free', '12:00 free', '13:00 free'], $this->calendarStates($tomorrow));
         $publicTerms = $this->responseData()['terms'];
         self::assertIsArray($publicTerms);
         self::assertSame(5, $publicTerms['maxPersons']);
+        self::assertSame(1, $publicTerms['leadDays']);
 
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,
@@ -182,7 +205,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         ]);
         self::assertResponseStatusCodeSame(422);
 
-        // Kürzer als die Mindestdauer (Bezugsdauer der Konditionen, standardmäßig 2 Stunden) ist nicht anfragbar.
+        // Jede Buchung dauert genau die Bezugsdauer der Konditionen (standardmäßig 2 Stunden); kürzer oder länger ist nicht anfragbar.
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
             'date' => $tomorrow,
             'startTime' => '12:00',
@@ -197,7 +220,8 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         $error = $this->responseData()['error'];
         self::assertIsArray($error);
-        self::assertSame('Eine Sauna-Anfrage muss mindestens 2 Stunden dauern.', $error['message']);
+        self::assertSame('Eine Sauna-Buchung dauert immer genau 2 Stunden.', $error['message']);
+
 
         $this->client->request('GET', '/api/admin/v1/sauna-bookings');
         self::assertResponseIsSuccessful();
@@ -373,7 +397,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
             'privacyAccepted' => true,
         ];
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', $request([
-            ['date' => $thursday, 'startTime' => '07:30', 'endTime' => '09:45', 'personCount' => 3,
+            ['date' => $thursday, 'startTime' => '07:30', 'endTime' => '09:30', 'personCount' => 3,
                 'participants' => [$person('Erika', 'Musterfrau'), $person('Max', 'Muster'), $person('Mia', 'Muster')]],
             ['date' => $sunday, 'startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2,
                 'participants' => [$person('Erika', 'Musterfrau'), $person('Tom', 'Muster')]],
@@ -440,7 +464,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertSame($items[0]['requestId'], $items[1]['requestId']);
         self::assertNotSame($items[0]['requestId'], $items[2]['requestId']);
         self::assertSame([$items[0]['requesterKey'], $items[0]['requesterKey']], [$items[1]['requesterKey'], $items[2]['requesterKey']]);
-        self::assertSame([2250, 3], [$items[0]['priceCents'], $items[0]['personCount']]);
+        self::assertSame([2000, 3], [$items[0]['priceCents'], $items[0]['personCount']]);
         self::assertSame([['firstName' => 'Erika', 'lastName' => 'Musterfrau'], ['firstName' => 'Tom', 'lastName' => 'Muster']], $items[1]['participants']);
         self::assertIsString($items[1]['id']);
 
@@ -456,7 +480,7 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         $confirmation = self::getMailerMessage();
         self::assertNotNull($confirmation);
         self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
-        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($thursday))->format('d.m.Y').', 07:30–09:45 Uhr,');
+        self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($thursday))->format('d.m.Y').', 07:30–09:30 Uhr,');
         self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($sunday))->format('d.m.Y').', 10:00–12:00 Uhr,');
         self::assertEmailTextBodyContains($confirmation, (new \DateTimeImmutable($laterDay))->format('d.m.Y').', 17:00–19:00 Uhr,');
 

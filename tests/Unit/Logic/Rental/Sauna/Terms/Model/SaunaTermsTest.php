@@ -16,6 +16,7 @@ final class SaunaTermsTest extends TestCase
         self::assertSame(120, $terms->priceUnitMinutes);
         self::assertSame(2, $terms->minPersons);
         self::assertSame(6, $terms->maxPersons);
+        self::assertSame(2, $terms->leadDays);
     }
 
     public function testPriceIsProratedByBookedDuration(): void
@@ -43,29 +44,63 @@ final class SaunaTermsTest extends TestCase
         $this->expectException(BusinessRuleViolationException::class);
         $this->expectExceptionMessage('Einzelnutzung');
 
-        new SaunaTerms(priceCents: 2000, priceUnitMinutes: 120, minPersons: 1, maxPersons: 6, updatedAt: null);
+        new SaunaTerms(priceCents: 2000, priceUnitMinutes: 120, minPersons: 1, maxPersons: 6, updatedAt: null, leadDays: 2);
     }
 
     public function testMaximumMustNotBeBelowMinimum(): void
     {
         $this->expectException(BusinessRuleViolationException::class);
 
-        new SaunaTerms(priceCents: 2000, priceUnitMinutes: 120, minPersons: 4, maxPersons: 3, updatedAt: null);
+        new SaunaTerms(priceCents: 2000, priceUnitMinutes: 120, minPersons: 4, maxPersons: 3, updatedAt: null, leadDays: 2);
     }
 
-    public function testPriceUnitIsTheMinimumDurationOfARequest(): void
+    public function testPriceUnitIsTheFixedDurationOfEveryBooking(): void
     {
         $terms = SaunaTerms::defaults();
-        $terms->assertMinimumDuration(120);
+        $terms->assertBookingDuration(120);
 
         $this->expectException(BusinessRuleViolationException::class);
-        $this->expectExceptionMessage('Eine Sauna-Anfrage muss mindestens 2 Stunden dauern.');
-        $terms->assertMinimumDuration(105);
+        $this->expectExceptionMessage('Eine Sauna-Buchung dauert immer genau 2 Stunden.');
+        $terms->assertBookingDuration(105);
     }
 
-    public function testMinimumDurationMessageUsesMinutesForUnevenDurations(): void
+    public function testLongerBookingsThanThePriceUnitAreRejected(): void
     {
-        $this->expectExceptionMessage('Eine Sauna-Anfrage muss mindestens 90 Minuten dauern.');
-        (new SaunaTerms(2000, 90, 2, 6, null))->assertMinimumDuration(60);
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Eine Sauna-Buchung dauert immer genau 2 Stunden.');
+        SaunaTerms::defaults()->assertBookingDuration(180);
+    }
+
+    public function testBookingDurationMessageUsesMinutesForUnevenDurations(): void
+    {
+        $this->expectExceptionMessage('Eine Sauna-Buchung dauert immer genau 90 Minuten.');
+        (new SaunaTerms(2000, 90, 2, 6, null, 2))->assertBookingDuration(60);
+    }
+
+    public function testEarliestBookableDayIsTodayPlusLeadDays(): void
+    {
+        $terms = new SaunaTerms(2000, 120, 2, 6, null, 2);
+
+        self::assertSame('2026-10-21', $terms->earliestBookableDay(new \DateTimeImmutable('2026-10-19T23:30:00'))->format('Y-m-d'));
+        $terms->assertLeadTime(new \DateTimeImmutable('2026-10-21'), new \DateTimeImmutable('2026-10-19T23:30:00'));
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Die Sauna kann nur mit 2 Tagen Vorlauf angefragt werden, frühestens für den 21.10.2026.');
+        $terms->assertLeadTime(new \DateTimeImmutable('2026-10-20'), new \DateTimeImmutable('2026-10-19T08:00:00'));
+    }
+
+    public function testLeadDaysOfZeroAllowSameDayRequests(): void
+    {
+        (new SaunaTerms(2000, 120, 2, 6, null, 0))->assertLeadTime(new \DateTimeImmutable('2026-10-19'), new \DateTimeImmutable('2026-10-19T08:00:00'));
+
+        $this->addToAssertionCount(1);
+    }
+
+    public function testLeadDaysMustBeWithinLimits(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Der Vorlauf muss zwischen 0 und 60 Tagen liegen.');
+
+        new SaunaTerms(2000, 120, 2, 6, null, 61);
     }
 }

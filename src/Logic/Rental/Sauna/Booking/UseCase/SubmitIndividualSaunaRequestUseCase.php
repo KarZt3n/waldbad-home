@@ -49,7 +49,8 @@ readonly class SubmitIndividualSaunaRequestUseCase
                 continue;
             }
             try {
-                $terms->assertMinimumDuration($booking->durationMinutes());
+                $terms->assertBookingDuration($booking->durationMinutes());
+                $terms->assertLeadTime($booking->date, $booking->submittedAt);
                 $this->availability->assertIndividuallyRequestable($booking->date, $booking->startTime, $booking->endTime, $booking->submittedAt);
             } catch (BusinessRuleViolationException $exception) {
                 $problems[$index] = $exception->getMessage();

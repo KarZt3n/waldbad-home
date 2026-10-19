@@ -9,6 +9,7 @@ readonly class UpdateSaunaTermsRequest
         public int $priceUnitMinutes,
         public int $minPersons,
         public int $maxPersons,
+        public int $leadDays,
     ) {
     }
 }

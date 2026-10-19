@@ -26,6 +26,8 @@ class SaunaTermsEntity
         private int $maxPersons,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $updatedAt,
+        #[ORM\Column(type: Types::SMALLINT)]
+        private int $leadDays,
     ) {
     }
 
@@ -35,9 +37,11 @@ class SaunaTermsEntity
     public function getMinPersons(): int { return $this->minPersons; }
     public function getMaxPersons(): int { return $this->maxPersons; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
+    public function getLeadDays(): int { return $this->leadDays; }
 
-    public function update(int $priceCents, int $priceUnitMinutes, int $minPersons, int $maxPersons, \DateTimeImmutable $updatedAt): void
+    public function update(int $priceCents, int $priceUnitMinutes, int $minPersons, int $maxPersons, int $leadDays, \DateTimeImmutable $updatedAt): void
     {
+        $this->leadDays = $leadDays;
         $this->priceCents = $priceCents;
         $this->priceUnitMinutes = $priceUnitMinutes;
         $this->minPersons = $minPersons;

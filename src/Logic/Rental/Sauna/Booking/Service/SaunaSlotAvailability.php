@@ -72,10 +72,14 @@ readonly class SaunaSlotAvailability
     }
 
     /**
+     * Belegte Einheiten bleiben auch innerhalb des Vorlaufs als belegt erkennbar; freie Einheiten vor
+     * `$earliestBookableDay` erscheinen als zu kurzfristig.
+     *
      * @return list<SaunaCalendarDay>
      */
-    public function calendar(\DateTimeImmutable $from, int $days, \DateTimeImmutable $now): array
+    public function calendar(\DateTimeImmutable $from, int $days, \DateTimeImmutable $now, \DateTimeImmutable $earliestBookableDay): array
     {
+        $earliestDay = $earliestBookableDay->format('Y-m-d');
         $firstDay = $from->setTime(0, 0);
         $lastDay = $firstDay->modify(sprintf('+%d days', $days - 1));
         $seasons = $this->seasons->all();
@@ -99,6 +103,9 @@ readonly class SaunaSlotAvailability
                             $state = SaunaSlotState::Booked;
                             break;
                         }
+                    }
+                    if ($state === SaunaSlotState::Free && $day->format('Y-m-d') < $earliestDay) {
+                        $state = SaunaSlotState::TooSoon;
                     }
                 }
                 $slots[] = new SaunaCalendarSlot($slot->startTime, $slot->endTime, $state);

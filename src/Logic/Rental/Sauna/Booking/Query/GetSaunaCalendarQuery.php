@@ -31,12 +31,13 @@ readonly class GetSaunaCalendarQuery
         $from = $request->from->setTime(0, 0);
         $now = $this->clock->now();
         $season = $this->seasons->findCurrentOrUpcoming($now);
+        $terms = $this->terms->current();
 
         return new SaunaCalendarResponse(
             from: $from,
             to: $from->modify(sprintf('+%d days', $request->days - 1)),
-            days: $this->availability->calendar($from, $request->days, $now),
-            terms: SaunaTermsResponse::fromTerms($this->terms->current()),
+            days: $this->availability->calendar($from, $request->days, $now, $terms->earliestBookableDay($now)),
+            terms: SaunaTermsResponse::fromTerms($terms),
             seasonStartsOn: $season?->startsOn,
             seasonEndsOn: $season?->lastBookableDay(),
         );

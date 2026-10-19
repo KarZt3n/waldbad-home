@@ -33,10 +33,10 @@ final class AdminSaunaTermsController extends AbstractController
         $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
         $data = $request->getPayload();
         $values = [];
-        foreach (['priceCents', 'priceUnitMinutes', 'minPersons', 'maxPersons'] as $key) {
+        foreach (['priceCents', 'priceUnitMinutes', 'minPersons', 'maxPersons', 'leadDays'] as $key) {
             $value = $data->get($key);
             if (!is_int($value)) {
-                throw new BadRequestHttpException('Preis, Bezugsdauer sowie Mindest- und Höchstpersonenzahl müssen als ganze Zahlen angegeben werden.');
+                throw new BadRequestHttpException('Preis, Buchungsdauer, Mindest- und Höchstpersonenzahl sowie Vorlauf müssen als ganze Zahlen angegeben werden.');
             }
             $values[$key] = $value;
         }
@@ -46,6 +46,7 @@ final class AdminSaunaTermsController extends AbstractController
             priceUnitMinutes: $values['priceUnitMinutes'],
             minPersons: $values['minPersons'],
             maxPersons: $values['maxPersons'],
+            leadDays: $values['leadDays'],
         ))));
     }
 }

@@ -520,7 +520,7 @@ const showSaunaTerms = async () => {
     priceInput.min = '0';
     priceInput.max = '1000';
     priceInput.step = '0.01';
-    const unit = field('für eine Dauer von (Minuten) – zugleich Mindestdauer einer Anfrage', 'sauna-terms-unit', terms.priceUnitMinutes, 'number');
+    const unit = field('Dauer je Buchung (Minuten) – jede Buchung dauert genau so lange', 'sauna-terms-unit', terms.priceUnitMinutes, 'number');
     const unitInput = unit.querySelector('input');
     unitInput.min = '15';
     unitInput.max = '1440';
@@ -533,7 +533,11 @@ const showSaunaTerms = async () => {
     const maxInput = maxPersons.querySelector('input');
     maxInput.min = '2';
     maxInput.max = '50';
-    [priceInput, unitInput, minInput, maxInput].forEach((input) => {
+    const lead = field('Vorlauf (Tage) – frühestens buchbar ab heute + Vorlauf', 'sauna-terms-lead', terms.leadDays, 'number');
+    const leadInput = lead.querySelector('input');
+    leadInput.min = '0';
+    leadInput.max = '60';
+    [priceInput, unitInput, minInput, maxInput, leadInput].forEach((input) => {
         input.required = true;
         input.disabled = !editable;
     });
@@ -541,12 +545,15 @@ const showSaunaTerms = async () => {
     const updateExample = () => {
         const cents = Math.round(Number.parseFloat(priceInput.value || '0') * 100);
         const minutes = Number.parseInt(unitInput.value || '0', 10);
+        const leadDays = Number.parseInt(leadInput.value || '0', 10);
+        const earliest = new Date();
+        earliest.setDate(earliest.getDate() + leadDays);
         example.textContent = minutes > 0
-            ? `Beispiel: Eine Gruppe mit ${minInput.value || '?'}–${maxInput.value || '?'} Personen zahlt ${formatEuro(cents)} für ${minutes} Minuten; `
-                + `kürzere oder längere Buchungen werden anteilig berechnet (1 Stunde = ${formatEuro(Math.round(cents * 60 / minutes))}).`
+            ? `Beispiel: Eine Gruppe mit ${minInput.value || '?'}–${maxInput.value || '?'} Personen zahlt ${formatEuro(cents)} für genau ${minutes} Minuten; `
+                + `kürzere oder längere Buchungen sind nicht möglich. Heute angefragt, ist die Sauna frühestens am ${earliest.toLocaleDateString('de-DE')} buchbar.`
             : '';
     };
-    [priceInput, unitInput, minInput, maxInput].forEach((input) => input.addEventListener('input', updateExample));
+    [priceInput, unitInput, minInput, maxInput, leadInput].forEach((input) => input.addEventListener('input', updateExample));
     updateExample();
     const message = formMessage();
     const submit = element('button', {className: 'button', text: 'Kosten speichern', attributes: {type: 'submit'}});
@@ -561,6 +568,11 @@ const showSaunaTerms = async () => {
             element('div', {className: 'form-grid', children: [minPersons, maxPersons]}),
             element('small', {text: 'Eine Einzelnutzung ist ausgeschlossen – die Mindestgröße beträgt immer mindestens zwei Personen.'}),
         ]}),
+        element('fieldset', {className: 'sauna-terms-group', children: [
+            element('legend', {text: 'Vorlauf'}),
+            element('div', {className: 'form-grid', children: [lead]}),
+            element('small', {text: 'Kurzfristige Anfragen sind ausgeschlossen: Bei 2 Tagen Vorlauf kann heute frühestens für übermorgen angefragt werden. 0 = auch für heute.'}),
+        ]}),
         example,
         message,
         ...(editable ? [submit] : []),
@@ -574,6 +586,7 @@ const showSaunaTerms = async () => {
                 priceUnitMinutes: Number.parseInt(unitInput.value, 10),
                 minPersons: Number.parseInt(minInput.value, 10),
                 maxPersons: Number.parseInt(maxInput.value, 10),
+                leadDays: Number.parseInt(leadInput.value, 10),
             })});
             toast('Kosten wurden gespeichert. Sie gelten für neue Sauna-Anfragen.');
             message.textContent = '';
@@ -586,7 +599,7 @@ const showSaunaTerms = async () => {
     });
 
     workspace.replaceChildren(
-        sectionHeading('Sauna-Kosten', 'Preis je Buchung und zulässige Gruppengröße festlegen'),
+        sectionHeading('Sauna-Kosten', 'Preis und Dauer je Buchung, zulässige Gruppengröße und Vorlauf festlegen'),
         form,
     );
 };

@@ -11,6 +11,7 @@ readonly class SaunaTermsResponse
         public int $priceUnitMinutes,
         public int $minPersons,
         public int $maxPersons,
+        public int $leadDays,
         public ?\DateTimeImmutable $updatedAt,
     ) {
     }
@@ -22,6 +23,7 @@ readonly class SaunaTermsResponse
             priceUnitMinutes: $terms->priceUnitMinutes,
             minPersons: $terms->minPersons,
             maxPersons: $terms->maxPersons,
+            leadDays: $terms->leadDays,
             updatedAt: $terms->updatedAt,
         );
     }
