@@ -233,8 +233,12 @@ a { color: var(--forest-700); }
     max-width: 16ch;
     margin: 1rem 0;
     font-family: Georgia, "Times New Roman", serif;
-    font-size: clamp(2.8rem, 8vw, 6.5rem);
+    /* Untergrenze so klein, dass lange Einzelwörter („Veranstaltungen“) auch auf schmalen Handys
+       in die Zeile passen; noch längere werden notfalls getrennt statt abgeschnitten. */
+    font-size: clamp(2rem, 8vw, 6.5rem);
     line-height: .95;
+    hyphens: auto;
+    overflow-wrap: break-word;
 }
 
 .eyebrow {
