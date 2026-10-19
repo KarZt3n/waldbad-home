@@ -2044,6 +2044,25 @@ dialog:modal {
     height: calc(100vh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
     height: calc(100dvh - var(--dialog-gap-top) - var(--dialog-gap-bottom));
 }
+/* Mobil wirkt jedes Overlay wie eine eigene Seite: vollflächig statt schwebend über abgedunkeltem
+   Hintergrund. Die Breiten-/Höhenbegrenzungen der einzelnen Dialogklassen werden hier aufgehoben;
+   `.preview-dialog:modal` ist spezifischer als `dialog:modal` und muss daher eigens genannt werden.
+   Geschlossen wird weiterhin über die Schaltflächen des Dialogs — der Zurück-Button des Browsers
+   bleibt der Seitennavigation (Redaktion: `history`-Routing in `admin/shell.js`) vorbehalten. */
+@media (max-width: 640px) {
+    dialog:modal, .preview-dialog:modal {
+        inset: 0;
+        width: 100%;
+        max-width: none;
+        height: 100vh;
+        height: 100dvh;
+        max-height: none;
+        margin: 0;
+        padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+        border-radius: 0;
+        box-shadow: none;
+    }
+}
 .sauna-booking-area { display: grid; gap: 1rem; }
 .sauna-booking-area[hidden], .sauna-no-season[hidden] { display: none; }
 .sauna-no-season { padding: 2rem 1rem; border: 1px dashed var(--line); border-radius: .85rem; font-size: 1.1rem; font-weight: 700; text-align: center; }
