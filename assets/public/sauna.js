@@ -95,10 +95,9 @@ const createCompanionsEditor = (terms, guest, onChange) => {
     for (let index = 0; index < minCompanions; index++) addCard();
     add.addEventListener('click', () => {
         if (companions.children.length >= maxCompanions) return;
-        const card = addCard();
+        addCard();
         refresh();
         onChange();
-        card.querySelector('[data-companion-field="firstName"]').focus();
     });
     refresh();
 

@@ -272,7 +272,6 @@ const openEventHelpDialog = async (block) => {
         });
         companions.append(card);
         refreshCompanions();
-        card.querySelector('[data-companion-field="firstName"]').focus();
     });
     const companionPayload = () => [...companions.children].map((card) => ({
         firstName: card.querySelector('[data-companion-field="firstName"]').value,
