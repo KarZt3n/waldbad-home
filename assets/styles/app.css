@@ -266,6 +266,8 @@ a { color: var(--forest-700); }
     color: var(--forest-900);
     font-family: Georgia, "Times New Roman", serif;
     font-size: clamp(1.8rem, 4vw, 2.8rem);
+    hyphens: auto;
+    overflow-wrap: break-word;
 }
 
 /*.content-card h2:first-child { margin-top: 0; }*/
@@ -273,6 +275,9 @@ a { color: var(--forest-700); }
     /*margin-top: 0.5rem;*/
     margin-bottom: 1.5rem;
     display: grid;
+    /* Ohne feste Spalte wächst sie mit dem breitesten unumbrechbaren Inhalt (z. B. einem langen
+       Wort in einer Überschrift) und schiebt damit alle Blöcke der Seite über den Rand. */
+    grid-template-columns: minmax(0, 1fr);
 }
 .embedded-page-error { padding: 1rem; border: 1px dashed #aabbb0; border-radius: .65rem; color: var(--muted); background: #f8faf8; }
 
