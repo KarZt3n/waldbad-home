@@ -164,8 +164,9 @@ liegen dauerhaft in `public_html/uploads/media`. Andere Dateien in `public_html`
 
 Der Telekom-Webserver liest `.htaccess` erst, wenn `~/etc/httpd.conf` `AllowOverride All` für
 `/home/www/public_html` freigibt ([Telekom-Hilfe](https://homepagecenter.telekom.de/hilfe/htaccess-aktivieren)).
-Das Skript legt die Datei an, falls sie fehlt. Bis die Freigabe wirkt, kann es dauern; solange liefern alle
-Unterseiten außer der Startseite 404.
+Das Skript legt die Datei an, falls sie fehlt, und lädt die Konfiguration mit `apachectl reload` neu. Ohne
+diesen Reload wirkt eine geänderte `httpd.conf` erst nach unbestimmter Zeit; solange liefern alle Unterseiten
+außer der Startseite 404.
 
 Mails werden in Prod synchron im Request versendet (`MESSENGER_TRANSPORT_DSN=sync://`), weil auf dem
 Webspace kein dauerhafter Worker und kein Cron läuft.

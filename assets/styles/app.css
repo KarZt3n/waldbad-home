@@ -36,6 +36,27 @@ a { color: var(--forest-700); }
 :focus-visible { outline: 3px solid var(--water-400); outline-offset: 3px; }
 .app-loading { margin: 20vh auto; text-align: center; }
 
+/* Seitenwechsel ohne Neuladen (siehe `navigateTo` in public.js): Die bisherige Seite bleibt stehen,
+   ein schmaler Balken oben zeigt, dass die nächste lädt. Erst verzögert sichtbar, damit schnelle
+   Wechsel nicht flackern. */
+#app[aria-busy="true"]::before {
+    content: "";
+    position: fixed;
+    z-index: 100;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--lime-400), var(--water-400), transparent);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: page-loading 1.1s ease-in-out 150ms infinite both;
+}
+@keyframes page-loading {
+    from { background-position: -100% 0; }
+    to { background-position: 200% 0; }
+}
+
 .site-header {
     position: sticky;
     z-index: 10;

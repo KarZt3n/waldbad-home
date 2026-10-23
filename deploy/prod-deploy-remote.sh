@@ -44,11 +44,13 @@ if [ -e "$release_dir" ]; then
 fi
 
 # Ohne diese Freigabe ignoriert der Telekom-Webserver die .htaccess (und damit das Routing auf index.php),
-# siehe https://homepagecenter.telekom.de/hilfe/htaccess-aktivieren. Änderungen wirken dort zeitverzögert.
+# siehe https://homepagecenter.telekom.de/hilfe/htaccess-aktivieren. Ohne `apachectl reload` wirkt sie erst
+# nach unbestimmter Zeit.
 httpd_conf="$HOME/etc/httpd.conf"
 if [ ! -e "$httpd_conf" ]; then
     install -d -m 0755 "$HOME/etc"
     printf '<Directory %s>\nAllowOverride All\n</Directory>\n' "$docroot" > "$httpd_conf"
+    apachectl reload
 elif ! grep -q 'AllowOverride All' "$httpd_conf"; then
     printf 'WARNUNG: %s enthält kein „AllowOverride All“ für %s.\n' "$httpd_conf" "$docroot" >&2
 fi

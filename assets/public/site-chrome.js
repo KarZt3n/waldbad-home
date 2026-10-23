@@ -6,15 +6,22 @@
 import {element, pageHref, treeContainsSlug} from '../core.js';
 
 // Fester Slug der eigenständigen Route `/meine-mitgliedschaft` (siehe `FrontendController`) — keine
-// CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `renderPublic`,
+// CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `preparePublicPage`,
 // `renderMemberSelfServicePage`).
 const MEMBER_ACCESS_SLUG = 'meine-mitgliedschaft';
+// Beim Seitenwechsel ohne Neuladen (siehe `navigateTo` in `public.js`) entsteht die Kopfzeile jedes Mal
+// neu; die Listener der vorherigen am `document` werden darüber wieder entfernt.
+let headerListeners = new AbortController();
+let memberAccessListeners = new AbortController();
 /**
- * Baut die Kopfzeile inkl. Hauptnavigation, verwendet von `renderPublic` sowohl für normale
+ * Baut die Kopfzeile inkl. Hauptnavigation, verwendet von `preparePublicPage` sowohl für normale
  * CMS-Seiten als auch für die eigenständige „Meine Mitgliedschaft"-Ansicht — `extraChildren` hängt
  * zusätzliche Elemente rechts neben die Navigation (siehe `buildMemberAccessNav`).
  */
 const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
+    headerListeners.abort();
+    headerListeners = new AbortController();
+    const {signal} = headerListeners;
     const renderNavigationItem = (item, nested = false) => {
         const active = treeContainsSlug(item, activeSlug);
         const link = element('a', {
@@ -105,10 +112,10 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
     });
     document.addEventListener('click', (event) => {
         if (header.classList.contains('nav-open') && !header.contains(event.target)) closeNav();
-    });
+    }, {signal});
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && header.classList.contains('nav-open')) closeNav();
-    });
+    }, {signal});
 
     return header;
 };
@@ -131,6 +138,9 @@ const buildSiteFooter = () => element('footer', {
  * `renderMemberSelfServicePage`).
  */
 const buildMemberAccessNav = () => {
+    memberAccessListeners.abort();
+    memberAccessListeners = new AbortController();
+    const {signal} = memberAccessListeners;
     const icon = element('span', {className: 'member-access-icon', attributes: {'aria-hidden': 'true'}});
     icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"></path></svg>';
     const toggle = element('button', {
@@ -158,10 +168,10 @@ const buildMemberAccessNav = () => {
         toggle.setAttribute('aria-expanded', String(open));
         toggle.setAttribute('aria-label', open ? 'Mitgliedschaftsmenü schließen' : 'Mitgliedschaftsmenü öffnen');
     });
-    document.addEventListener('click', close);
+    document.addEventListener('click', close, {signal});
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') close();
-    });
+    }, {signal});
 
     return container;
 };
