@@ -22,17 +22,22 @@ const todayIso = () => {
 };
 
 /** Anfragende Person: Name mit Mitgliedsnummer-Bubble, darunter Anschrift und E-Mail des verknüpften Mitglieds. */
-const bookingIdentity = (booking) => {
+const bookingNameRow = (booking) => {
+    const contact = booking.memberContact;
+
+    return element('div', {className: 'event-helper-participant-name-row', children: [
+        element('strong', {text: `${booking.firstName} ${booking.lastName}`}),
+        ...(contact || booking.memberNumber
+            ? [element('span', {className: 'status-badge member-link-badge is-linked', text: contact?.memberNumber || booking.memberNumber})]
+            : [element('span', {className: 'status-badge member-link-badge', text: 'Kein Mitglied'})]),
+    ]});
+};
+const bookingIdentity = (booking, {withName = true} = {}) => {
     const contact = booking.memberContact;
     const email = booking.email || contact?.email || null;
 
     return element('div', {className: 'event-helper-participant-identity', children: [
-        element('div', {className: 'event-helper-participant-name-row', children: [
-            element('strong', {text: `${booking.firstName} ${booking.lastName}`}),
-            ...(contact || booking.memberNumber
-                ? [element('span', {className: 'status-badge member-link-badge is-linked', text: contact?.memberNumber || booking.memberNumber})]
-                : [element('span', {className: 'status-badge member-link-badge', text: 'Kein Mitglied'})]),
-        ]}),
+        ...(withName ? [bookingNameRow(booking)] : []),
         ...(contact ? [element('small', {className: 'event-helper-member-detail', text: `${contact.street} • ${contact.postalCode} ${contact.city}`})] : []),
         ...(email ? [element('a', {className: 'event-helper-member-detail', text: email, attributes: {href: `mailto:${email}`}})] : []),
     ]});
@@ -119,10 +124,27 @@ const bookingCard = (booking, refresh, {inRequest = false} = {}) => {
     ]});
 };
 
+// Aufgeklappte Gruppen (per `requesterKey`) bleiben nach dem Neuladen der Liste, z. B. nach „Annehmen“, offen.
+const expandedRequestGroups = new Set();
+
+/** Kurzfassung der Termine einer Gruppe für die zugeklappte Ansicht, z. B. „Do 19:00–21:00 Uhr · 15.10.2026 – 29.04.2027“. */
+const requestGroupSummary = (items) => {
+    const weekdayOf = (item) => new Date(`${item.date}T00:00:00`).getDay() || 7;
+    const times = [...new Set([...items]
+        .sort((left, right) => weekdayOf(left) - weekdayOf(right) || left.startTime.localeCompare(right.startTime))
+        .map((item) => `${WEEKDAY_SHORT[weekdayOf(item)]} ${item.startTime}–${item.endTime} Uhr`))];
+    const dates = items.map((item) => item.date).sort();
+    const range = dates[0] === dates[dates.length - 1]
+        ? formatDateDE(dates[0])
+        : `${formatDateDE(dates[0])} – ${formatDateDE(dates[dates.length - 1])}`;
+
+    return [...(times.length <= 2 ? times : []), range].join(' · ');
+};
+
 /**
  * Alle Anmeldungen einer anfragenden Person (gleicher `requesterKey`, auch aus mehreren Anfragen)
- * als eine Gruppe: im Kopf die Person mit ihren Nachrichten und „Alle annehmen“ für alle offenen
- * Termine, darunter jeder Termin mit eigener Annahme/Ablehnung.
+ * als aufklappbare Gruppe: zugeklappt Person, Anzahl und Zeitraum der Termine; aufgeklappt Kontakt,
+ * Nachrichten, „Alle annehmen“ für alle offenen Termine und jeder Termin mit eigener Annahme/Ablehnung.
  */
 const requestGroup = (items, refresh) => {
     const newest = items.reduce((latest, item) => (item.submittedAt > latest.submittedAt ? item : latest));
@@ -134,20 +156,38 @@ const requestGroup = (items, refresh) => {
             success: `${openCount} Sauna-Termine wurden angenommen.`,
         })]
         : [];
+    const identity = bookingIdentity(newest, {withName: false});
 
-    return element('article', {className: 'management-card sauna-request-group', children: [
-        element('header', {className: 'sauna-request-head', children: [
-            bookingIdentity(newest),
-            element('div', {className: 'sauna-request-meta', children: [
-                element('div', {className: 'sauna-booking-badges', children: [
-                    element('span', {className: 'status-badge', text: requestCount > 1 ? `${items.length} Termine · ${requestCount} Anfragen` : `${items.length} Termine`}),
-                ]}),
-                ...(acceptAll.length ? [element('div', {className: 'card-actions sauna-booking-actions', children: acceptAll})] : []),
+    const group = element('details', {className: 'event-helper-archive sauna-request-group', children: [
+        element('summary', {children: [
+            element('div', {className: 'sauna-request-summary', children: [
+                bookingNameRow(newest),
+                element('small', {text: requestGroupSummary(items)}),
             ]}),
-            ...(messages.length ? [element('div', {className: 'sauna-request-message', children: messages.map((message) => element('p', {className: 'sauna-booking-message', text: message}))})] : []),
+            element('div', {className: 'sauna-booking-badges', children: [
+                ...(openCount > 0 && openCount < items.length ? [element('span', {className: 'status-badge status-pending', text: `${openCount} offen`})] : []),
+                // Die Zahl der Anfragen sagt nur etwas, wenn eine Anfrage mehrere Termine umfasst.
+                element('span', {className: 'status-badge', text: requestCount > 1 && requestCount < items.length ? `${items.length} Termine · ${requestCount} Anfragen` : `${items.length} Termine`}),
+            ]}),
         ]}),
-        element('div', {className: 'sauna-request-days', children: items.map((item) => bookingCard(item, refresh, {inRequest: true}))}),
+        element('div', {className: 'sauna-request-body', children: [
+            ...(identity.childElementCount || acceptAll.length || messages.length ? [element('header', {className: 'sauna-request-head', children: [
+                identity,
+                ...(acceptAll.length ? [element('div', {className: 'sauna-request-meta', children: [
+                    element('div', {className: 'card-actions sauna-booking-actions', children: acceptAll}),
+                ]})] : []),
+                ...(messages.length ? [element('div', {className: 'sauna-request-message', children: messages.map((message) => element('p', {className: 'sauna-booking-message', text: message}))})] : []),
+            ]})] : []),
+            element('div', {className: 'sauna-request-days', children: items.map((item) => bookingCard(item, refresh, {inRequest: true}))}),
+        ]}),
     ]});
+    group.open = expandedRequestGroups.has(newest.requesterKey);
+    group.addEventListener('toggle', () => {
+        if (group.open) expandedRequestGroups.add(newest.requesterKey);
+        else expandedRequestGroups.delete(newest.requesterKey);
+    });
+
+    return group;
 };
 
 const showSaunaBookings = async () => {
@@ -732,12 +772,12 @@ const showSaunaDuties = async () => {
     const summary = element('p', {className: 'sauna-duty-summary', attributes: {role: 'status'}});
     const list = element('div', {className: 'sauna-duty-days'});
 
-    const dutyChip = (duty) => {
+    const dutyChip = (duty, editable) => {
         const chip = element('span', {className: 'sauna-duty-person', children: [
             element('span', {text: `${duty.firstName} ${duty.lastName}`}),
             element('small', {text: duty.memberNumber}),
         ]});
-        if (canEdit) {
+        if (editable) {
             const remove = element('button', {className: 'sauna-duty-remove', text: '×', attributes: {type: 'button', 'aria-label': `${duty.firstName} ${duty.lastName} austragen`}});
             remove.addEventListener('click', async () => {
                 const confirmed = await confirmAction('Dienst austragen?', `${duty.firstName} ${duty.lastName} wird für ${duty.time} Uhr am ${formatDateDE(duty.date)} ausgetragen.`, 'Austragen');
@@ -759,9 +799,9 @@ const showSaunaDuties = async () => {
         className: 'sauna-duty-booking',
         text: `${direction}: ${booking.firstName} ${booking.lastName} · ${booking.personCount} ${booking.personCount === 1 ? 'Person' : 'Personen'} · ${booking.startTime}–${booking.endTime} Uhr${booking.status === 'open' ? ' · offen' : ''}`,
     });
-    const renderPoint = (day, point) => {
+    const renderPoint = (day, point, editable) => {
         const status = dutyPointStatus(point);
-        const assign = canEdit && point.state !== 'unscheduled'
+        const assign = editable && point.state !== 'unscheduled'
             ? element('button', {className: 'text-button sauna-duty-assign', text: '＋ Eintragen', attributes: {type: 'button'}})
             : null;
         assign?.addEventListener('click', () => openSaunaDutyAssignDialog(day, point, load));
@@ -774,12 +814,36 @@ const showSaunaDuties = async () => {
             ...point.endingBookings.map(bookingLine('Geht')),
             ...point.startingBookings.map(bookingLine('Kommt')),
             element('div', {className: 'sauna-duty-people', children: [
-                ...point.duties.map(dutyChip),
+                ...point.duties.map((duty) => dutyChip(duty, editable)),
                 ...(assign ? [assign] : []),
             ]}),
         ]});
     };
     const isBooked = (point) => point.state === 'required' || point.state === 'requested';
+    // Vergangene Tage sind abgeschlossen: nur noch zum Nachlesen, ohne Ein- oder Austragen.
+    const renderDay = (day, todayIso) => {
+        const past = day.date < todayIso;
+
+        return element('section', {
+            className: `sauna-duty-day${past ? ' is-past' : ''}${day.date === todayIso ? ' is-today' : ''}`,
+            children: [
+                element('h4', {children: [
+                    element('span', {text: DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))}),
+                    ...(past ? [element('span', {className: 'status-badge status-inactive', text: 'Abgeschlossen'})] : []),
+                ]}),
+                ...(day.closed
+                    ? [element('p', {className: 'sauna-duty-closed', text: `Geschlossen${day.closedReason ? ` (${day.closedReason})` : ''}`})]
+                    : [element('div', {className: 'sauna-duty-points', children: day.points.map((point) => renderPoint(day, point, canEdit && !past))})]),
+            ],
+        });
+    };
+    const completedDays = (days, todayIso) => element('details', {className: 'event-helper-archive sauna-duty-archive', children: [
+        element('summary', {children: [
+            element('strong', {text: 'Abgeschlossen'}),
+            element('span', {className: 'status-badge', text: `${days.length} ${days.length === 1 ? 'Tag' : 'Tage'}`}),
+        ]}),
+        element('div', {className: 'sauna-duty-days sauna-duty-archive-list', children: days.map((day) => renderDay(day, todayIso))}),
+    ]});
 
     const load = async () => {
         previous.disabled = month <= currentMonth;
@@ -791,7 +855,11 @@ const showSaunaDuties = async () => {
             const days = roster.days
                 .map((day) => ({...day, points: bookedOnly ? day.points.filter((point) => isBooked(point) || point.duties.length) : day.points}))
                 .filter((day) => day.points.length || (day.closed && !bookedOnly));
-            const missing = roster.days.flatMap((day) => day.points).filter((point) => point.state === 'required' && !point.duties.length).length;
+            const todayIso = isoDate(new Date());
+            const missing = roster.days
+                .filter((day) => day.date >= todayIso)
+                .flatMap((day) => day.points)
+                .filter((point) => point.state === 'required' && !point.duties.length).length;
             summary.textContent = missing
                 ? `${missing} ${missing === 1 ? 'Dienst' : 'Dienste'} zu gebuchten Zeiten in diesem Monat noch unbesetzt.`
                 : 'Alle Dienste zu gebuchten Zeiten in diesem Monat sind besetzt.';
@@ -800,16 +868,14 @@ const showSaunaDuties = async () => {
                 list.replaceChildren(emptyState(bookedOnly ? 'In diesem Monat gibt es keine gebuchten Saunazeiten.' : 'In diesem Monat sind keine Saunazeiten geplant.'));
                 return;
             }
-            const todayIso = isoDate(new Date());
-            list.replaceChildren(...days.map((day) => element('section', {
-                className: `sauna-duty-day${day.date < todayIso ? ' is-past' : ''}${day.date === todayIso ? ' is-today' : ''}`,
-                children: [
-                    element('h4', {text: DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))}),
-                    ...(day.closed
-                        ? [element('p', {className: 'sauna-duty-closed', text: `Geschlossen${day.closedReason ? ` (${day.closedReason})` : ''}`})]
-                        : [element('div', {className: 'sauna-duty-points', children: day.points.map((point) => renderPoint(day, point))})]),
-                ],
-            })));
+            const pastDays = days.filter((day) => day.date < todayIso);
+            const upcomingDays = days.filter((day) => day.date >= todayIso);
+            list.replaceChildren(
+                ...(pastDays.length ? [completedDays(pastDays, todayIso)] : []),
+                ...(upcomingDays.length
+                    ? upcomingDays.map((day) => renderDay(day, todayIso))
+                    : [emptyState(bookedOnly ? 'In diesem Monat gibt es keine weiteren gebuchten Saunazeiten.' : 'In diesem Monat sind keine weiteren Saunazeiten geplant.')]),
+            );
         } catch (error) {
             list.replaceChildren(emptyState(`Der Dienstplan konnte nicht geladen werden: ${error.message}`));
         }

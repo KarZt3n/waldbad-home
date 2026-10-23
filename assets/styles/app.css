@@ -2034,7 +2034,9 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-booking-actions { justify-content: flex-end; }
 .sauna-booking-actions .button, .sauna-booking-actions .secondary-button { margin-top: 0; }
 /* Alle Anmeldungen einer anfragenden Person als Gruppe (siehe `requestGroup()` in admin/rental.js). */
-.sauna-request-group { display: grid; gap: 1rem; }
+.sauna-request-summary { display: grid; gap: .25rem; min-width: 0; }
+.sauna-request-summary small { color: var(--muted); }
+.sauna-request-body { display: grid; gap: 1rem; padding: 1rem; }
 .sauna-request-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem 1.5rem; }
 .sauna-request-head .event-helper-participant-identity { display: grid; align-content: start; gap: .3rem; }
 .sauna-request-head a.event-helper-member-detail { width: fit-content; font-size: .9rem; }
@@ -2125,7 +2127,8 @@ dialog:modal {
 .sauna-duty-day { padding: 1rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--white); }
 .sauna-duty-day.is-today { border: 2px solid var(--lime-400); }
 .sauna-duty-day.is-past { opacity: .65; }
-.sauna-duty-day h4 { margin: 0 0 .75rem; color: var(--forest-900); }
+.sauna-duty-day h4 { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .75rem; color: var(--forest-900); }
+.sauna-duty-archive-list { padding: 1rem; }
 .sauna-duty-closed { margin: 0; color: var(--muted); font-style: italic; }
 .sauna-duty-points { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .75rem; }
 .sauna-duty-point { display: grid; align-content: start; gap: .4rem; padding: .75rem; border: 1px solid var(--line); border-left-width: .35rem; border-radius: .75rem; background: var(--white); }
