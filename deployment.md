@@ -142,6 +142,72 @@ Runner in GitHub anlegen:
 
 Der kurzlebige Registrierungstoken darf nicht in das Repository, in ein Skript oder in diese Dokumentation übernommen werden.
 
+## Prod auf dem Telekom-Webspace
+
+Prod läuft auf einem Telekom-Webspace (Shared Hosting, PHP 8.4, MariaDB, kein Docker, kein Cron),
+erreichbar per SSH als `admin@w26zxq3b2.hier-im-netz.de` auf `hosting.telekom.de`.
+
+Jeder neu gepushte Git-Tag startet `.github/workflows/deploy-prod.yaml`. Der Workflow läuft auf einem
+GitHub-hosted Runner, weil der Webspace öffentlich erreichbar ist:
+
+1. Er installiert die Abhängigkeiten ohne Dev-Pakete, kompiliert die Assets und packt das Release.
+2. Er lädt das Paket nach `~/waldbad-home/incoming` hoch und führt dort `deploy/prod-deploy-remote.sh` aus.
+3. Das Skript entpackt nach `~/waldbad-home/releases/<zeitstempel>-<tag>-<commit>`, wärmt den Cache auf,
+   sichert die Datenbank nach `~/waldbad-home/backups/database` (die zehn neuesten bleiben), führt die
+   Migrationen aus und schaltet erst danach um. Es bleiben die drei neuesten Releases erhalten.
+
+Der Document-Root ist fest `~/public_html` und lässt sich nicht auf `public/` eines Releases legen. Das
+Skript kopiert deshalb die öffentlichen Dateien dorthin und schreibt `public_html/index.php` als Stub, der
+das aktive Release lädt; das Ersetzen dieses Stubs ist der eigentliche Umschaltpunkt. Hochgeladene Medien
+liegen dauerhaft in `public_html/uploads/media`. Andere Dateien in `public_html` außer `uploads/` und
+`.well-known/` werden beim Deployment entfernt.
+
+Mails werden in Prod synchron im Request versendet (`MESSENGER_TRANSPORT_DSN=sync://`), weil auf dem
+Webspace kein dauerhafter Worker und kein Cron läuft.
+
+### Einmalige Einrichtung
+
+1. Im Telekom-Homepagecenter PHP 8.4 für den Webspace einstellen.
+2. Auf dem Webspace `~/waldbad-home/shared/.env.local` anlegen (Rechte `0600`). Zugangsdaten werden nur
+   dort gepflegt, nie im Repository:
+
+   ```dotenv
+   APP_ENV=prod
+   APP_DEBUG=0
+   APP_SECRET=<openssl rand -hex 32>
+   DATABASE_URL='mysql://<benutzer>:<passwort-url-kodiert>@<host>:3306/<datenbank>?serverVersion=<version>-MariaDB&charset=utf8mb4'
+   DEFAULT_URI=https://<prod-domain>
+   MAILER_DSN='smtp://<benutzer-url-kodiert>:<passwort-url-kodiert>@securesmtp.t-online.de:587'
+   MAILER_FROM_ADDRESS=it@waldbad-borkheide.de
+   MAILER_FROM_NAME="Naturbad Borkheide e.V."
+   MESSENGER_TRANSPORT_DSN=sync://
+   ```
+
+3. Einen eigenen Deploy-Schlüssel erzeugen, den öffentlichen Teil in `~/.ssh/authorized_keys` des
+   Webspace eintragen und in GitHub unter `Settings` → `Environments` die Umgebung `production` anlegen mit:
+   - Secret `PROD_SSH_PRIVATE_KEY`: privater Deploy-Schlüssel
+   - Secret `PROD_SSH_KNOWN_HOSTS`: Ausgabe von `ssh-keyscan -t ed25519 hosting.telekom.de`
+   - optional Variable `PROD_BASE_URL` (z. B. `https://waldbad-borkheide.de`) für den Healthcheck
+
+   Über `Required reviewers` an der Umgebung kann jedes Prod-Deployment zusätzlich freigegeben werden.
+
+### Deployen
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Die Startseiten werden auf Prod nicht automatisch angelegt. Bei einer leeren Instanz einmalig:
+
+```bash
+ssh 'admin@w26zxq3b2.hier-im-netz.de@hosting.telekom.de' 'cd ~/waldbad-home/current && php8.4 bin/console app:site:initialize --no-interaction'
+```
+
+Ein Rollback erfolgt, indem der Workflow für einen älteren Tag erneut ausgeführt wird (`Actions` →
+`Prod deploy` → `Run workflow` mit dem Tag). Die Datenbank wird dabei nicht zurückgesetzt; dafür liegen
+die Sicherungen unter `~/waldbad-home/backups/database`.
+
 ## Rollback
 
 Ein Rollback erfolgt über den gewünschten Git-Stand und dasselbe Deployment-Skript.

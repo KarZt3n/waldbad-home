@@ -1,0 +1,4 @@
+# Hochgeladene Dateien dürfen nie als Skript ausgeführt werden.
+<FilesMatch "\.(?:php|phar|phtml|cgi|pl|py|sh)$">
+    Require all denied
+</FilesMatch>

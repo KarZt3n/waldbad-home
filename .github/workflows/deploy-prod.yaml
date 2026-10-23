@@ -1,0 +1,94 @@
+name: Prod deploy
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+# Ein laufendes Prod-Deployment wird nicht abgebrochen, sonst bliebe ein halb entpacktes Release liegen.
+concurrency:
+  group: waldbad-home-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy waldbad-home prod
+    # Manuelle Auslösung nur für einen Tag, damit Prod immer einem benannten Stand entspricht.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    env:
+      PROD_SSH_HOST: hosting.telekom.de
+      PROD_SSH_USER: admin@w26zxq3b2.hier-im-netz.de
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: PHP einrichten
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: intl, pdo_mysql, zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Abhängigkeiten installieren
+        run: |
+          composer install --no-dev --no-autoloader --no-scripts --no-interaction --no-progress --prefer-dist
+          composer dump-autoload --no-dev --classmap-authoritative --no-interaction
+
+      - name: Assets kompilieren
+        env:
+          APP_ENV: prod
+          APP_DEBUG: '0'
+          APP_SECRET: build-placeholder
+          DATABASE_URL: 'mysql://build:build@127.0.0.1:3306/build?serverVersion=10.11.0-MariaDB&charset=utf8mb4'
+          DEFAULT_URI: 'http://localhost'
+          MAILER_DSN: 'null://null'
+          MESSENGER_TRANSPORT_DSN: 'sync://'
+        run: |
+          php bin/console importmap:install --no-interaction
+          php bin/console asset-map:compile --no-interaction
+
+      - name: Release-Paket erstellen
+        run: |
+          release_name="$(date -u '+%Y%m%d%H%M%S')-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')-${GITHUB_SHA::12}"
+          echo "RELEASE_NAME=$release_name" >> "$GITHUB_ENV"
+          tar -czf "$RUNNER_TEMP/$release_name.tar.gz" \
+              .env assets bin config deploy importmap.php migrations public src templates translations vendor \
+              composer.json composer.lock symfony.lock
+
+      - name: SSH einrichten
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/prod_deploy
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/prod_deploy ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host prod
+              HostName $PROD_SSH_HOST
+              User $PROD_SSH_USER
+              IdentityFile ~/.ssh/prod_deploy
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+          EOF
+
+      - name: Release hochladen
+        run: |
+          ssh prod 'mkdir -p ~/waldbad-home/incoming'
+          scp -q "$RUNNER_TEMP/$RELEASE_NAME.tar.gz" "prod:waldbad-home/incoming/$RELEASE_NAME.tar.gz"
+
+      - name: Prod bereitstellen
+        run: ssh prod 'bash -s' -- "$RELEASE_NAME" < deploy/prod-deploy-remote.sh
+
+      - name: Healthcheck
+        if: vars.PROD_BASE_URL != ''
+        run: curl --fail --silent --show-error --max-time 15 "${{ vars.PROD_BASE_URL }}/api/public/v1/navigation" >/dev/null
