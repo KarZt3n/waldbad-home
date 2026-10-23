@@ -417,6 +417,62 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(400);
     }
 
+    /**
+     * Wöchentliche Wiederholung aus dem Kalender: je Woche eine Buchung bis zum gewählten Ende;
+     * belegte und geschlossene Wochen werden übersprungen und in der Antwort genannt.
+     */
+    public function testWeeklyRepetitionBooksEveryFreeWeekAndReportsSkippedOnes(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $first = new \DateTimeImmutable('+3 days');
+        $week = static fn (int $weeks): string => $first->modify(sprintf('+%d weeks', $weeks))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
+            'startsOn' => (new \DateTimeImmutable('tomorrow'))->format('Y-m-d'),
+            'endsOn' => null,
+            'slotDurationMinutes' => 60,
+            'openingHours' => array_map(
+                static fn (int $weekday): array => ['weekday' => $weekday, 'startTime' => '10:00', 'endTime' => '14:00'],
+                range(1, 7),
+            ),
+            'closures' => [['startsOn' => $week(2), 'endsOn' => null, 'reason' => 'Revision']],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $guest = ['firstName' => 'Erika', 'lastName' => 'Musterfrau', 'privacyAccepted' => true];
+        $slot = ['startTime' => '10:00', 'endTime' => '12:00', 'personCount' => 2, 'participants' => self::names(2)];
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$guest, ...$slot, 'date' => $week(1)]);
+        self::assertResponseStatusCodeSame(202);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$guest, ...$slot, 'date' => $week(0), 'repeatWeeklyUntil' => $week(3)]);
+        self::assertResponseStatusCodeSame(202);
+        $response = $this->responseData();
+        self::assertSame([$week(0), $week(3)], $response['bookedDates']);
+        $skipped = $response['skippedDates'];
+        self::assertIsArray($skipped);
+        self::assertSame([$week(1), $week(2)], array_map(static fn (mixed $day): mixed => is_array($day) ? $day['date'] : null, $skipped));
+        self::assertIsString($response['message']);
+        self::assertStringContainsString('für 2 Termine', $response['message']);
+        self::assertSame(['10:00 booked', '11:00 booked', '12:00 free', '13:00 free'], $this->calendarStates($week(3)));
+
+        $this->client->request('GET', '/api/admin/v1/sauna-bookings');
+        self::assertResponseIsSuccessful();
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+        $seriesRequestIds = [];
+        foreach ($items as $item) {
+            self::assertIsArray($item);
+            if ($item['requestId'] !== null) {
+                $seriesRequestIds[] = $item['requestId'];
+            }
+        }
+        self::assertSame([$response['id'], $response['id']], $seriesRequestIds);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$guest, ...$slot, 'date' => $week(4), 'repeatWeeklyUntil' => $week(4)]);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [...$guest, ...$slot, 'date' => $week(4), 'repeatWeeklyUntil' => '30.04.2027']);
+        self::assertResponseStatusCodeSame(400);
+    }
+
     public function testBookingOutsideSeasonIsRejected(): void
     {
         $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [

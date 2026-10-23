@@ -117,12 +117,147 @@ const createCompanionsEditor = (terms, guest, onChange) => {
     };
 };
 
+// Längste wöchentliche Wiederholung (siehe `SubmitWeeklySaunaBookingUseCase::MAX_WEEKS`).
+const MAX_REPEAT_WEEKS = 52;
+const addDays = (isoDate, days) => {
+    const date = new Date(`${isoDate}T00:00:00`);
+    date.setDate(date.getDate() + days);
+
+    return toIsoDate(date);
+};
+const repeatDates = (firstIso, untilIso) => {
+    const dates = [];
+    for (let date = addDays(firstIso, 7); date <= untilIso; date = addDays(date, 7)) dates.push(date);
+
+    return dates;
+};
+// Der Kalender liefert höchstens 42 Tage je Abfrage (siehe `GetSaunaCalendarQuery::MAX_DAYS`).
+const CALENDAR_CHUNK_DAYS = 42;
+const loadCalendarDays = async (fromIso, toIso) => {
+    const days = new Map();
+    for (let from = fromIso; from <= toIso; from = addDays(from, CALENDAR_CHUNK_DAYS)) {
+        const span = Math.min(CALENDAR_CHUNK_DAYS, Math.round((new Date(`${toIso}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86_400_000) + 1);
+        const calendar = await request(`/api/public/v1/sauna/calendar?from=${from}&days=${span}`);
+        calendar.days.forEach((day) => days.set(day.date, day));
+    }
+
+    return days;
+};
+/** Stand eines Wiederholungstermins laut Kalender; nur freie Termine werden angefragt (wie im Backend). */
+const repeatDateState = (day, startTime, endTime) => {
+    if (!day) return {free: false, text: 'keine Saunazeit'};
+    if (day.closed) return {free: false, text: day.closedReason ? `geschlossen (${day.closedReason})` : 'geschlossen'};
+    const units = day.slots.filter((slot) => slot.startTime >= startTime && slot.endTime <= endTime);
+    const covered = units.length > 0 && units[0].startTime === startTime && units[units.length - 1].endTime === endTime
+        && units.every((slot, index) => index === 0 || units[index - 1].endTime === slot.startTime);
+    if (!covered) return {free: false, text: 'keine Saunazeit'};
+    if (units.some((slot) => slot.state !== 'free')) return {free: false, text: 'belegt'};
+
+    return {free: true, text: 'frei'};
+};
+
+/**
+ * „Wöchentlich wiederholen“ im Anfrage-Dialog: bis zu einem Enddatum frühestens eine Woche nach dem
+ * ersten Termin, höchstens bis Saisonende bzw. `MAX_REPEAT_WEEKS` Wochen. Nach Wahl des Enddatums
+ * listet es jeden Termin der Serie mit seinem Stand laut Kalender auf. `null`, wenn die Saison keine
+ * Wiederholung mehr zulässt.
+ */
+const createWeeklyRepeat = (day, startTime, endTime, season, onChange) => {
+    const min = addDays(day.date, 7);
+    const max = [addDays(day.date, 7 * MAX_REPEAT_WEEKS), season?.endsOn].filter(Boolean).sort()[0];
+    if (max < min) return null;
+
+    const toggle = element('input', {attributes: {type: 'checkbox', name: 'repeatWeekly'}});
+    const untilField = field('Wiederholen bis', 'repeatWeeklyUntil', '', 'date');
+    const until = untilField.querySelector('input');
+    Object.assign(until, {min, max});
+    const dateList = element('div', {className: 'sauna-repeat-dates', attributes: {'aria-live': 'polite'}});
+    const details = element('div', {className: 'sauna-repeat-details', children: [
+        untilField,
+        element('p', {className: 'field-hint', text: `Jeden ${WEEKDAY_LABELS[day.weekday - 1]} von ${startTime} bis ${endTime} Uhr. Belegte oder geschlossene Termine werden übersprungen; jeder Termin wird vom Verein bestätigt.`}),
+        dateList,
+    ]});
+    details.hidden = true;
+
+    const selectedUntil = () => toggle.checked && until.value >= min && until.value <= max ? until.value : null;
+    // Stand je Wiederholungstermin (Datum → {free, text}); `null`, solange er noch geladen wird.
+    let states = null;
+    let loading = 0;
+    const dateLabel = (iso) => `${WEEKDAY_LABELS[(new Date(`${iso}T00:00:00`).getDay() + 6) % 7].slice(0, 2)}, ${formatDateDE(iso)}`;
+    const renderDates = () => {
+        const value = selectedUntil();
+        if (!value) {
+            dateList.replaceChildren();
+            return;
+        }
+        const dates = repeatDates(day.date, value);
+        dateList.replaceChildren(
+            element('p', {className: 'sauna-repeat-dates-title', text: states ? 'Diese Termine werden angefragt:' : 'Termine werden geprüft …'}),
+            element('ul', {children: [
+                element('li', {className: 'is-free', text: `${dateLabel(day.date)} · erster Termin`}),
+                ...dates.map((date) => {
+                    const state = states?.get(date);
+                    if (!state) return element('li', {text: dateLabel(date)});
+
+                    return element('li', {
+                        className: state.free ? 'is-free' : 'is-skipped',
+                        text: `${dateLabel(date)} · ${state.free ? 'frei' : `${state.text} – wird übersprungen`}`,
+                    });
+                }),
+            ]}),
+        );
+    };
+    const refreshDates = async () => {
+        states = null;
+        renderDates();
+        onChange();
+        const value = selectedUntil();
+        if (!value) return;
+        const ticket = ++loading;
+        try {
+            const days = await loadCalendarDays(min, value);
+            if (ticket !== loading) return;
+            states = new Map(repeatDates(day.date, value).map((date) => [date, repeatDateState(days.get(date), startTime, endTime)]));
+        } catch {
+            if (ticket !== loading) return;
+            dateList.replaceChildren(element('p', {className: 'field-hint', text: 'Die Termine konnten nicht geprüft werden; belegte Termine werden beim Absenden übersprungen.'}));
+            return;
+        }
+        renderDates();
+        onChange();
+    };
+    toggle.addEventListener('change', () => {
+        details.hidden = !toggle.checked;
+        until.required = toggle.checked;
+        refreshDates();
+    });
+    until.addEventListener('change', refreshDates);
+
+    return {
+        elements: [
+            element('label', {className: 'check-field', children: [toggle, element('span', {text: 'Wöchentlich wiederholen'})]}),
+            details,
+        ],
+        until: selectedUntil,
+        // Anzahl der Termine, die voraussichtlich angefragt werden; `exact`, sobald der Kalender geprüft ist.
+        count: () => {
+            const value = selectedUntil();
+            if (!value) return {dates: 1, exact: true};
+            const dates = repeatDates(day.date, value);
+
+            return states
+                ? {dates: 1 + dates.filter((date) => states.get(date)?.free).length, exact: true}
+                : {dates: 1 + dates.length, exact: false};
+        },
+    };
+};
+
 /**
  * Anfrage-Dialog für eine freie Kalender-Kachel (`selection = {day, slotIndex}`) mit anfragender
  * Person, Personen mit Namen und Nachricht: Tag und Beginn stehen fest, das Ende wird aus den anschließenden freien
- * Einheiten gewählt.
+ * Einheiten gewählt. Optional wiederholt sich der Termin wöchentlich bis zu einem gewählten Tag.
  */
-const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
+const openSaunaBookingDialog = (terms, onSubmitted, selection, season) => {
     const dialog = element('dialog', {className: 'event-help-dialog sauna-booking-dialog'});
     const message = formMessage();
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Sauna-Anfrage schließen'}});
@@ -133,10 +268,16 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
     const guest = guestFields();
     const endTime = bookingEndTime(day.slots, slotIndex, terms);
     const summaryText = element('strong');
-    const summaryPrice = element('span', {className: 'sauna-wish-price', text: formatEuro(priceFor(terms, terms.priceUnitMinutes))});
+    const price = priceFor(terms, terms.priceUnitMinutes);
+    const summaryPrice = element('span', {className: 'sauna-wish-price'});
     const editor = createCompanionsEditor(terms, guest, () => updateSummary());
+    const repeat = createWeeklyRepeat(day, slot.startTime, endTime, season, () => updateSummary());
     const updateSummary = () => {
-        summaryText.textContent = `Wunschtag: ${when.slice(0, 2)}, ${formatDateDE(day.date)} · ${slot.startTime}–${endTime} Uhr · ${editor.count()} Personen`;
+        const until = repeat?.until();
+        const {dates, exact} = repeat?.count() ?? {dates: 1, exact: true};
+        summaryText.textContent = `Wunschtag: ${when.slice(0, 2)}, ${formatDateDE(day.date)} · ${slot.startTime}–${endTime} Uhr · ${editor.count()} Personen`
+            + (until ? ` · wöchentlich bis ${formatDateDE(until)} (${exact ? '' : 'bis zu '}${dates} ${dates === 1 ? 'Termin' : 'Termine'})` : '');
+        summaryPrice.textContent = until ? `${dates} × ${formatEuro(price)}` : formatEuro(price);
     };
     const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
     const submit = element('button', {className: 'button', text: 'Sauna-Anfrage absenden', attributes: {type: 'submit'}});
@@ -159,6 +300,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
                         element('div', {className: 'field', children: [element('span', {text: 'von'}), element('strong', {className: 'sauna-booking-start', text: `${slot.startTime} Uhr`})]}),
                         element('div', {className: 'field', children: [element('span', {text: 'bis'}), element('strong', {className: 'sauna-booking-start', text: `${endTime} Uhr`})]}),
                     ]}),
+                    ...(repeat?.elements ?? []),
                 ]}),
             ]}),
         ]}),
@@ -179,6 +321,7 @@ const openSaunaBookingDialog = (terms, onSubmitted, selection) => {
             endTime,
             personCount: editor.count(),
             participants: editor.participants(),
+            ...(repeat?.until() ? {repeatWeeklyUntil: repeat.until()} : {}),
             ...guestPayload(data),
         });
     });
@@ -205,7 +348,8 @@ const submitRequest = async (submit, message, dialog, onSubmitted, payload, onEr
     submit.disabled = true;
     try {
         const response = await request('/api/public/v1/sauna/bookings', {method: 'POST', body: JSON.stringify(payload)});
-        toast(response.message);
+        // Bei übersprungenen Terminen einer wöchentlichen Serie nennt die Meldung die Daten – länger lesbar halten.
+        toast(response.message, 'success', response.skippedDates?.length ? 12000 : undefined);
         dialog.close();
         await onSubmitted();
     } catch (error) {
@@ -226,7 +370,7 @@ const showDialog = (dialog, close, form) => {
 const SLOT_LABELS = {free: 'frei', booked: 'belegt', past: 'vorbei', too_soon: 'zu kurzfristig'};
 const MONTH_LABEL = new Intl.DateTimeFormat('de-DE', {month: 'long', year: 'numeric'});
 
-const renderSlot = (day, slot, index, terms, reload) => {
+const renderSlot = (day, slot, index, terms, reload, season) => {
     const time = `${slot.startTime}–${slot.endTime}`;
     const label = `${WEEKDAY_LABELS[day.weekday - 1]}, ${formatDateDE(day.date)}, ${time} Uhr: ${SLOT_LABELS[slot.state] || slot.state}`;
     // Ab dieser Einheit ist keine Buchung der festen Dauer möglich: nicht anklickbar.
@@ -248,12 +392,12 @@ const renderSlot = (day, slot, index, terms, reload) => {
         text: slot.startTime,
         attributes: {type: 'button', title: `${time} Uhr – frei`, 'aria-label': `${label} – jetzt anfragen`},
     });
-    button.addEventListener('click', () => openSaunaBookingDialog(terms, reload, {day, slotIndex: index}));
+    button.addEventListener('click', () => openSaunaBookingDialog(terms, reload, {day, slotIndex: index}, season));
 
     return element('li', {className: 'sauna-slot sauna-slot-free', children: [button]});
 };
 
-const renderDay = (day, terms, reload, todayIso) => {
+const renderDay = (day, terms, reload, todayIso, season) => {
     const date = new Date(`${day.date}T00:00:00`);
 
     return element('div', {
@@ -266,7 +410,7 @@ const renderDay = (day, terms, reload, todayIso) => {
             ]}),
             ...(day.closed ? [element('p', {className: 'sauna-day-closed', text: day.closedReason ? `Geschlossen · ${day.closedReason}` : 'Geschlossen'})] : []),
             ...(day.slots.length
-                ? [element('ul', {className: 'sauna-slots', children: day.slots.map((slot, index) => renderSlot(day, slot, index, terms, reload))})]
+                ? [element('ul', {className: 'sauna-slots', children: day.slots.map((slot, index) => renderSlot(day, slot, index, terms, reload, season))})]
                 : []),
         ],
     });
@@ -327,7 +471,7 @@ const renderSaunaExtension = (preview = false) => {
             grid.replaceChildren(element('div', {className: 'sauna-month-grid', attributes: {role: 'grid', 'aria-label': MONTH_LABEL.format(month)}, children: [
                 ...WEEKDAY_LABELS.map((label) => element('div', {className: 'sauna-month-weekday', text: label.slice(0, 2), attributes: {role: 'columnheader', 'aria-label': label}})),
                 ...Array.from({length: leadingBlanks}, () => element('div', {className: 'sauna-month-day is-outside', attributes: {'aria-hidden': 'true'}})),
-                ...calendar.days.map((day) => renderDay(day, calendar.terms, load, todayIso)),
+                ...calendar.days.map((day) => renderDay(day, calendar.terms, load, todayIso, calendar.season)),
             ]}));
         } catch {
             grid.replaceChildren(element('p', {className: 'embedded-page-error', text: 'Die Sauna-Belegung konnte nicht geladen werden.'}));

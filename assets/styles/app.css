@@ -2014,6 +2014,17 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sauna-wish-price { color: var(--forest-900); font-weight: 700; white-space: nowrap; }
 .sauna-wish-body { display: grid; gap: .75rem; padding: 1rem; }
 .sauna-wish-remove, .sauna-wish-add { justify-self: start; }
+.sauna-wish-body > .check-field { margin: 0; }
+.sauna-repeat-details { display: grid; gap: .35rem; }
+.sauna-repeat-details[hidden] { display: none; }
+.sauna-repeat-details .field-hint { margin: 0; }
+.sauna-repeat-dates-title { margin: .4rem 0 .25rem; color: var(--forest-900); font-weight: 700; }
+.sauna-repeat-dates ul { display: grid; gap: .2rem; margin: 0; padding: 0; list-style: none; font-size: .9rem; }
+.sauna-repeat-dates li { padding-left: 1.4rem; text-indent: -1.4rem; }
+.sauna-repeat-dates li::before { display: inline-block; width: 1.4rem; text-indent: 0; content: '·'; }
+.sauna-repeat-dates li.is-free::before { color: var(--forest-700); content: '✓'; }
+.sauna-repeat-dates li.is-skipped { color: var(--muted); }
+.sauna-repeat-dates li.is-skipped::before { color: var(--danger); content: '✕'; }
 .sauna-booking-participants { margin: .25rem 0 0; color: #33463b; font-weight: 700; }
 .status-badge.sauna-individual-badge { color: var(--forest-950); background: var(--sun-400); }
 

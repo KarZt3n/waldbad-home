@@ -36,6 +36,20 @@ readonly class SettingsSaunaBookingNotifier implements SaunaBookingNotifierInter
     }
 
     /**
+     * `datum`/`uhrzeit` nennen den ersten Termin; alle Termine stehen je als eigener Block in `termine`.
+     */
+    public function weeklyBookingsSubmitted(array $bookings): void
+    {
+        $count = count($bookings);
+        $this->notify($bookings, sprintf(
+            'Zeitfenster aus dem Kalender, wöchentlich wiederholt: %d %s bis %s',
+            $count,
+            $count === 1 ? 'Termin' : 'Termine',
+            $bookings[$count - 1]->date->format('d.m.Y'),
+        ));
+    }
+
+    /**
      * `datum` nennt den ersten angenommenen Tag; alle Tage stehen je als eigener Block in `termine`.
      * Stammen die Tage aus mehreren Anfragen, stehen alle unterschiedlichen Nachrichten in `nachricht`.
      */

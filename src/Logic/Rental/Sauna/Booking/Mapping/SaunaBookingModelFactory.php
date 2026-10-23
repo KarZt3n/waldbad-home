@@ -26,15 +26,38 @@ readonly class SaunaBookingModelFactory
 
     public function createFromRequest(SubmitSaunaBookingRequest $request, SaunaTerms $terms): SaunaBooking
     {
+        return $this->createForDates($request, $terms, [$request->date], null)[0];
+    }
+
+    /**
+     * Eine wöchentliche Serie: je Termin in `$dates` eine eigene Buchung mit den Angaben der Anfrage,
+     * alle mit derselben Anfrage-Kennung (`SaunaBooking::$requestId`).
+     *
+     * @param non-empty-list<\DateTimeImmutable> $dates
+     *
+     * @return non-empty-list<SaunaBooking>
+     */
+    public function createWeeklyFromRequest(SubmitSaunaBookingRequest $request, SaunaTerms $terms, array $dates): array
+    {
+        return $this->createForDates($request, $terms, $dates, $this->identifierGenerator->generate());
+    }
+
+    /**
+     * @param non-empty-list<\DateTimeImmutable> $dates
+     *
+     * @return non-empty-list<SaunaBooking>
+     */
+    private function createForDates(SubmitSaunaBookingRequest $request, SaunaTerms $terms, array $dates, ?string $requestId): array
+    {
         $now = $this->clock->now();
         $firstName = trim($request->firstName);
         $lastName = trim($request->lastName);
         $email = $this->email($request->email);
         $match = $this->guestMatcher->match($firstName, $lastName, $request->birthDate, $email);
 
-        return new SaunaBooking(
+        return array_map(fn (\DateTimeImmutable $date): SaunaBooking => new SaunaBooking(
             id: $this->identifierGenerator->generate(),
-            date: $request->date->setTime(0, 0),
+            date: $date->setTime(0, 0),
             startTime: $request->startTime,
             endTime: $request->endTime,
             personCount: $request->personCount,
@@ -49,8 +72,9 @@ readonly class SaunaBookingModelFactory
             memberNumber: $match?->memberNumber,
             submittedAt: $now,
             updatedAt: $now,
+            requestId: $requestId,
             participants: $this->participants($request->participants),
-        );
+        ), $dates);
     }
 
     /**

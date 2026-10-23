@@ -22,6 +22,14 @@ interface SaunaBookingNotifierInterface
     public function individualRequestSubmitted(array $bookings): void;
 
     /**
+     * Eine wöchentlich wiederholte Anfrage aus dem Kalender (je Termin eine Buchung) als eine
+     * gemeinsame Benachrichtigung.
+     *
+     * @param non-empty-list<SaunaBooking> $bookings
+     */
+    public function weeklyBookingsSubmitted(array $bookings): void;
+
+    /**
      * Bestätigung an die anfragende Person — bei „Alle annehmen“ einer individuellen Anfrage mit
      * allen angenommenen Tagen in einer Mail.
      *

@@ -6,10 +6,13 @@ use App\Logic\Rental\Sauna\Booking\Dto\GetSaunaCalendarRequest;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaParticipantInput;
 use App\Logic\Rental\Sauna\Booking\Dto\SaunaRequestDayInput;
 use App\Logic\Rental\Sauna\Booking\Dto\SubmitIndividualSaunaRequest;
+use App\Logic\Rental\Sauna\Booking\Dto\SaunaSkippedDate;
 use App\Logic\Rental\Sauna\Booking\Dto\SubmitSaunaBookingRequest;
+use App\Logic\Rental\Sauna\Booking\Dto\SubmitWeeklySaunaBookingRequest;
 use App\Logic\Rental\Sauna\Booking\Query\GetSaunaCalendarQuery;
 use App\Logic\Rental\Sauna\Booking\UseCase\SubmitIndividualSaunaRequestUseCase;
 use App\Logic\Rental\Sauna\Booking\UseCase\SubmitSaunaBookingUseCase;
+use App\Logic\Rental\Sauna\Booking\UseCase\SubmitWeeklySaunaBookingUseCase;
 use App\UI\Common\RateLimit\RateLimitMessage;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -40,13 +43,18 @@ readonly class PublicSaunaBookingController
     }
 
     /**
-     * Zwei Anfragearten: aus dem Kalender genau ein Termin (`date`/`startTime`/`endTime`,
-     * `personCount`, `participants`), individuell (`individual: true`) ein oder mehrere Wunschtage
-     * (`days`), je Tag mit Personenzahl und den Namen aller Personen.
+     * Zwei Anfragearten: aus dem Kalender ein Termin (`date`/`startTime`/`endTime`,
+     * `personCount`, `participants`), optional wöchentlich wiederholt bis `repeatWeeklyUntil`;
+     * individuell (`individual: true`) ein oder mehrere Wunschtage (`days`), je Tag mit Personenzahl
+     * und den Namen aller Personen.
      */
     #[Route('/bookings', name: 'api_public_sauna_booking_submit', methods: ['POST'])]
-    public function submit(Request $request, SubmitSaunaBookingUseCase $useCase, SubmitIndividualSaunaRequestUseCase $individualUseCase): JsonResponse
-    {
+    public function submit(
+        Request $request,
+        SubmitSaunaBookingUseCase $useCase,
+        SubmitIndividualSaunaRequestUseCase $individualUseCase,
+        SubmitWeeklySaunaBookingUseCase $weeklyUseCase,
+    ): JsonResponse {
         $data = $request->getPayload();
         $firstName = trim($data->getString('firstName'));
         $lastName = trim($data->getString('lastName'));
@@ -72,6 +80,8 @@ readonly class PublicSaunaBookingController
             }
             [$date, $startTime, $endTime] = $this->schedule($data->getString('date'), $data->getString('startTime'), $data->getString('endTime'));
             $participants = $this->participants($data->all('participants'));
+            $rawRepeatUntil = trim($data->getString('repeatWeeklyUntil'));
+            $repeatUntil = $rawRepeatUntil === '' ? null : $this->date($rawRepeatUntil, 'Das Ende der wöchentlichen Wiederholung');
         }
 
         $limit = $this->saunaBookingLimiter->create($request->getClientIp() ?? 'unknown')->consume();
@@ -96,7 +106,7 @@ readonly class PublicSaunaBookingController
             ], JsonResponse::HTTP_ACCEPTED);
         }
 
-        $result = $useCase->execute(new SubmitSaunaBookingRequest(
+        $booking = new SubmitSaunaBookingRequest(
             date: $date,
             startTime: $startTime,
             endTime: $endTime,
@@ -107,7 +117,28 @@ readonly class PublicSaunaBookingController
             email: $email === '' ? null : $email,
             message: $message,
             participants: $participants,
-        ));
+        );
+        if ($repeatUntil !== null) {
+            $series = $weeklyUseCase->execute(new SubmitWeeklySaunaBookingRequest($booking, $repeatUntil));
+            $skipped = array_map(static fn (SaunaSkippedDate $skipped): string => $skipped->date->format('d.m.Y'), $series->skippedDates);
+
+            return new JsonResponse([
+                'id' => $series->requestId,
+                'message' => sprintf(
+                    'Vielen Dank. Ihre Sauna-Anfrage für %d %s wurde übermittelt und wird vom Verein geprüft.%s',
+                    count($series->bookedDates),
+                    count($series->bookedDates) === 1 ? 'Termin' : 'Termine',
+                    $skipped === [] ? '' : ' Nicht frei und daher nicht angefragt: '.implode(', ', $skipped).'.',
+                ),
+                'bookedDates' => array_map(static fn (\DateTimeImmutable $date): string => $date->format('Y-m-d'), $series->bookedDates),
+                'skippedDates' => array_map(static fn (SaunaSkippedDate $skipped): array => [
+                    'date' => $skipped->date->format('Y-m-d'),
+                    'reason' => $skipped->reason,
+                ], $series->skippedDates),
+            ], JsonResponse::HTTP_ACCEPTED);
+        }
+
+        $result = $useCase->execute($booking);
 
         return new JsonResponse([
             'id' => $result->id,
