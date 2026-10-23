@@ -171,7 +171,7 @@ const showEmailConnectionSettings = async () => {
             }
         });
 
-        return element('div', {className: 'protected-action-row', children: [recipientsField, saveRecipients]});
+        return element('div', {className: 'protected-action-row notification-recipient-row', children: [recipientsField, saveRecipients]});
     });
 
     workspace.replaceChildren(
