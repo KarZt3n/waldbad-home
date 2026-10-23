@@ -539,6 +539,19 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                     toast(error.message, 'error');
                 }
             });
+            // 24 Stunden nach Beginn der Veranstaltung ist keine Helferanmeldung mehr möglich; bleibt
+            // die Seite über diesen Zeitpunkt hinaus offen, wird der Button dann deaktiviert.
+            const helpClosesAt = new Date(`${block.eventDate}T${block.eventTime || '00:00'}`).getTime() + 24 * 60 * 60 * 1000;
+            const closeHelp = () => {
+                help.disabled = true;
+                help.title = 'Die Helferanmeldung ist geschlossen.';
+            };
+            if (!context.isPreview && !Number.isNaN(helpClosesAt)) {
+                const remaining = helpClosesAt - Date.now();
+                if (remaining <= 0) closeHelp();
+                // setTimeout verträgt höchstens ~24,8 Tage; weiter entfernte Termine prüft der nächste Seitenaufruf.
+                else if (remaining < 2 ** 31) setTimeout(closeHelp, remaining);
+            }
             actionRow.append(help);
         }
         (Array.isArray(block.eventCallToActions) ? block.eventCallToActions : []).forEach((action) => {

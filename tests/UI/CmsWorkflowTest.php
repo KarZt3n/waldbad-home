@@ -425,6 +425,9 @@ final class CmsWorkflowTest extends WebTestCase
 
     public function testAdminMutationRequiresValidSessionCsrfToken(): void
     {
+        // Die öffentliche Helferanmeldung schließt 24 Stunden nach Beginn; die Termine liegen deshalb in der Zukunft.
+        $eventDate = (new \DateTimeImmutable('+30 days'))->format('Y-m-d');
+        $updatedEventDate = (new \DateTimeImmutable('+37 days'))->format('Y-m-d');
         $createUser = self::getContainer()->get(CreateUserUseCase::class);
         if (!$createUser instanceof CreateUserUseCase) {
             throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
@@ -504,7 +507,7 @@ final class CmsWorkflowTest extends WebTestCase
                     'type' => 'event',
                     'content' => '',
                     'eventTitle' => '<strong>Sommerfest</strong>',
-                    'eventDate' => '2026-08-15',
+                    'eventDate' => $eventDate,
                     'eventTime' => '14:00',
                     'eventIdentifier' => 'event-sommerfest-2026',
                     'eventHelpEnabled' => true,
@@ -557,7 +560,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertStringContainsString('"title":"1000 m\\u00b2 Badeteich"', $responseContent);
         self::assertStringContainsString('"mediaSource":"Foto: Naturbad Borkheide e.V."', $responseContent);
         self::assertStringContainsString('"eventTitle":"Sommerfest"', $responseContent);
-        self::assertStringContainsString('"eventDate":"2026-08-15"', $responseContent);
+        self::assertStringContainsString('"eventDate":"'.$eventDate.'"', $responseContent);
         self::assertStringContainsString('"eventTime":"14:00"', $responseContent);
         self::assertStringContainsString('"eventIdentifier":"event-sommerfest-2026"', $responseContent);
         self::assertStringContainsString('"eventHelpEnabled":true', $responseContent);
@@ -643,7 +646,7 @@ final class CmsWorkflowTest extends WebTestCase
         $draftPayload['navigationLabel'] = 'Neuer Navigationstitel';
         $draftPayload['blocks'][0]['content'] = '<p>Noch nicht veröffentlichter Inhalt</p>';
         $draftPayload['blocks'][5]['eventTitle'] = 'Sommerfest verschoben';
-        $draftPayload['blocks'][5]['eventDate'] = '2026-08-22';
+        $draftPayload['blocks'][5]['eventDate'] = $updatedEventDate;
         $draftPayload['blocks'][5]['eventTime'] = '16:30';
         $draftPayload['version'] = $publishedPage['version'];
         $this->client->jsonRequest('PUT', '/api/admin/v1/pages/'.$createdPage['id'], $draftPayload, ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
@@ -687,7 +690,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertIsArray($helpersWithCurrentEvent['items']);
         self::assertIsArray($helpersWithCurrentEvent['items'][0]);
         self::assertSame('Sommerfest verschoben', $helpersWithCurrentEvent['items'][0]['eventTitle']);
-        self::assertSame('2026-08-22', $helpersWithCurrentEvent['items'][0]['eventDate']);
+        self::assertSame($updatedEventDate, $helpersWithCurrentEvent['items'][0]['eventDate']);
         self::assertSame('16:30', $helpersWithCurrentEvent['items'][0]['eventTime']);
 
         $this->client->request('GET', '/api/public/v1/event-activities/event-sommerfest-2026');
@@ -738,7 +741,7 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertIsArray($helpers['items'][0]);
         $helper = $helpers['items'][0];
         self::assertSame('Sommerfest verschoben', $helper['eventTitle']);
-        self::assertSame('2026-08-22', $helper['eventDate']);
+        self::assertSame($updatedEventDate, $helper['eventDate']);
         self::assertSame('16:30', $helper['eventTime']);
         self::assertSame('<b>Ich helfe beim Aufbau.</b>', $helper['message']);
         self::assertSame('new', $helper['status']);

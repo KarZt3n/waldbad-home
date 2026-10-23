@@ -52,6 +52,9 @@ readonly class SubmitEventHelpRequestUseCase
     {
         $event = $this->eventProvider->findPublished($eventIdentifier)
             ?? throw new BusinessRuleViolationException('Für diese Veranstaltung ist keine Helferanmeldung verfügbar.');
+        if ($event->isHelpRegistrationClosed($this->clock->now())) {
+            throw new BusinessRuleViolationException('Die Helferanmeldung für diese Veranstaltung ist geschlossen.');
+        }
         if (count($companions) > self::MAX_COMPANIONS) {
             throw new BusinessRuleViolationException(sprintf('Es können höchstens %d weitere Personen mitgebracht werden.', self::MAX_COMPANIONS));
         }

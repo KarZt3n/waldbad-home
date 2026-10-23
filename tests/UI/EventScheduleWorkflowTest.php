@@ -131,6 +131,41 @@ final class EventScheduleWorkflowTest extends WebTestCase
         self::assertSame(0, $this->responseData()['total']);
     }
 
+    /** 24 Stunden nach Beginn nimmt die öffentliche Helferanmeldung keine Anmeldungen mehr an. */
+    public function testHelperSignUpIsRejectedMoreThan24HoursAfterTheStart(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Herbstputz',
+            'date' => (new \DateTimeImmutable('-2 days'))->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => null,
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => $scheduleId,
+            'firstName' => 'Helfer',
+            'lastName' => 'Zuspät',
+            'birthDate' => '1990-06-15',
+            'message' => '',
+            'activityIds' => [],
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        $error = $this->responseData()['error'];
+        self::assertIsArray($error);
+        self::assertSame('Die Helferanmeldung für diese Veranstaltung ist geschlossen.', $error['message']);
+    }
+
     public function testListedActivitiesAreNotSelectableAndNeedNoHelperCount(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
