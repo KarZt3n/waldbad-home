@@ -28,6 +28,7 @@ enum MailTemplateKey: string
     case SaunaBookingSubmittedNotification = 'sauna_booking_submitted_notification';
     case SaunaBookingAccepted = 'sauna_booking_accepted';
     case SaunaBookingCancelled = 'sauna_booking_cancelled';
+    case EventHelpRequestSubmittedNotification = 'event_help_request_submitted_notification';
 
     public function label(): string
     {
@@ -43,6 +44,7 @@ enum MailTemplateKey: string
             self::SaunaBookingSubmittedNotification => 'Benachrichtigung: neue Sauna-Anmeldung',
             self::SaunaBookingAccepted => 'Bestätigung: Sauna-Anfrage angenommen',
             self::SaunaBookingCancelled => 'Bestätigung: Sauna-Termin storniert',
+            self::EventHelpRequestSubmittedNotification => 'Benachrichtigung: neue Helferanmeldung',
         };
     }
 
@@ -60,6 +62,7 @@ enum MailTemplateKey: string
             self::SaunaBookingSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über den Sauna-Kalender eine Anmeldung eingeht.',
             self::SaunaBookingAccepted => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ eine Sauna-Anfrage annimmt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds. Bei „Alle annehmen“ stehen alle angenommenen Termine der Person in einer Mail, sonst je angenommenem Termin eine eigene Mail.',
             self::SaunaBookingCancelled => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ einen angenommenen Termin storniert und dabei „Stornobestätigung senden“ angehakt lässt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds.',
+            self::EventHelpRequestSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Ich möchte helfen!“ eine Helferanmeldung zu einer Veranstaltung oder einem Arbeitseinsatz eingeht — eine Mail je Anmeldung, mitgebrachte Personen eingeschlossen.',
         };
     }
 
@@ -80,6 +83,7 @@ enum MailTemplateKey: string
             self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'termine', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht'],
             self::SaunaBookingAccepted => ['vorname', 'nachname', 'datum', 'termine', 'preis', 'nachricht', 'vereinsname'],
             self::SaunaBookingCancelled => ['vorname', 'nachname', 'datum', 'termin', 'vereinsname'],
+            self::EventHelpRequestSubmittedNotification => ['vorname', 'nachname', 'veranstaltung', 'datum', 'uhrzeit', 'personen', 'personenzahl', 'aktivitaeten', 'email', 'mitglied', 'nachricht', 'link'],
         };
     }
 
@@ -97,6 +101,7 @@ enum MailTemplateKey: string
             self::SaunaBookingSubmittedNotification => 'Neue Sauna-Anmeldung am {{datum}}',
             self::SaunaBookingAccepted => 'Deine Sauna-Anfrage wurde angenommen',
             self::SaunaBookingCancelled => 'Dein Sauna-Termin am {{datum}} wurde storniert',
+            self::EventHelpRequestSubmittedNotification => 'Neue Helferanmeldung: {{veranstaltung}} am {{datum}}',
         };
     }
 
@@ -238,6 +243,20 @@ enum MailTemplateKey: string
                 Viele Grüße
                 Dein {{vereinsname}}
                 TEXT,
+            self::EventHelpRequestSubmittedNotification => <<<'TEXT'
+                {{vorname}} {{nachname}} möchte bei „{{veranstaltung}}“ am {{datum}} um {{uhrzeit}} Uhr helfen.
+
+                Personen ({{personenzahl}}):
+                {{personen}}
+
+                Aktivitäten: {{aktivitaeten}}
+                E-Mail: {{email}}
+                Mitglied: {{mitglied}}
+                Nachricht: {{nachricht}}
+
+                Alle Helfer dieser Veranstaltung im Admin-Bereich:
+                {{link}}
+                TEXT,
         };
     }
 
@@ -332,6 +351,20 @@ enum MailTemplateKey: string
                 'datum' => '05.10.2026',
                 'termin' => "05.10.2026, 18:00–20:00 Uhr,\n- 4 Personen (Erika Musterfrau, Max Mustermann, Mia Mustermann, Tom Mustermann)\n- Preis: 20,00 €",
                 'vereinsname' => AssociationName::CURRENT,
+            ],
+            self::EventHelpRequestSubmittedNotification => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'veranstaltung' => 'Frühjahrsputz',
+                'datum' => '13.06.2026',
+                'uhrzeit' => '09:00',
+                'personen' => "- Erika Musterfrau\n- Max Mustermann",
+                'personenzahl' => '2',
+                'aktivitaeten' => 'Außenanlagen, Wasserbecken entmoosen',
+                'email' => 'erika@example.com',
+                'mitglied' => 'Bad-01234',
+                'nachricht' => 'Wir können ab 10 Uhr.',
+                'link' => 'https://waldbad-borkheide.de/admin/veranstaltungen/helfer/beispiel-veranstaltung',
             ],
         };
     }

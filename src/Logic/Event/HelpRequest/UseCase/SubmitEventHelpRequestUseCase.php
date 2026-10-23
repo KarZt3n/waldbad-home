@@ -9,9 +9,11 @@ use App\Logic\Event\Activity\Manager\EventActivityManagerInterface;
 use App\Logic\Event\Activity\Model\EventActivity;
 use App\Logic\Event\HelpRequest\Dto\EventHelpCompanionInput;
 use App\Logic\Event\HelpRequest\Dto\EventHelpRequestResponse;
+use App\Logic\Event\HelpRequest\EventHelpRequestNotifierInterface;
 use App\Logic\Event\HelpRequest\Manager\EventHelpRequestManagerInterface;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequest;
 use App\Logic\Event\HelpRequest\Model\EventHelpRequestStatus;
+use App\Logic\Event\HelpRequest\Model\EventHelpRequestSubmission;
 use App\Logic\Event\HelpRequest\Model\SelectedEventActivity;
 use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
 use App\Logic\Event\HelpRequest\Service\EventHelpRequestConfirmationMailer;
@@ -30,6 +32,7 @@ readonly class SubmitEventHelpRequestUseCase
         private EventHelpRequestConfirmationMailer $confirmationMailer,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
+        private EventHelpRequestNotifierInterface $notifier,
     ) {
     }
 
@@ -115,6 +118,19 @@ readonly class SubmitEventHelpRequestUseCase
                 null,
             );
         }
+        $this->notifier->helpRequestSubmitted(new EventHelpRequestSubmission(
+            event: $event,
+            firstName: $trimmedFirstName,
+            lastName: $trimmedLastName,
+            companionNames: array_map(
+                static fn (EventHelpCompanionInput $companion): string => trim($companion->firstName).' '.trim($companion->lastName),
+                $companions,
+            ),
+            activityNames: array_map(static fn (EventActivity $activity): string => $activity->name, $selectedActivities),
+            message: trim($message),
+            email: $trimmedEmail,
+            memberNumber: $response->memberNumber,
+        ));
 
         return $response;
     }
@@ -168,10 +184,10 @@ readonly class SubmitEventHelpRequestUseCase
                 // Anmeldung als „Nicht teilgenommen“ erfasst, ist sie durch die neue Anfrage wieder offen.
                 $survivor = count($existing) > 1 ? $this->duplicateMerger->merge($existing, $now) : $existing[0];
                 $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator)->reopen($now);
-                $response = EventHelpRequestResponse::fromRequest($this->manager->save($merged));
+                $response = EventHelpRequestResponse::fromRequest($this->manager->save($merged), memberNumber: $member->memberNumber);
             }
         }
-        $response ??= EventHelpRequestResponse::fromRequest($this->manager->save($request));
+        $response ??= EventHelpRequestResponse::fromRequest($this->manager->save($request), memberNumber: $member?->memberNumber);
 
         // Nur beim automatischen Matching hier beim Absenden, nicht beim nachträglichen manuellen
         // Verknüpfen in der Verwaltung (siehe `EventHelpRequestConfirmationMailer`).

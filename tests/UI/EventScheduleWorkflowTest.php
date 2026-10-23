@@ -131,6 +131,60 @@ final class EventScheduleWorkflowTest extends WebTestCase
         self::assertSame(0, $this->responseData()['total']);
     }
 
+    /** Eine Anmeldung samt mitgebrachter Person ergibt genau eine Benachrichtigung an die hinterlegten Empfänger. */
+    public function testHelperSignUpNotifiesConfiguredRecipientsOnce(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/event_help_request_submitted', [
+            'recipients' => ['helfer-team@example.test'],
+        ], $headers);
+        self::assertResponseIsSuccessful();
+
+        $date = new \DateTimeImmutable('+3 days');
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Herbstputz',
+            'date' => $date->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => null,
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
+            'eventIdentifier' => $scheduleId,
+            'firstName' => 'Helfer',
+            'lastName' => 'Ohnematch',
+            'birthDate' => '1990-06-15',
+            'message' => 'Ich bringe Werkzeug mit.',
+            'activityIds' => [],
+            'companions' => [['firstName' => 'Max', 'lastName' => 'Mustermann', 'birthDate' => '1988-03-02']],
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(202);
+
+        self::assertQueuedEmailCount(1);
+        $notification = self::getMailerMessage();
+        self::assertNotNull($notification);
+        self::assertEmailAddressContains($notification, 'To', 'helfer-team@example.test');
+        self::assertEmailHeaderSame($notification, 'Subject', 'Neue Helferanmeldung: Herbstputz am '.$date->format('d.m.Y'));
+        self::assertEmailTextBodyContains($notification, 'Helfer Ohnematch möchte bei „Herbstputz“ am '.$date->format('d.m.Y').' um 09:00 Uhr helfen.');
+        self::assertEmailTextBodyContains($notification, "Personen (2):\n- Helfer Ohnematch\n- Max Mustermann");
+        self::assertEmailTextBodyContains($notification, 'Mitglied: nicht zugeordnet');
+        self::assertEmailTextBodyContains($notification, 'Nachricht: Ich bringe Werkzeug mit.');
+        self::assertEmailTextBodyContains($notification, '/admin/veranstaltungen/helfer/'.$scheduleId);
+
+        // Der Link öffnet die Redaktion (die Veranstaltung wählt das Admin-Frontend aus).
+        $this->client->request('GET', '/admin/veranstaltungen/helfer/'.$scheduleId);
+        self::assertResponseIsSuccessful();
+    }
+
     /** 24 Stunden nach Beginn nimmt die öffentliche Helferanmeldung keine Anmeldungen mehr an. */
     public function testHelperSignUpIsRejectedMoreThan24HoursAfterTheStart(): void
     {

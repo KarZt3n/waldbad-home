@@ -1272,7 +1272,9 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .member-work-assignment-event > summary small { color: var(--muted); }
 .member-work-assignment-event[open] > summary { border-bottom: 1px solid var(--line); }
 .member-work-assignment-event ul { margin: 0; padding: .7rem 1rem .8rem 2.2rem; }
-.event-helper-group { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--line); border-radius: 1rem; background: var(--white); }
+.event-helper-group { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--line); border-radius: 1rem; background: var(--white); scroll-margin-top: 6rem; }
+/* Ziel eines Links aus der Benachrichtigungsmail (siehe `focusEventHelperGroup`). */
+.event-helper-group.is-focused { border-color: var(--lime-400); box-shadow: 0 0 0 2px var(--lime-400); }
 .event-helper-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
 .event-helper-group header p { margin-top: .25rem; color: var(--muted); }

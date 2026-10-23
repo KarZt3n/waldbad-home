@@ -14,6 +14,7 @@ enum NotificationEvent: string
     case MembershipApplicationSubmitted = 'membership_application_submitted';
     case MemberMessageSubmitted = 'member_message_submitted';
     case SaunaBookingSubmitted = 'sauna_booking_submitted';
+    case EventHelpRequestSubmitted = 'event_help_request_submitted';
 
     public function label(): string
     {
@@ -21,6 +22,7 @@ enum NotificationEvent: string
             self::MembershipApplicationSubmitted => 'Neuer Mitgliedsantrag eingegangen',
             self::MemberMessageSubmitted => 'Nachricht über „Meine Mitgliedschaft" gesendet',
             self::SaunaBookingSubmitted => 'Neue Sauna-Anmeldung eingegangen',
+            self::EventHelpRequestSubmitted => 'Neue Helferanmeldung eingegangen („Ich möchte helfen!“)',
         };
     }
 }
