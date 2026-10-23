@@ -4,7 +4,7 @@
 import {
     buildPageTree, confirmAction, element, field, flattenPageTree, formMessage, request, toast,
 } from '../core.js';
-import {actionButton, actionMenu, emptyState, searchField, sectionHeading} from './ui.js';
+import {actionButton, actionMenu, emptyState, focusLinkedItem, searchField, sectionHeading} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {collectionItemMediaEditor, richTextEditor} from './pages.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
@@ -756,7 +756,7 @@ const showEventHelpers = async () => {
                 element('div', {className: 'event-helper-archive-list event-helper-list', children: buildParticipantEntries(notParticipatedRequests, event)}),
             ],
         }) : null;
-        return element('section', {className: 'event-helper-group', attributes: {'data-event-identifier': event.eventIdentifier}, children: [
+        return element('section', {className: 'event-helper-group', attributes: {'data-link-target': event.eventIdentifier}, children: [
         element('header', {children: [
             element('div', {children: [
                 element('h3', {text: event.eventTitle}),
@@ -1710,26 +1710,11 @@ const eventTabsBySlug = {termine: 'events', helfer: 'helpers', aktivitaeten: 'ac
 const eventSlugsByTab = Object.fromEntries(Object.entries(eventTabsBySlug).map(([slug, tab]) => [tab, slug]));
 let activeEventTab = null;
 
-/**
- * Springt zur Veranstaltung aus einem Link wie `/admin/veranstaltungen/helfer/{Veranstaltung}`
- * (z. B. aus der Benachrichtigung über eine neue Helferanmeldung): umgebende Archive aufklappen,
- * hinscrollen und kurz hervorheben.
- */
-const focusEventHelperGroup = (eventIdentifier) => {
-    const group = [...workspace.querySelectorAll('.event-helper-group')].find((candidate) => candidate.dataset.eventIdentifier === eventIdentifier);
-    if (!group) {
-        toast('Zu der Veranstaltung aus dem Link gibt es keine Helferanmeldungen mehr.', 'info');
-        return;
-    }
-    for (let details = group.closest('details'); details; details = details.parentElement?.closest('details')) details.open = true;
-    group.classList.add('is-focused');
-    group.scrollIntoView({block: 'start'});
-};
-
 const showEventManagement = async (segments = []) => {
     if (segments[0] === 'veranstaltungen' && eventTabsBySlug[segments[1]]) {
         activeEventTab = eventTabsBySlug[segments[1]];
     }
+    // `/admin/veranstaltungen/helfer/{Veranstaltung}` aus der Benachrichtigung über eine neue Helferanmeldung.
     const focusEventIdentifier = segments[0] === 'veranstaltungen' && segments[1] === 'helfer' ? segments[2] || null : null;
     const tabs = [
         ...(hasModule('events') ? [['events', 'Veranstaltungen', showEvents]] : []),
@@ -1768,7 +1753,9 @@ const showEventManagement = async (segments = []) => {
     await active[2]();
     const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
     workspace.replaceChildren(tabStrip, panel);
-    if (activeEventTab === 'helpers' && focusEventIdentifier) focusEventHelperGroup(focusEventIdentifier);
+    if (activeEventTab === 'helpers' && focusEventIdentifier) {
+        focusLinkedItem(workspace, focusEventIdentifier, 'Zu der Veranstaltung aus dem Link gibt es keine Helferanmeldungen mehr.');
+    }
 };
 
 export {showEventManagement, buildCallToActionEditor};

@@ -2,7 +2,7 @@
 // einer gemeinsamen Route (`/admin/kontakt-feedback/...`).
 
 import {element, request} from '../core.js';
-import {actionButton, emptyState, sectionHeading} from './ui.js';
+import {actionButton, emptyState, focusLinkedItem, sectionHeading} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -54,7 +54,7 @@ const guestbookStatusLabel = (status) => ({
     rejected: 'Abgelehnt',
     spam: 'Spam',
 }[status] || status);
-const moderationCard = (entry, refresh) => element('article', {className: `management-card guestbook-card status-${entry.status}`, children: [
+const moderationCard = (entry, refresh) => element('article', {className: `management-card guestbook-card status-${entry.status}`, attributes: {'data-link-target': entry.id}, children: [
     element('header', {children: [element('strong', {text: entry.displayName}), element('small', {text: guestbookStatusLabel(entry.status) + ' · ' + new Date(entry.submittedAt).toLocaleString('de-DE')})]}),
     element('p', {text: entry.message}),
     ...(entry.email ? [element('a', {text: entry.email, attributes: {href: 'mailto:' + entry.email}})] : []),
@@ -70,7 +70,7 @@ const moderationCard = (entry, refresh) => element('article', {className: `manag
         })] : []),
     ]})] : []),
 ]});
-const contactCard = (item, refresh) => element('article', {className: 'management-card', children: [
+const contactCard = (item, refresh) => element('article', {className: 'management-card', attributes: {'data-link-target': item.id}, children: [
     element('header', {children: [element('strong', {text: item.subject || 'Kontaktanfrage'}), element('small', {text: item.status + ' · ' + new Date(item.submittedAt).toLocaleString('de-DE')})]}),
     element('p', {text: item.message}),
     element('a', {text: item.name + ' · ' + item.email, attributes: {href: 'mailto:' + item.email}}),
@@ -88,6 +88,8 @@ const showContactFeedbackManagement = async (segments = []) => {
     if (segments[0] === 'kontakt-feedback' && contactTabsBySlug[segments[1]]) {
         activeContactTab = contactTabsBySlug[segments[1]];
     }
+    // `/admin/kontakt-feedback/{Reiter}/{id}` aus der Benachrichtigung über eine neue Anfrage bzw. einen neuen Eintrag.
+    const focusId = segments[0] === 'kontakt-feedback' && contactTabsBySlug[segments[1]] === activeContactTab ? segments[2] || null : null;
     const tabs = [
         ...(hasModule('contact_requests') ? [['contact', 'Kontaktanfrage', showContact]] : []),
         ...(hasModule('guestbook') ? [['guestbook', 'Gästebuch', showGuestbook]] : []),
@@ -120,6 +122,11 @@ const showContactFeedbackManagement = async (segments = []) => {
     await active[2]();
     const panel = element('div', {className: 'sub-tab-panel', children: [...workspace.children]});
     workspace.replaceChildren(tabStrip, panel);
+    if (focusId) {
+        focusLinkedItem(workspace, focusId, activeContactTab === 'guestbook'
+            ? 'Der Gästebucheintrag aus dem Link wurde nicht gefunden.'
+            : 'Die Kontaktanfrage aus dem Link wurde nicht gefunden.');
+    }
 };
 
 export {showContactFeedbackManagement};

@@ -5,6 +5,7 @@ namespace App\Logic\Guestbook\Entry\UseCase;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Guestbook\Entry\Dto\GuestbookEntryResponse;
+use App\Logic\Guestbook\Entry\GuestbookEntryNotifierInterface;
 use App\Logic\Guestbook\Entry\Manager\GuestbookManagerInterface;
 use App\Logic\Guestbook\Entry\Model\GuestbookEntry;
 use App\Logic\Guestbook\Entry\Model\GuestbookStatus;
@@ -15,6 +16,7 @@ readonly class SubmitGuestbookEntryUseCase
         private GuestbookManagerInterface $manager,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
+        private GuestbookEntryNotifierInterface $notifier,
     ) {
     }
 
@@ -31,6 +33,9 @@ readonly class SubmitGuestbookEntryUseCase
             moderatedBy: null,
         );
 
-        return GuestbookEntryResponse::fromEntry($this->manager->save($entry), false);
+        $saved = $this->manager->save($entry);
+        $this->notifier->entrySubmitted($saved);
+
+        return GuestbookEntryResponse::fromEntry($saved, false);
     }
 }

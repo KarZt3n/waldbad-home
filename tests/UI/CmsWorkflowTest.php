@@ -103,6 +103,69 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
+    /** Neue Kontaktanfragen und Gästebucheinträge werden mit Direktlink in die Redaktion gemeldet. */
+    public function testContactRequestAndGuestbookEntryNotifyConfiguredRecipients(): void
+    {
+        $createUser = self::getContainer()->get(CreateUserUseCase::class);
+        if (!$createUser instanceof CreateUserUseCase) {
+            throw new \LogicException('Die Benutzeranlage ist im Testcontainer nicht verfügbar.');
+        }
+        $createUser->execute(new CreateUserRequest(
+            email: 'admin@example.test',
+            displayName: 'Admin',
+            roles: [Role::SuperAdmin],
+            moduleAccess: self::allModuleAccess(),
+        ));
+        $this->client->jsonRequest('POST', '/api/auth/v1/login-requests', ['email' => 'admin@example.test']);
+        $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
+        self::assertResponseIsSuccessful();
+        $login = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($login);
+        self::assertIsString($login['csrfToken']);
+        foreach (['contact_request_submitted' => 'kontakt@example.test', 'guestbook_entry_submitted' => 'gaestebuch@example.test'] as $event => $recipient) {
+            $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/'.$event, ['recipients' => [$recipient]], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+            self::assertResponseIsSuccessful();
+        }
+
+        $this->client->jsonRequest('POST', '/api/public/v1/contact-requests', [
+            'name' => 'Erika Musterfrau',
+            'email' => 'erika@example.test',
+            'subject' => 'Öffnungszeit',
+            'message' => 'Wann beginnt die Saison?',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(202);
+        $contactRequest = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($contactRequest);
+        self::assertIsString($contactRequest['id']);
+        self::assertQueuedEmailCount(1);
+        $contactMail = self::getMailerMessage();
+        self::assertNotNull($contactMail);
+        self::assertEmailAddressContains($contactMail, 'To', 'kontakt@example.test');
+        self::assertEmailHeaderSame($contactMail, 'Subject', 'Neue Kontaktanfrage: Öffnungszeit');
+        self::assertEmailTextBodyContains($contactMail, 'Erika Musterfrau (erika@example.test) hat über das Kontaktformular geschrieben.');
+        self::assertEmailTextBodyContains($contactMail, 'Wann beginnt die Saison?');
+        self::assertEmailTextBodyContains($contactMail, '/admin/kontakt-feedback/kontaktanfragen/'.$contactRequest['id']);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/guestbook-entries', [
+            'displayName' => 'Badegast',
+            'email' => '',
+            'message' => 'Ein wunderschöner Badetag.',
+        ]);
+        self::assertResponseStatusCodeSame(202);
+        $guestbookEntry = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($guestbookEntry);
+        self::assertIsString($guestbookEntry['id']);
+        self::assertQueuedEmailCount(1);
+        $guestbookMail = self::getMailerMessage();
+        self::assertNotNull($guestbookMail);
+        self::assertEmailAddressContains($guestbookMail, 'To', 'gaestebuch@example.test');
+        self::assertEmailHeaderSame($guestbookMail, 'Subject', 'Neuer Gästebucheintrag von Badegast');
+        self::assertEmailTextBodyContains($guestbookMail, 'Ein wunderschöner Badetag.');
+        self::assertEmailTextBodyContains($guestbookMail, 'E-Mail: –');
+        self::assertEmailTextBodyContains($guestbookMail, '/admin/kontakt-feedback/gaestebuch/'.$guestbookEntry['id']);
+    }
+
     public function testAdminRoleAlwaysHasFullAccessRegardlessOfStoredModuleAccess(): void
     {
         $createUser = self::getContainer()->get(CreateUserUseCase::class);

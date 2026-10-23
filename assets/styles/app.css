@@ -1272,9 +1272,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .member-work-assignment-event > summary small { color: var(--muted); }
 .member-work-assignment-event[open] > summary { border-bottom: 1px solid var(--line); }
 .member-work-assignment-event ul { margin: 0; padding: .7rem 1rem .8rem 2.2rem; }
-.event-helper-group { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--line); border-radius: 1rem; background: var(--white); scroll-margin-top: 6rem; }
-/* Ziel eines Links aus der Benachrichtigungsmail (siehe `focusEventHelperGroup`). */
-.event-helper-group.is-focused { border-color: var(--lime-400); box-shadow: 0 0 0 2px var(--lime-400); }
+.event-helper-group { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--line); border-radius: 1rem; background: var(--white); }
+/* Ziel eines Links aus einer Benachrichtigungsmail (siehe `focusLinkedItem` in admin/ui.js). */
+[data-link-target] { scroll-margin-top: 6rem; }
+[data-link-target].is-link-target { border-color: var(--lime-400); box-shadow: 0 0 0 2px var(--lime-400); }
 .event-helper-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
 .event-helper-group header p { margin-top: .25rem; color: var(--muted); }
@@ -1808,6 +1809,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .sub-tab { padding: .75rem 1.1rem; border: 0; border-bottom: .2rem solid transparent; color: var(--muted); background: transparent; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
 .sub-tab:hover { color: var(--forest-900); }
 .sub-tab.active { color: var(--forest-900); border-bottom-color: var(--forest-700); }
+/* Anzahl offener Einträge hinter dem Reitertitel (z. B. „Mitgliedsanträge 2“). */
+.sub-tab-count { margin-left: .4rem; padding: .05rem .5rem; font-size: .75rem; vertical-align: .1em; }
 .sub-tab-panel { display: contents; }
 
 .stat-tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; width: 100%; max-width: 68rem; margin: 0 auto; }

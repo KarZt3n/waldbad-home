@@ -90,4 +90,20 @@ const actionButton = (label, url, refresh, className = 'secondary-button', optio
     return button;
 };
 
-export {sectionHeading, emptyState, actionMenu, searchField, actionButton};
+/**
+ * Springt zu einem Eintrag aus einem Link in einer Benachrichtigungsmail (z. B.
+ * `/admin/kontakt-feedback/gaestebuch/{id}`): sucht in `root` das Element mit passendem
+ * `data-link-target`, klappt umgebende `<details>` auf, scrollt hin und hebt es hervor.
+ */
+const focusLinkedItem = (root, id, notFoundMessage) => {
+    const target = [...root.querySelectorAll('[data-link-target]')].find((candidate) => candidate.dataset.linkTarget === id);
+    if (!target) {
+        toast(notFoundMessage, 'info');
+        return;
+    }
+    for (let details = target.closest('details'); details; details = details.parentElement?.closest('details')) details.open = true;
+    target.classList.add('is-link-target');
+    target.scrollIntoView({block: 'start'});
+};
+
+export {sectionHeading, emptyState, actionMenu, searchField, actionButton, focusLinkedItem};

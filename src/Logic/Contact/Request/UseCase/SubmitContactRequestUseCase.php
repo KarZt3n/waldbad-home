@@ -4,6 +4,7 @@ namespace App\Logic\Contact\Request\UseCase;
 
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\IdentifierGeneratorInterface;
+use App\Logic\Contact\Request\ContactRequestNotifierInterface;
 use App\Logic\Contact\Request\Dto\ContactRequestResponse;
 use App\Logic\Contact\Request\Manager\ContactRequestManagerInterface;
 use App\Logic\Contact\Request\Model\ContactRequest;
@@ -15,6 +16,7 @@ readonly class SubmitContactRequestUseCase
         private ContactRequestManagerInterface $manager,
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
+        private ContactRequestNotifierInterface $notifier,
     ) {
     }
 
@@ -32,6 +34,9 @@ readonly class SubmitContactRequestUseCase
             updatedAt: $now,
         );
 
-        return ContactRequestResponse::fromRequest($this->manager->save($request));
+        $saved = $this->manager->save($request);
+        $this->notifier->contactRequestSubmitted($saved);
+
+        return ContactRequestResponse::fromRequest($saved);
     }
 }

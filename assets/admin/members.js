@@ -2231,6 +2231,27 @@ const membershipTabsBySlug = {
 const membershipSlugsByTab = Object.fromEntries(Object.entries(membershipTabsBySlug).map(([slug, tab]) => [tab, slug]));
 let activeMembershipTab = null;
 
+/**
+ * Anzahl offener Mitgliedsanträge und -nachrichten für die Reiterleiste, damit Unbearbeitetes ohne
+ * Umschalten auffällt. Fehlt das Modul oder schlägt die Abfrage fehl, bleibt der Reiter ohne Zahl.
+ */
+const loadOpenMembershipCounts = async () => {
+    const count = async (module, url, isOpen) => {
+        if (!hasModule(module)) return null;
+        try {
+            return (await request(url)).items.filter(isOpen).length;
+        } catch {
+            return null;
+        }
+    };
+    const [applications, messages] = await Promise.all([
+        count('membership_applications', '/api/admin/v1/membership-applications', (application) => !application.releasedAt && !application.rejectedAt),
+        count('member_messages', '/api/admin/v1/member-messages', (message) => message.status !== 'resolved'),
+    ]);
+
+    return {applications, messages};
+};
+
 const showMembershipManagement = async (segments = []) => {
     if (segments[0] === 'mitglieder' && membershipTabsBySlug[segments[1]]) {
         activeMembershipTab = membershipTabsBySlug[segments[1]];
@@ -2246,12 +2267,17 @@ const showMembershipManagement = async (segments = []) => {
     if (activeMembershipTab) {
         setAdminPath(['mitglieder', membershipSlugsByTab[activeMembershipTab]], true);
     }
+    const openCounts = await loadOpenMembershipCounts();
 
     const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Mitgliederverwaltung'}, children: tabs.map(([key, label]) => {
+        const open = openCounts[key] ?? 0;
         const button = element('a', {
             className: `sub-tab${key === activeMembershipTab ? ' active' : ''}`,
-            text: label,
-            attributes: {href: adminPath('mitglieder', membershipSlugsByTab[key])},
+            attributes: {href: adminPath('mitglieder', membershipSlugsByTab[key]), ...(open ? {'aria-label': `${label} (${open} offen)`} : {})},
+            children: [
+                element('span', {text: label}),
+                ...(open ? [element('span', {className: 'status-badge status-pending sub-tab-count', text: String(open), attributes: {'aria-hidden': 'true'}})] : []),
+            ],
         });
         button.addEventListener('click', async (event) => {
             event.preventDefault();

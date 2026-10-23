@@ -29,6 +29,8 @@ enum MailTemplateKey: string
     case SaunaBookingAccepted = 'sauna_booking_accepted';
     case SaunaBookingCancelled = 'sauna_booking_cancelled';
     case EventHelpRequestSubmittedNotification = 'event_help_request_submitted_notification';
+    case ContactRequestSubmittedNotification = 'contact_request_submitted_notification';
+    case GuestbookEntrySubmittedNotification = 'guestbook_entry_submitted_notification';
 
     public function label(): string
     {
@@ -45,6 +47,8 @@ enum MailTemplateKey: string
             self::SaunaBookingAccepted => 'Bestätigung: Sauna-Anfrage angenommen',
             self::SaunaBookingCancelled => 'Bestätigung: Sauna-Termin storniert',
             self::EventHelpRequestSubmittedNotification => 'Benachrichtigung: neue Helferanmeldung',
+            self::ContactRequestSubmittedNotification => 'Benachrichtigung: neue Kontaktanfrage',
+            self::GuestbookEntrySubmittedNotification => 'Benachrichtigung: neuer Gästebucheintrag',
         };
     }
 
@@ -63,6 +67,8 @@ enum MailTemplateKey: string
             self::SaunaBookingAccepted => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ eine Sauna-Anfrage annimmt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds. Bei „Alle annehmen“ stehen alle angenommenen Termine der Person in einer Mail, sonst je angenommenem Termin eine eigene Mail.',
             self::SaunaBookingCancelled => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ einen angenommenen Termin storniert und dabei „Stornobestätigung senden“ angehakt lässt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds.',
             self::EventHelpRequestSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Ich möchte helfen!“ eine Helferanmeldung zu einer Veranstaltung oder einem Arbeitseinsatz eingeht — eine Mail je Anmeldung, mitgebrachte Personen eingeschlossen.',
+            self::ContactRequestSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über das Kontaktformular eine Anfrage eingeht.',
+            self::GuestbookEntrySubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald ein neuer Gästebucheintrag eingeht, der noch freigegeben werden muss.',
         };
     }
 
@@ -84,6 +90,8 @@ enum MailTemplateKey: string
             self::SaunaBookingAccepted => ['vorname', 'nachname', 'datum', 'termine', 'preis', 'nachricht', 'vereinsname'],
             self::SaunaBookingCancelled => ['vorname', 'nachname', 'datum', 'termin', 'vereinsname'],
             self::EventHelpRequestSubmittedNotification => ['vorname', 'nachname', 'veranstaltung', 'datum', 'uhrzeit', 'personen', 'personenzahl', 'aktivitaeten', 'email', 'mitglied', 'nachricht', 'link'],
+            self::ContactRequestSubmittedNotification => ['name', 'email', 'betreff', 'nachricht', 'link'],
+            self::GuestbookEntrySubmittedNotification => ['name', 'email', 'nachricht', 'link'],
         };
     }
 
@@ -102,6 +110,8 @@ enum MailTemplateKey: string
             self::SaunaBookingAccepted => 'Deine Sauna-Anfrage wurde angenommen',
             self::SaunaBookingCancelled => 'Dein Sauna-Termin am {{datum}} wurde storniert',
             self::EventHelpRequestSubmittedNotification => 'Neue Helferanmeldung: {{veranstaltung}} am {{datum}}',
+            self::ContactRequestSubmittedNotification => 'Neue Kontaktanfrage: {{betreff}}',
+            self::GuestbookEntrySubmittedNotification => 'Neuer Gästebucheintrag von {{name}}',
         };
     }
 
@@ -257,6 +267,26 @@ enum MailTemplateKey: string
                 Alle Helfer dieser Veranstaltung im Admin-Bereich:
                 {{link}}
                 TEXT,
+            self::ContactRequestSubmittedNotification => <<<'TEXT'
+                {{name}} ({{email}}) hat über das Kontaktformular geschrieben.
+
+                Betreff: {{betreff}}
+
+                {{nachricht}}
+
+                Anfrage im Admin-Bereich bearbeiten:
+                {{link}}
+                TEXT,
+            self::GuestbookEntrySubmittedNotification => <<<'TEXT'
+                {{name}} hat einen Eintrag ins Gästebuch geschrieben. Er erscheint erst nach der Freigabe.
+
+                {{nachricht}}
+
+                E-Mail: {{email}}
+
+                Eintrag im Admin-Bereich freigeben oder ablehnen:
+                {{link}}
+                TEXT,
         };
     }
 
@@ -365,6 +395,19 @@ enum MailTemplateKey: string
                 'mitglied' => 'Bad-01234',
                 'nachricht' => 'Wir können ab 10 Uhr.',
                 'link' => 'https://waldbad-borkheide.de/admin/veranstaltungen/helfer/beispiel-veranstaltung',
+            ],
+            self::ContactRequestSubmittedNotification => [
+                'name' => 'Erika Musterfrau',
+                'email' => 'erika@example.com',
+                'betreff' => 'Frage zu den Öffnungszeiten',
+                'nachricht' => 'Hat das Bad am Pfingstmontag geöffnet?',
+                'link' => 'https://waldbad-borkheide.de/admin/kontakt-feedback/kontaktanfragen/beispiel-anfrage',
+            ],
+            self::GuestbookEntrySubmittedNotification => [
+                'name' => 'Erika Musterfrau',
+                'email' => 'erika@example.com',
+                'nachricht' => 'Ein wunderschönes Bad, wir kommen wieder!',
+                'link' => 'https://waldbad-borkheide.de/admin/kontakt-feedback/gaestebuch/beispiel-eintrag',
             ],
         };
     }
