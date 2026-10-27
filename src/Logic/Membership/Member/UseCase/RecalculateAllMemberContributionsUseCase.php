@@ -29,6 +29,13 @@ use App\Logic\Membership\Member\Service\MemberContributionCalculator;
  * Ein fehlender Beitragssatz für einzelne Mitglieder (z. B. eine gelöschte Kategorie) bricht den
  * gesamten Lauf nicht ab — der betroffene Datensatz wird übersprungen und als Fehler gemeldet,
  * alle anderen werden trotzdem aktualisiert.
+ *
+ * Gespeichert wird erst nach der Berechnung aller Haushalte, gemeinsam in einem Schreibvorgang:
+ * Ein Speichervorgang pro Mitglied wird mit der Anzahl geladener Mitglieder quadratisch langsamer
+ * (bei rund 1.000 Mitgliedern lokal über 20 Sekunden) und reißt auf dem Prod-Webspace die
+ * maximale Laufzeit eines Requests. Scheitert das Speichern (z. B. weil ein
+ * Mitglied zwischenzeitlich bearbeitet wurde), bleibt dadurch auch kein halb neu berechneter
+ * Bestand zurück.
  */
 readonly class RecalculateAllMemberContributionsUseCase
 {
@@ -59,7 +66,7 @@ readonly class RecalculateAllMemberContributionsUseCase
             $households[$member->primaryMemberNumber][] = $member;
         }
 
-        $updated = 0;
+        $recalculated = [];
         $errors = [];
         foreach ($households as $household) {
             $hasBoardMember = $this->exemption->hasBoardMember($household);
@@ -74,14 +81,15 @@ readonly class RecalculateAllMemberContributionsUseCase
                 try {
                     $candidate = $this->exemption->correct($candidate, $hasBoardMember);
                     $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
-                    $this->manager->save($candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents));
-                    ++$updated;
+                    $recalculated[] = $candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents);
                 } catch (BusinessRuleViolationException $exception) {
                     $errors[] = new MemberRecalculationError($candidate->memberNumber, $exception->getMessage());
                 }
             }
         }
 
-        return new RecalculateAllContributionsResponse($updated, $errors);
+        $this->manager->saveAll($recalculated);
+
+        return new RecalculateAllContributionsResponse(count($recalculated), $errors);
     }
 }

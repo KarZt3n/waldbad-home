@@ -40,7 +40,7 @@ services:
       APP_ENV: prod
       APP_DEBUG: "0"
       DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
-      MAILER_FROM_ADDRESS: waldbadhome@gmail.com
+      MAILER_FROM_ADDRESS: it@waldbad-borkheide.de
       MAILER_FROM_NAME: "Naturbad Borkheide e.V."
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "1"
@@ -79,7 +79,7 @@ services:
       APP_ENV: prod
       APP_DEBUG: "0"
       DEFAULT_URI: https://waldbad-home-stage.tail183645.ts.net
-      MAILER_FROM_ADDRESS: waldbadhome@gmail.com
+      MAILER_FROM_ADDRESS: it@waldbad-borkheide.de
       MAILER_FROM_NAME: "Naturbad Borkheide e.V."
       MESSENGER_TRANSPORT_DSN: doctrine://default?queue_name=async
       RUN_MIGRATIONS: "0"

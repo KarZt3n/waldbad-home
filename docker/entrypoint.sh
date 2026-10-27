@@ -19,6 +19,8 @@ db_password="$(read_secret /run/secrets/db_password)"
 export APP_SECRET="$(read_secret /run/secrets/app_secret)"
 export DATABASE_URL="mysql://${db_user}:${db_password}@database:3306/${db_name}?serverVersion=11.4.0-MariaDB&charset=utf8mb4"
 export MAILER_DSN="$(read_secret /run/secrets/mailer_dsn)"
+# Ohne Prod-Secrets-Vault steht Brevo nicht zur Verfügung; auch Anmeldelinks gehen über MAILER_DSN.
+export MAILER_EXPRESS_DSN="$MAILER_DSN"
 
 mkdir -p var/cache var/log public/uploads/media
 

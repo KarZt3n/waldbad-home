@@ -32,5 +32,14 @@ interface MemberManagerInterface
 
     public function save(Member $member): Member;
 
+    /**
+     * Speichert alle Mitglieder in einem gemeinsamen Schreibvorgang — entweder alle oder keines.
+     * Für Sammelläufe über viele Mitglieder gedacht, bei denen einzelne `save()`-Aufrufe zu
+     * langsam wären.
+     *
+     * @param list<Member> $members
+     */
+    public function saveAll(array $members): void;
+
     public function delete(string $id): void;
 }

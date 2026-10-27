@@ -1,14 +1,17 @@
+parameters:
+    # Ohne MAILER_EXPRESS_DSN gehen auch Express-Mails über MAILER_DSN (Dev und Stage).
+    mailer_express_dsn: '%env(MAILER_DSN)%'
+
 framework:
     mailer:
         # Der Transport wird pro Mail über `App\Logic\Settings\Email\Model\MailDelivery` gewählt.
         transports:
             main: '%env(MAILER_DSN)%'
-            express: '%env(MAILER_DSN)%'
+            express: '%env(default:mailer_express_dsn:MAILER_EXPRESS_DSN)%'
 
 when@prod:
-    framework:
-        mailer:
-            transports:
-                # Anmelde-/Zugangslinks über Brevo (schneller, aber Tageskontingent); der SMTP-Schlüssel liegt
-                # im Secrets-Vault (config/secrets/prod). Lehnt Brevo ab, geht die Mail über MAILER_DSN (T-Online).
-                express: 'failover(smtp://c032a9001%%40smtp-brevo.com:%env(urlencode:BREVO_SMTP_KEY)%@smtp-relay.brevo.com:587 %env(MAILER_DSN)%)'
+    parameters:
+        # Anmelde-/Zugangslinks über Brevo (schneller, aber Tageskontingent); der SMTP-Schlüssel liegt
+        # im Secrets-Vault (config/secrets/prod). Lehnt Brevo ab, geht die Mail über MAILER_DSN (T-Online).
+        # Stage läuft ebenfalls mit APP_ENV=prod, hat aber keinen Vault-Schlüssel und setzt MAILER_EXPRESS_DSN.
+        mailer_express_dsn: 'failover(smtp://c032a9001%%40smtp-brevo.com:%env(urlencode:BREVO_SMTP_KEY)%@smtp-relay.brevo.com:587 %env(MAILER_DSN)%)'

@@ -29,9 +29,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createMock(MemberManagerInterface::class);
         $members->method('search')->willReturn([$memberA, $memberB, $memberC]);
-        $members->expects(self::exactly(2))->method('save')->willReturnCallback(
-            static fn (Member $member): Member => $member,
-        );
+        $members->expects(self::once())->method('saveAll')->with(self::countOf(2));
 
         $calculator = $this->createStub(MemberContributionCalculator::class);
         $calculator->method('calculate')->willReturnCallback(
@@ -65,7 +63,6 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
-        $members->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
 
         $calculator = $this->createMock(MemberContributionCalculator::class);
         $calculator->expects(self::once())->method('calculate')->with(self::anything(), self::anything(), new \DateTimeImmutable('2027-01-01'))
@@ -84,7 +81,6 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('search')->willReturn([$member]);
-        $members->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
 
         $now = new \DateTimeImmutable('2026-09-28 10:15:00');
         $calculator = $this->createMock(MemberContributionCalculator::class);
@@ -109,14 +105,16 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createMock(MemberManagerInterface::class);
         $members->method('search')->willReturn([$board, $partner]);
-        $saved = [];
-        $members->expects(self::exactly(2))->method('save')->willReturnCallback(
-            static function (Member $member) use (&$saved): Member {
-                $saved[] = $member;
+        $members->expects(self::once())->method('saveAll')->with(self::callback(
+            static function (array $saved): bool {
+                self::assertCount(2, $saved);
+                foreach (self::membersById($saved) as $member) {
+                    self::assertFalse($member->contributionLiable);
+                }
 
-                return $member;
+                return true;
             },
-        );
+        ));
 
         $calculator = $this->createMock(MemberContributionCalculator::class);
         $calculator->expects(self::exactly(2))->method('calculate')->willReturnCallback(
@@ -134,10 +132,6 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
 
         self::assertSame(2, $result->updated);
-        self::assertCount(2, $saved);
-        foreach ($saved as $member) {
-            self::assertFalse($member->contributionLiable);
-        }
     }
 
     public function testHouseholdWithoutBoardMemberAnymoreIsFullyReactivated(): void
@@ -151,14 +145,13 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createMock(MemberManagerInterface::class);
         $members->method('search')->willReturn([$formerBoard, $stillExemptPartner]);
-        $saved = [];
-        $members->expects(self::exactly(2))->method('save')->willReturnCallback(
-            static function (Member $member) use (&$saved): Member {
-                $saved[$member->id] = $member;
+        $members->expects(self::once())->method('saveAll')->with(self::callback(
+            static function (array $saved): bool {
+                self::assertTrue(self::membersById($saved)['partner']->contributionLiable);
 
-                return $member;
+                return true;
             },
-        );
+        ));
 
         $calculator = $this->createMock(MemberContributionCalculator::class);
         $calculator->expects(self::exactly(2))->method('calculate')->willReturnCallback(
@@ -174,8 +167,6 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
 
         (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute();
-
-        self::assertTrue($saved['partner']->contributionLiable);
     }
 
     public function testMemberThatCannotBeReactivatedIsSkippedAndReportedByMemberNumberWithoutAbortingOtherHouseholds(): void
@@ -190,9 +181,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createMock(MemberManagerInterface::class);
         $members->method('search')->willReturn([$cannotReactivate, $other]);
-        $members->expects(self::once())->method('save')->willReturnCallback(
-            static fn (Member $member): Member => $member,
-        );
+        $members->expects(self::once())->method('saveAll')->with(self::countOf(1));
 
         $calculator = $this->createStub(MemberContributionCalculator::class);
         $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
@@ -235,23 +224,39 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
 
         $members = $this->createMock(MemberManagerInterface::class);
         $members->method('search')->willReturn([$parent, $formerChild, $stillChild]);
-        $saved = [];
-        $members->method('save')->willReturnCallback(
-            static function (Member $member) use (&$saved): Member {
-                $saved[$member->id] = $member;
+        $members->expects(self::once())->method('saveAll')->with(self::callback(
+            static function (array $saved): bool {
+                $byId = self::membersById($saved);
+                self::assertSame(FamilyRole::None, $byId['former-child']->familyRole);
+                self::assertSame(ContributionCategory::IndividualSenior, $byId['former-child']->contributionCategory);
+                self::assertSame(FamilyRole::Child, $byId['still-child']->familyRole);
 
-                return $member;
+                return true;
             },
-        );
+        ));
 
         $clock = $this->createStub(ClockInterface::class);
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
 
         (new RecalculateAllMemberContributionsUseCase($members, $this->realCalculator(), $clock, new BoardFamilyExemptionResolver()))->execute();
+    }
 
-        self::assertSame(FamilyRole::None, $saved['former-child']->familyRole);
-        self::assertSame(ContributionCategory::IndividualSenior, $saved['former-child']->contributionCategory);
-        self::assertSame(FamilyRole::Child, $saved['still-child']->familyRole);
+    /**
+     * @param array<mixed> $saved
+     *
+     * @return array<string, Member>
+     */
+    private static function membersById(array $saved): array
+    {
+        $byId = [];
+        foreach ($saved as $member) {
+            if (!$member instanceof Member) {
+                self::fail('saveAll() darf nur Mitglieder erhalten.');
+            }
+            $byId[$member->id] = $member;
+        }
+
+        return $byId;
     }
 
     private function realCalculator(): MemberContributionCalculator

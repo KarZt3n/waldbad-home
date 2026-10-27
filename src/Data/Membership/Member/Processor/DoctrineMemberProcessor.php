@@ -26,28 +26,23 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
 
     public function save(Member $member): Member
     {
-        if ($member->version === 0) {
-            return $this->create($member);
-        }
-
-        $entity = $this->entityManager->find(MemberEntity::class, $member->id);
-        if ($entity === null) {
-            throw new MemberNotFoundException($member->id);
-        }
-        try {
-            $this->entityManager->lock($entity, LockMode::OPTIMISTIC, $member->version);
-            $this->mapper->updateEntity($member, $entity, $this->clock->now());
-            $this->entityManager->flush();
-        } catch (OptimisticLockException $exception) {
-            throw new ConcurrencyException(
-                'Das Mitglied wurde zwischenzeitlich geändert. Bitte lade die Daten neu.',
-                previous: $exception,
-            );
-        } catch (UniqueConstraintViolationException $exception) {
-            throw $this->duplicateMemberNumberException($member, $exception);
-        }
+        $entity = $this->stage($member);
+        $this->flush(sprintf('Die Mitgliedsnummer "%s" ist bereits vergeben.', $member->memberNumber));
 
         return $this->mapper->toModel($entity);
+    }
+
+    public function saveAll(array $members): void
+    {
+        if ($members === []) {
+            return;
+        }
+        // Ein einziger flush: Jeder flush prüft alle verwalteten Entities auf Änderungen, ein flush
+        // pro Mitglied wird bei vielen geladenen Mitgliedern quadratisch langsam.
+        foreach ($members as $member) {
+            $this->stage($member);
+        }
+        $this->flush('Eine der Mitgliedsnummern ist bereits vergeben.');
     }
 
     public function delete(string $id): void
@@ -60,23 +55,44 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         $this->entityManager->flush();
     }
 
-    private function create(Member $member): Member
+    private function stage(Member $member): MemberEntity
     {
-        $entity = $this->mapper->createEntity($member, $this->clock->now());
-        try {
+        if ($member->version === 0) {
+            $entity = $this->mapper->createEntity($member, $this->clock->now());
             $this->entityManager->persist($entity);
-            $this->entityManager->flush();
-        } catch (UniqueConstraintViolationException $exception) {
-            throw $this->duplicateMemberNumberException($member, $exception);
+
+            return $entity;
         }
 
-        return $this->mapper->toModel($entity);
+        $entity = $this->entityManager->find(MemberEntity::class, $member->id);
+        if ($entity === null) {
+            throw new MemberNotFoundException($member->id);
+        }
+        try {
+            $this->entityManager->lock($entity, LockMode::OPTIMISTIC, $member->version);
+        } catch (OptimisticLockException $exception) {
+            throw $this->concurrencyException($exception);
+        }
+        $this->mapper->updateEntity($member, $entity, $this->clock->now());
+
+        return $entity;
     }
 
-    private function duplicateMemberNumberException(Member $member, UniqueConstraintViolationException $exception): BusinessRuleViolationException
+    private function flush(string $duplicateMemberNumberMessage): void
     {
-        return new BusinessRuleViolationException(
-            sprintf('Die Mitgliedsnummer "%s" ist bereits vergeben.', $member->memberNumber),
+        try {
+            $this->entityManager->flush();
+        } catch (OptimisticLockException $exception) {
+            throw $this->concurrencyException($exception);
+        } catch (UniqueConstraintViolationException $exception) {
+            throw new BusinessRuleViolationException($duplicateMemberNumberMessage, previous: $exception);
+        }
+    }
+
+    private function concurrencyException(OptimisticLockException $exception): ConcurrencyException
+    {
+        return new ConcurrencyException(
+            'Das Mitglied wurde zwischenzeitlich geändert. Bitte lade die Daten neu.',
             previous: $exception,
         );
     }

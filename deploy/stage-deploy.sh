@@ -81,8 +81,8 @@ fi
 
 if [ ! -s "$secret_dir/mailer_dsn" ]; then
     printf 'Es ist noch kein Mailversand eingerichtet.\n' >&2
-    printf 'Legen Sie zuerst %s mit dem SMTP-DSN an, z. B.:\n' "$secret_dir/mailer_dsn" >&2
-    printf '  printf '"'"'smtp://user%%40example.test:app-passwort@smtp.example.test:587'"'"' > %s\n' "$secret_dir/mailer_dsn" >&2
+    printf 'Legen Sie zuerst %s mit dem T-Online-SMTP-DSN an (Benutzer und Passwort URL-kodiert):\n' "$secret_dir/mailer_dsn" >&2
+    printf '  printf '"'"'smtp://it%%40waldbad-borkheide.de:passwort@securesmtp.t-online.de:587'"'"' > %s\n' "$secret_dir/mailer_dsn" >&2
     printf '  chmod 0600 %s\n' "$secret_dir/mailer_dsn" >&2
     exit 1
 fi

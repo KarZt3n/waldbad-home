@@ -13,8 +13,13 @@ Die Stage-Anwendung läuft auf der Proxmox-VM `web-apps-stage` als eigener Docke
 - aktives Release: Symlink `/srv/webapps/waldbad-home/current`
 - persistentes Datenbank-Volume und releaseunabhängige Medien unter `/srv/webapps/waldbad-home/shared/media`
 - Secrets: ausschließlich auf der VM unter `/srv/webapps/waldbad-home/secrets`
+- Mailversand: alle Mails (auch Anmelde-/Zugangslinks) über T-Online-SMTP; der DSN liegt im Secret
+  `mailer_dsn`, z. B. `smtp://<benutzer-url-kodiert>:<passwort-url-kodiert>@securesmtp.t-online.de:587`.
+  Brevo wird auf Stage nicht verwendet.
 
-Die Entwicklungsdateien `compose.yaml` und `compose.override.yaml` bleiben davon unabhängig.
+Die Entwicklungsdateien `compose.yaml` und `compose.override.yaml` bleiben davon unabhängig. Lokal (DDEV)
+setzt `.ddev/config.yaml` `MAILER_DSN` fest auf Mailpit; es werden keine echten Mails versendet
+(Postfach: `ddev mailpit`).
 
 ## Privater externer Zugriff
 
