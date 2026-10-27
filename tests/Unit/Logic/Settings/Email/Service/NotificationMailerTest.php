@@ -4,6 +4,7 @@ namespace App\Tests\Unit\Logic\Settings\Email\Service;
 
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
+use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
@@ -42,7 +43,9 @@ final class NotificationMailerTest extends TestCase
         ]));
 
         $mailer = $this->createMock(MailerInterface::class);
-        $mailer->expects(self::once())->method('send');
+        $mailer->expects(self::once())->method('send')->with(self::callback(
+            static fn (Email $email): bool => $email->getHeaders()->get('X-Transport')?->getBodyAsString() === 'main',
+        ));
 
         $this->mailerFor($manager, $mailer, $this->renderer('Hallo {{vorname}}'))
             ->notify(NotificationEvent::MembershipApplicationSubmitted, MailTemplateKey::MembershipApplicationSubmittedNotification, ['vorname' => 'Erika']);
@@ -75,11 +78,26 @@ final class NotificationMailerTest extends TestCase
             static fn (Email $email): bool => count($email->getTo()) === 1
                 && $email->getTo()[0]->getAddress() === 'applicant@example.test'
                 && $email->getFrom()[0]->getAddress() === 'from@example.test'
-                && $email->getReplyTo()[0]->getAddress() === 'from@example.test',
+                && $email->getReplyTo()[0]->getAddress() === 'from@example.test'
+                && $email->getHeaders()->get('X-Transport')?->getBodyAsString() === 'main',
         ));
 
         $this->mailerFor($manager, $mailer)
             ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, ['vorname' => 'Erika']);
+    }
+
+    public function testSendToRequestsTheExpressTransportForTimeCriticalMails(): void
+    {
+        $manager = $this->createStub(EmailSettingsManagerInterface::class);
+        $manager->method('get')->willReturn(new EmailSettings([]));
+
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::once())->method('send')->with(self::callback(
+            static fn (Email $email): bool => $email->getHeaders()->get('X-Transport')?->getBodyAsString() === 'express',
+        ));
+
+        $this->mailerFor($manager, $mailer)
+            ->sendTo('admin@example.test', MailTemplateKey::AdminLoginMagicLink, ['link' => 'https://example.test'], MailDelivery::Express);
     }
 
     private function mailerFor(

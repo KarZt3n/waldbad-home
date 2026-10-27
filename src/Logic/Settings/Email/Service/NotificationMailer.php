@@ -4,6 +4,7 @@ namespace App\Logic\Settings\Email\Service;
 
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\AssociationName;
+use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
@@ -26,7 +27,8 @@ use Symfony\Component\Mime\Email;
  *   `ReleaseMembershipApplicationUseCase`.
  *
  * Der Versandweg selbst ist der reguläre, per `MAILER_DSN` konfigurierte `symfony/mailer`
- * (`config/packages/mailer.yaml`) — keine eigene, admin-editierbare SMTP-Konfiguration mehr: eine
+ * (`config/packages/mailer.yaml`); zeitkritische Mails können über `MailDelivery::Express` einen
+ * schnelleren Transport anfordern — keine eigene, admin-editierbare SMTP-Konfiguration mehr: eine
  * fehlende/unvollständige Datenbankzeile konnte sonst jeden Versand ohne jede Fehlermeldung
  * verschlucken. Absenderadresse/-name kommen ebenso aus der Deployment-Konfiguration
  * (`MAILER_FROM_ADDRESS`/`MAILER_FROM_NAME`, siehe `config/services.yaml`) und gelten auch als Reply-To.
@@ -63,22 +65,22 @@ readonly class NotificationMailer
             return;
         }
 
-        $this->send($templateKey, $placeholders, $recipients, $event->value);
+        $this->send($templateKey, $placeholders, $recipients, $event->value, MailDelivery::Standard);
     }
 
     /**
      * @param array<string, string> $placeholders
      */
-    public function sendTo(string $toEmail, MailTemplateKey $templateKey, array $placeholders): void
+    public function sendTo(string $toEmail, MailTemplateKey $templateKey, array $placeholders, MailDelivery $delivery = MailDelivery::Standard): void
     {
-        $this->send($templateKey, $placeholders, [$toEmail], $templateKey->value);
+        $this->send($templateKey, $placeholders, [$toEmail], $templateKey->value, $delivery);
     }
 
     /**
      * @param array<string, string> $placeholders
      * @param list<string> $recipients
      */
-    private function send(MailTemplateKey $templateKey, array $placeholders, array $recipients, string $logContext): void
+    private function send(MailTemplateKey $templateKey, array $placeholders, array $recipients, string $logContext, MailDelivery $delivery): void
     {
         try {
             $rendered = $this->templateRenderer->render($templateKey, $placeholders);
@@ -95,6 +97,8 @@ readonly class NotificationMailer
             foreach ($recipients as $recipient) {
                 $email->addTo($recipient);
             }
+            // symfony/mailer wählt anhand dieses Headers den Transport und entfernt ihn vor dem Versand.
+            $email->getHeaders()->addTextHeader('X-Transport', $delivery->value);
             $this->mailer->send($email);
         } catch (\Throwable $exception) {
             $this->logger->error('E-Mail für "{context}" konnte nicht gesendet werden: {message}', [

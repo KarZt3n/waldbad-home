@@ -13,6 +13,7 @@ use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
 use App\Logic\Settings\Email\Model\AssociationName;
+use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use Psr\Log\LoggerInterface;
@@ -83,7 +84,7 @@ readonly class RequestMemberAccessUseCase
                 'passwort' => $password,
                 'gueltig_minuten' => (string) self::VALIDITY_MINUTES,
                 'vereinsname' => AssociationName::CURRENT,
-            ]);
+            ], MailDelivery::Express);
         } catch (\Throwable $exception) {
             $this->logger->error('Zugangslink für "Meine Mitgliedschaft" konnte nicht erstellt/versendet werden: {message}', [
                 'message' => $exception->getMessage(),

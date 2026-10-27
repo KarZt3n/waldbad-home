@@ -206,6 +206,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
         self::assertStringContainsString('https://example.test/meine-mitgliedschaft?token=raw-token-value', (string) $capturedEmail->getTextBody());
         self::assertStringContainsString(self::PASSWORD, (string) $capturedEmail->getTextBody());
         self::assertStringContainsString('30 Minuten', (string) $capturedEmail->getTextBody());
+        self::assertSame('express', $capturedEmail->getHeaders()->get('X-Transport')?->getBodyAsString());
     }
 
     public function testLogsInsteadOfThrowingWhenSomethingFails(): void

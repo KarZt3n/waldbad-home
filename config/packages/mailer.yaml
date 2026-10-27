@@ -1,10 +1,14 @@
 framework:
     mailer:
-        dsn: '%env(MAILER_DSN)%'
+        # Der Transport wird pro Mail über `App\Logic\Settings\Email\Model\MailDelivery` gewählt.
+        transports:
+            main: '%env(MAILER_DSN)%'
+            express: '%env(MAILER_DSN)%'
 
 when@prod:
     framework:
         mailer:
-            # Der Brevo-SMTP-Schlüssel liegt im Secrets-Vault (config/secrets/prod).
-            # Lehnt Brevo den Versand ab, geht die Mail über MAILER_DSN (T-Online) raus.
-            dsn: 'failover(smtp://c032a9001%%40smtp-brevo.com:%env(urlencode:BREVO_SMTP_KEY)%@smtp-relay.brevo.com:587 %env(MAILER_DSN)%)'
+            transports:
+                # Anmelde-/Zugangslinks über Brevo (schneller, aber Tageskontingent); der SMTP-Schlüssel liegt
+                # im Secrets-Vault (config/secrets/prod). Lehnt Brevo ab, geht die Mail über MAILER_DSN (T-Online).
+                express: 'failover(smtp://c032a9001%%40smtp-brevo.com:%env(urlencode:BREVO_SMTP_KEY)%@smtp-relay.brevo.com:587 %env(MAILER_DSN)%)'

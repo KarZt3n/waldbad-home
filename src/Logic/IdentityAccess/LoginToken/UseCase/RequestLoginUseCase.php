@@ -10,6 +10,7 @@ use App\Logic\IdentityAccess\LoginToken\Manager\LoginTokenManagerInterface;
 use App\Logic\IdentityAccess\LoginToken\Model\LoginToken;
 use App\Logic\IdentityAccess\User\Manager\UserManagerInterface;
 use App\Logic\Settings\Email\Model\AssociationName;
+use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use Psr\Log\LoggerInterface;
@@ -62,7 +63,7 @@ readonly class RequestLoginUseCase
                 'link' => $this->linkBuilder->build($rawToken),
                 'gueltig_minuten' => (string) self::VALIDITY_MINUTES,
                 'vereinsname' => AssociationName::CURRENT,
-            ]);
+            ], MailDelivery::Express);
         } catch (\Throwable $exception) {
             $this->logger->error('Anmeldelink für die Redaktion konnte nicht erstellt/versendet werden: {message}', [
                 'message' => $exception->getMessage(),

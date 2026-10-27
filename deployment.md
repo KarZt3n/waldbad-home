@@ -189,13 +189,16 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    MESSENGER_TRANSPORT_DSN=sync://
    ```
 
-   `MAILER_DSN` ist in Prod der Ausweichweg, wenn Brevo den Versand ablehnt (siehe Schritt 3). Er muss auf
-   einen echten Mailserver zeigen; mit `null://null` würden solche Mails stillschweigend verworfen.
+   `MAILER_DSN` ist in Prod der reguläre Versandweg und der Ausweichweg für Brevo (siehe Schritt 3). Er muss
+   auf einen echten Mailserver zeigen; mit `null://null` würden Mails stillschweigend verworfen.
 
-3. Mails gehen in Prod zuerst über Brevo (`smtp-relay.brevo.com:587`, Login `c032a9001@smtp-brevo.com`,
-   siehe `config/packages/mailer.yaml`) und nur bei einem Fehler über `MAILER_DSN`. Nimmt Brevo eine Mail
-   an und verwirft sie danach (z. B. bei nicht verifizierter Domain), greift der Ausweichweg nicht; das zeigt
-   nur das Versandlog im Brevo-Dashboard. Der SMTP-Schlüssel liegt im Symfony-Secrets-Vault:
+3. Zeitkritische Mails (Anmeldelink für `/admin`, Zugangslink für „Meine Mitgliedschaft“, siehe
+   `MailDelivery::Express`) gehen in Prod über Brevo (`smtp-relay.brevo.com:587`, Login
+   `c032a9001@smtp-brevo.com`, siehe `config/packages/mailer.yaml`), alle anderen direkt über `MAILER_DSN`.
+   So bleibt das Brevo-Tageskontingent für die Links frei. Lehnt Brevo ab (z. B. Kontingent erschöpft),
+   gehen auch die Links über `MAILER_DSN`. Nimmt Brevo eine Mail an und verwirft sie danach (z. B. bei nicht
+   verifizierter Domain), greift der Ausweichweg nicht; das zeigt nur das Versandlog im Brevo-Dashboard. Der
+   SMTP-Schlüssel liegt im Symfony-Secrets-Vault:
 
    ```bash
    php bin/console secrets:set BREVO_SMTP_KEY --env=prod
