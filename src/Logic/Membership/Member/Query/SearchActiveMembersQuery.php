@@ -8,7 +8,8 @@ use App\Logic\Membership\Member\MemberProviderInterface;
 
 /**
  * Modulübergreifender Einstiegspunkt für eine Personensuche nach Name oder Mitgliedsnummer, z. B.
- * zum Eintragen in den Sauna-Dienstplan. Ausgetretene Mitglieder werden nicht geliefert.
+ * zum Eintragen in den Sauna-Dienstplan. Ausgetretene Mitglieder werden nicht geliefert. Die
+ * Treffer sind alphabetisch nach Nachname und Vorname sortiert.
  */
 readonly class SearchActiveMembersQuery
 {
@@ -19,9 +20,9 @@ readonly class SearchActiveMembersQuery
     }
 
     /** @return list<MemberSearchResultResponse> */
-    public function execute(string $term, int $limit): array
+    public function execute(string $term, ?int $limit = null): array
     {
-        if (trim($term) === '' || $limit < 1) {
+        if (trim($term) === '' || ($limit !== null && $limit < 1)) {
             return [];
         }
         $now = $this->clock->now();
@@ -32,6 +33,6 @@ readonly class SearchActiveMembersQuery
             }
         }
 
-        return array_slice($results, 0, $limit);
+        return $limit === null ? $results : array_slice($results, 0, $limit);
     }
 }

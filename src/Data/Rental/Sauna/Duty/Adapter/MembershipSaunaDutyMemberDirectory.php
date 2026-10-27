@@ -17,7 +17,7 @@ readonly class MembershipSaunaDutyMemberDirectory implements SaunaDutyMemberDire
     ) {
     }
 
-    public function search(string $term, int $limit): array
+    public function search(string $term): array
     {
         return array_map(
             static fn (MemberSearchResultResponse $member): SaunaDutyCandidate => new SaunaDutyCandidate(
@@ -29,7 +29,7 @@ readonly class MembershipSaunaDutyMemberDirectory implements SaunaDutyMemberDire
                 birthDate: $member->birthDate,
                 boardMember: $member->boardMember,
             ),
-            $this->search->execute($term, $limit),
+            $this->search->execute($term),
         );
     }
 
