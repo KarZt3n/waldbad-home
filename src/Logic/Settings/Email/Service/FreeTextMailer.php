@@ -37,8 +37,11 @@ readonly class FreeTextMailer
             AssociationName::CURRENT,
         );
 
+        $sender = new Address($this->fromAddress, $this->fromName ?? '');
         $this->mailer->send((new Email())
-            ->from(new Address($this->fromAddress, $this->fromName ?? ''))
+            ->from($sender)
+            // Siehe NotificationMailer: Antworten gehen an den Verein, auch wenn der Versanddienst den Absender ersetzt.
+            ->replyTo($sender)
             ->to($recipient)
             ->subject($subject)
             ->text($body)

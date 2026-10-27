@@ -26,7 +26,8 @@ final class ReplyToMemberMessageUseCaseTest extends TestCase
                 && $email->getSubject() === 'Ihre Nachricht vom 01.06.2026'
                 && $email->getTextBody() === "Hallo Erika,\n\nerledigt."
                 && str_contains((string) $email->getHtmlBody(), '<!doctype html>')
-                && $email->getFrom()[0]->getAddress() === 'verein@example.test',
+                && $email->getFrom()[0]->getAddress() === 'verein@example.test'
+                && $email->getReplyTo()[0]->getAddress() === 'verein@example.test',
         ));
         $manager = $this->createMock(MemberMessageManagerInterface::class);
         $manager->method('get')->willReturn($this->message());

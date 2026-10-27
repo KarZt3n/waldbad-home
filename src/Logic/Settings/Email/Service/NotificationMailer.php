@@ -29,7 +29,7 @@ use Symfony\Component\Mime\Email;
  * (`config/packages/mailer.yaml`) — keine eigene, admin-editierbare SMTP-Konfiguration mehr: eine
  * fehlende/unvollständige Datenbankzeile konnte sonst jeden Versand ohne jede Fehlermeldung
  * verschlucken. Absenderadresse/-name kommen ebenso aus der Deployment-Konfiguration
- * (`MAILER_FROM_ADDRESS`/`MAILER_FROM_NAME`, siehe `config/services.yaml`).
+ * (`MAILER_FROM_ADDRESS`/`MAILER_FROM_NAME`, siehe `config/services.yaml`) und gelten auch als Reply-To.
  *
  * Bewusst „best effort“: Ist das Ereignis ohne Empfänger, oder schlägt der eigentliche Versand fehl
  * (Server nicht erreichbar, Zugangsdaten falsch, …), wird das nur geloggt — die eigentliche,
@@ -83,8 +83,12 @@ readonly class NotificationMailer
         try {
             $rendered = $this->templateRenderer->render($templateKey, $placeholders);
             $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), AssociationName::CURRENT);
+            $sender = new Address($this->fromAddress, $this->fromName ?? '');
             $email = (new Email())
-                ->from(new Address($this->fromAddress, $this->fromName ?? ''))
+                ->from($sender)
+                // Versanddienste wie Brevo ersetzen den Absender teils durch eine eigene Adresse;
+                // Antworten sollen trotzdem beim Verein ankommen.
+                ->replyTo($sender)
                 ->subject($rendered['subject'])
                 ->text($rendered['body'])
                 ->html($html);

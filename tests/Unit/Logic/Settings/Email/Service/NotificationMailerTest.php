@@ -19,6 +19,7 @@ use Psr\Log\NullLogger;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
 
 final class NotificationMailerTest extends TestCase
 {
@@ -70,7 +71,12 @@ final class NotificationMailerTest extends TestCase
         $manager->method('get')->willReturn(new EmailSettings([]));
 
         $mailer = $this->createMock(MailerInterface::class);
-        $mailer->expects(self::once())->method('send');
+        $mailer->expects(self::once())->method('send')->with(self::callback(
+            static fn (Email $email): bool => count($email->getTo()) === 1
+                && $email->getTo()[0]->getAddress() === 'applicant@example.test'
+                && $email->getFrom()[0]->getAddress() === 'from@example.test'
+                && $email->getReplyTo()[0]->getAddress() === 'from@example.test',
+        ));
 
         $this->mailerFor($manager, $mailer)
             ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, ['vorname' => 'Erika']);
