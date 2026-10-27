@@ -132,6 +132,35 @@ final class EventScheduleWorkflowTest extends WebTestCase
     }
 
     /** Eine Anmeldung samt mitgebrachter Person ergibt genau eine Benachrichtigung an die hinterlegten Empfänger. */
+    public function testPublicListCanIncludeLaterYears(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $currentYear = (int) (new \DateTimeImmutable())->format('Y');
+        foreach (['Sommerfest' => ($currentYear).'-07-01', 'Neujahrsbaden' => ($currentYear + 1).'-01-15'] as $title => $date) {
+            $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+                'kind' => 'event', 'title' => $title, 'date' => $date, 'time' => '10:00', 'content' => '',
+                'helpEnabled' => false, 'helpButtonLabel' => null, 'visible' => true, 'activities' => [], 'callToActions' => [],
+            ], $headers);
+            self::assertResponseStatusCodeSame(201);
+        }
+
+        $this->client->request('GET', '/api/public/v1/events?kind=event');
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['total']);
+
+        $this->client->request('GET', '/api/public/v1/events?kind=event&period=from_current_year');
+        self::assertResponseIsSuccessful();
+        $fromCurrentYear = $this->responseData();
+        self::assertSame(2, $fromCurrentYear['total']);
+        $items = $fromCurrentYear['items'];
+        self::assertIsArray($items);
+        self::assertIsArray($items[1]);
+        self::assertSame('Neujahrsbaden', $items[1]['title']);
+
+        $this->client->request('GET', '/api/public/v1/events?kind=event&period=forever');
+        self::assertResponseStatusCodeSame(400);
+    }
+
     public function testHelperSignUpNotifiesConfiguredRecipientsOnce(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];

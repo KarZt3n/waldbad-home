@@ -361,6 +361,7 @@ const renderEventScheduleExtension = (kind, mode, context) => {
     const emptyMessage = mode === 'next'
         ? (kind === 'any' ? 'Aktuell ist keine weitere Veranstaltung oder Arbeitseinsatz geplant.'
             : kind === 'work_assignment' ? 'Aktuell ist kein weiterer Arbeitseinsatz geplant.' : 'Aktuell ist keine weitere Veranstaltung geplant.')
+        : mode === 'from_current_year' ? 'Aktuell sind keine Veranstaltungen ab diesem Jahr eingetragen.'
         : (kind === 'work_assignment' ? 'Aktuell sind keine Arbeitseinsätze für dieses Jahr eingetragen.' : 'Aktuell sind keine Veranstaltungen für dieses Jahr eingetragen.');
     if (context.isPreview) {
         container.append(element('p', {className: 'empty-copy', text: emptyMessage}));
@@ -368,7 +369,7 @@ const renderEventScheduleExtension = (kind, mode, context) => {
     }
     const endpoint = mode === 'next'
         ? `/api/public/v1/events/next?kind=${encodeURIComponent(kind)}`
-        : `/api/public/v1/events?kind=${encodeURIComponent(kind)}`;
+        : `/api/public/v1/events?kind=${encodeURIComponent(kind)}&period=${encodeURIComponent(mode)}`;
     request(endpoint).then((data) => {
         const items = mode === 'next' ? (data.item ? [data.item] : []) : (data.items || []);
         if (!items.length) {
@@ -394,10 +395,11 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
     if (block.type === 'extension' && block.extensionKey === 'sauna') {
         return renderSaunaExtension(context.isPreview === true);
     }
-    if (block.type === 'extension' && ['events_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment', 'next_event_or_work_assignment'].includes(block.extensionKey)) {
+    if (block.type === 'extension' && ['events_current_year', 'events_from_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment', 'next_event_or_work_assignment'].includes(block.extensionKey)) {
         const kind = block.extensionKey === 'next_event_or_work_assignment' ? 'any'
             : (block.extensionKey.startsWith('work_assignments') || block.extensionKey === 'next_work_assignment' ? 'work_assignment' : 'event');
-        const mode = block.extensionKey.startsWith('next_') ? 'next' : 'current_year';
+        const mode = block.extensionKey.startsWith('next_') ? 'next'
+            : (block.extensionKey === 'events_from_current_year' ? 'from_current_year' : 'current_year');
 
         return renderEventScheduleExtension(kind, mode, context);
     }

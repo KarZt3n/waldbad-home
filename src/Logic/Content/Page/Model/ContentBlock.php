@@ -142,6 +142,7 @@ readonly class ContentBlock
         if ($this->type === ContentBlockType::Extension && !in_array($this->extensionKey, [
             'membership_application',
             'events_current_year',
+            'events_from_current_year',
             'work_assignments_current_year',
             'next_event',
             'next_work_assignment',

@@ -779,6 +779,7 @@ const blockEditor = (block, index, handlers) => {
         const select = element('select', {attributes: {id: 'block-extension-' + index}, children: [
             element('option', {text: 'Mitgliedsantrag', attributes: {value: 'membership_application'}}),
             element('option', {text: 'Veranstaltungen: aktuelles Jahr', attributes: {value: 'events_current_year'}}),
+            element('option', {text: 'Veranstaltung: alle Veranstaltungen ab aktuelles Jahr', attributes: {value: 'events_from_current_year'}}),
             element('option', {text: 'Arbeitseinsätze: aktuelles Jahr', attributes: {value: 'work_assignments_current_year'}}),
             element('option', {text: 'Veranstaltung: nächste', attributes: {value: 'next_event'}}),
             element('option', {text: 'Arbeitseinsatz: nächste', attributes: {value: 'next_work_assignment'}}),

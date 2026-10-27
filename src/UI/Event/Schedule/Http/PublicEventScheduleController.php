@@ -3,6 +3,7 @@
 namespace App\UI\Event\Schedule\Http;
 
 use App\Logic\Event\Schedule\Model\EventScheduleKind;
+use App\Logic\Event\Schedule\Model\EventSchedulePeriod;
 use App\Logic\Event\Schedule\Query\GetNextEventScheduleQuery;
 use App\Logic\Event\Schedule\Query\ListCurrentYearEventSchedulesQuery;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -20,7 +21,7 @@ readonly class PublicEventScheduleController
     #[Route('', name: 'api_public_event_schedule_list', methods: ['GET'])]
     public function list(Request $request, ListCurrentYearEventSchedulesQuery $query): JsonResponse
     {
-        return new JsonResponse($this->responseFactory->collection($query->execute($this->kind($request))));
+        return new JsonResponse($this->responseFactory->collection($query->execute($this->kind($request), $this->period($request))));
     }
 
     #[Route('/next', name: 'api_public_event_schedule_next', methods: ['GET'])]
@@ -37,6 +38,15 @@ readonly class PublicEventScheduleController
             return EventScheduleKind::from($request->query->getString('kind', EventScheduleKind::Event->value));
         } catch (\ValueError) {
             throw new BadRequestHttpException('Die Art der Veranstaltung ist ungültig.');
+        }
+    }
+
+    private function period(Request $request): EventSchedulePeriod
+    {
+        try {
+            return EventSchedulePeriod::from($request->query->getString('period', EventSchedulePeriod::CurrentYear->value));
+        } catch (\ValueError) {
+            throw new BadRequestHttpException('Der Zeitraum ist ungültig.');
         }
     }
 
