@@ -189,24 +189,24 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    MESSENGER_TRANSPORT_DSN=sync://
    ```
 
-   `MAILER_DSN` ist in Prod der Ausweichweg, wenn Bird den Versand ablehnt (siehe Schritt 3). Er muss auf
+   `MAILER_DSN` ist in Prod der Ausweichweg, wenn Brevo den Versand ablehnt (siehe Schritt 3). Er muss auf
    einen echten Mailserver zeigen; mit `null://null` würden solche Mails stillschweigend verworfen.
 
-3. Mails gehen in Prod zuerst über Bird (`eu1.smtp.bird.com:465`, siehe `config/packages/mailer.yaml`) und
-   nur bei einem Fehler über `MAILER_DSN`. Nimmt Bird eine Mail an und verwirft sie danach (z. B. bei nicht
-   verifizierter Domain), greift der Ausweichweg nicht; das zeigt nur das E-Mail-Log im Bird-Dashboard. Der
-   API-Key (Scope `emails`) ist das SMTP-Passwort und liegt im Symfony-Secrets-Vault:
+3. Mails gehen in Prod zuerst über Brevo (`smtp-relay.brevo.com:587`, Login `c032a9001@smtp-brevo.com`,
+   siehe `config/packages/mailer.yaml`) und nur bei einem Fehler über `MAILER_DSN`. Nimmt Brevo eine Mail
+   an und verwirft sie danach (z. B. bei nicht verifizierter Domain), greift der Ausweichweg nicht; das zeigt
+   nur das Versandlog im Brevo-Dashboard. Der SMTP-Schlüssel liegt im Symfony-Secrets-Vault:
 
    ```bash
-   php bin/console secrets:set BIRD_API_KEY --env=prod
+   php bin/console secrets:set BREVO_SMTP_KEY --env=prod
    ```
 
    Die verschlüsselten Dateien unter `config/secrets/prod/` werden committet. Der Entschlüsselungsschlüssel
    `config/secrets/prod/prod.decrypt.private.php` bleibt außerhalb des Repositorys und wird einmalig nach
    `~/waldbad-home/shared/prod.decrypt.private.php` kopiert (Rechte `0600`); das Deployment verlinkt ihn in
    jedes Release und bricht ab, wenn er fehlt. Alternativ kann er als `SYMFONY_DECRYPTION_SECRET` in
-   `.env.local` stehen. Damit Bird `it@waldbad-borkheide.de` als Absender annimmt und DMARC besteht, muss
-   die Domain bei Bird verifiziert sein (DKIM-Einträge im Telekom-DNS).
+   `.env.local` stehen. Damit Brevo `it@waldbad-borkheide.de` als Absender annimmt und DMARC besteht, muss
+   die Domain bei Brevo authentifiziert sein (Brevo-Code, DKIM und DMARC im Telekom-DNS).
 
 4. Einen eigenen Deploy-Schlüssel erzeugen, den öffentlichen Teil in `~/.ssh/authorized_keys` des
    Webspace eintragen und in GitHub unter `Settings` → `Environments` die Umgebung `production` anlegen mit:

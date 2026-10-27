@@ -5,6 +5,6 @@ framework:
 when@prod:
     framework:
         mailer:
-            # Der Bird-API-Key liegt im Secrets-Vault (config/secrets/prod) und ist zugleich das SMTP-Passwort.
-            # Lehnt Bird den Versand ab, geht die Mail über MAILER_DSN (T-Online) raus.
-            dsn: 'failover(smtps://bird:%env(urlencode:BIRD_API_KEY)%@eu1.smtp.bird.com:465 %env(MAILER_DSN)%)'
+            # Der Brevo-SMTP-Schlüssel liegt im Secrets-Vault (config/secrets/prod).
+            # Lehnt Brevo den Versand ab, geht die Mail über MAILER_DSN (T-Online) raus.
+            dsn: 'failover(smtp://c032a9001%%40smtp-brevo.com:%env(urlencode:BREVO_SMTP_KEY)%@smtp-relay.brevo.com:587 %env(MAILER_DSN)%)'

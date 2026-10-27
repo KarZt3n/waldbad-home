@@ -34,7 +34,7 @@ if grep -q 'BITTE_EINTRAGEN' "$shared_dir/.env.local"; then
     printf 'In %s sind noch Platzhalter (BITTE_EINTRAGEN) zu ersetzen.\n' "$shared_dir/.env.local" >&2
     exit 1
 fi
-# Ohne Entschlüsselungsschlüssel fehlt in Prod u. a. der Bird-API-Key; das fiele erst beim ersten Mailversand auf.
+# Ohne Entschlüsselungsschlüssel fehlt in Prod u. a. der Brevo-SMTP-Schlüssel; das fiele erst beim ersten Mailversand auf.
 secrets_decrypt_key="$shared_dir/prod.decrypt.private.php"
 if [ ! -s "$secrets_decrypt_key" ] && ! grep -q '^SYMFONY_DECRYPTION_SECRET=' "$shared_dir/.env.local"; then
     printf 'Es fehlt der Secrets-Schlüssel %s (siehe deployment.md).\n' "$secrets_decrypt_key" >&2
