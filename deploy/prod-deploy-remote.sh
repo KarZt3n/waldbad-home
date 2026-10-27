@@ -34,6 +34,12 @@ if grep -q 'BITTE_EINTRAGEN' "$shared_dir/.env.local"; then
     printf 'In %s sind noch Platzhalter (BITTE_EINTRAGEN) zu ersetzen.\n' "$shared_dir/.env.local" >&2
     exit 1
 fi
+# Ohne Entschlüsselungsschlüssel fehlt in Prod u. a. der Bird-API-Key; das fiele erst beim ersten Mailversand auf.
+secrets_decrypt_key="$shared_dir/prod.decrypt.private.php"
+if [ ! -s "$secrets_decrypt_key" ] && ! grep -q '^SYMFONY_DECRYPTION_SECRET=' "$shared_dir/.env.local"; then
+    printf 'Es fehlt der Secrets-Schlüssel %s (siehe deployment.md).\n' "$secrets_decrypt_key" >&2
+    exit 1
+fi
 if [ ! -f "$archive" ]; then
     printf 'Release-Paket %s wurde nicht gefunden.\n' "$archive" >&2
     exit 1
@@ -58,6 +64,9 @@ fi
 install -d -m 0755 "$releases_dir" "$media_dir"
 install -d -m 0700 "$shared_dir" "$backup_dir"
 chmod 0600 "$shared_dir/.env.local"
+if [ -e "$secrets_decrypt_key" ]; then
+    chmod 0600 "$secrets_decrypt_key"
+fi
 
 mkdir "$release_dir"
 tar -xzf "$archive" -C "$release_dir"
@@ -65,6 +74,10 @@ rm -f "$archive"
 touch "$release_dir/.waldbad-release"
 
 ln -s "$shared_dir/.env.local" "$release_dir/.env.local"
+if [ -e "$secrets_decrypt_key" ]; then
+    mkdir -p "$release_dir/config/secrets/prod"
+    ln -s "$secrets_decrypt_key" "$release_dir/config/secrets/prod/prod.decrypt.private.php"
+fi
 rm -rf "$release_dir/public/uploads/media"
 ln -s "$media_dir" "$release_dir/public/uploads/media"
 mkdir -p "$release_dir/var"

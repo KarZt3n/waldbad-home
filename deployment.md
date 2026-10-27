@@ -175,7 +175,7 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
 
 1. Im Telekom-Homepagecenter PHP 8.4 für den Webspace einstellen.
 2. Auf dem Webspace `~/waldbad-home/shared/.env.local` anlegen (Rechte `0600`). Zugangsdaten werden nur
-   dort gepflegt, nie im Repository:
+   dort oder verschlüsselt im Secrets-Vault (Schritt 3) gepflegt, nie im Klartext im Repository:
 
    ```dotenv
    APP_ENV=prod
@@ -183,13 +183,29 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    APP_SECRET=<openssl rand -hex 32>
    DATABASE_URL='mysql://<benutzer>:<passwort-url-kodiert>@<host>:3306/<datenbank>?serverVersion=<version>-MariaDB&charset=utf8mb4'
    DEFAULT_URI=https://<prod-domain>
-   MAILER_DSN='smtp://<benutzer-url-kodiert>:<passwort-url-kodiert>@securesmtp.t-online.de:587'
+   MAILER_DSN=null://null
    MAILER_FROM_ADDRESS=it@waldbad-borkheide.de
    MAILER_FROM_NAME="Naturbad Borkheide e.V."
    MESSENGER_TRANSPORT_DSN=sync://
    ```
 
-3. Einen eigenen Deploy-Schlüssel erzeugen, den öffentlichen Teil in `~/.ssh/authorized_keys` des
+   `MAILER_DSN` wird in Prod nicht verwendet (siehe Schritt 3), muss aber gesetzt sein.
+
+3. Mails gehen in Prod über Bird (`eu1.smtp.bird.com:465`, siehe `config/packages/mailer.yaml`). Der
+   API-Key (Scope `emails`) ist das SMTP-Passwort und liegt im Symfony-Secrets-Vault:
+
+   ```bash
+   php bin/console secrets:set BIRD_API_KEY --env=prod
+   ```
+
+   Die verschlüsselten Dateien unter `config/secrets/prod/` werden committet. Der Entschlüsselungsschlüssel
+   `config/secrets/prod/prod.decrypt.private.php` bleibt außerhalb des Repositorys und wird einmalig nach
+   `~/waldbad-home/shared/prod.decrypt.private.php` kopiert (Rechte `0600`); das Deployment verlinkt ihn in
+   jedes Release und bricht ab, wenn er fehlt. Alternativ kann er als `SYMFONY_DECRYPTION_SECRET` in
+   `.env.local` stehen. Damit Bird `it@waldbad-borkheide.de` als Absender annimmt und DMARC besteht, muss
+   die Domain bei Bird verifiziert sein (DKIM-Einträge im Telekom-DNS).
+
+4. Einen eigenen Deploy-Schlüssel erzeugen, den öffentlichen Teil in `~/.ssh/authorized_keys` des
    Webspace eintragen und in GitHub unter `Settings` → `Environments` die Umgebung `production` anlegen mit:
    - Secret `PROD_SSH_PRIVATE_KEY`: privater Deploy-Schlüssel
    - Secret `PROD_SSH_KNOWN_HOSTS`: Ausgabe von `ssh-keyscan -t ed25519 hosting.telekom.de`

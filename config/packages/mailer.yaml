@@ -2,3 +2,8 @@ framework:
     mailer:
         dsn: '%env(MAILER_DSN)%'
 
+when@prod:
+    framework:
+        mailer:
+            # Der Bird-API-Key liegt im Secrets-Vault (config/secrets/prod) und ist zugleich das SMTP-Passwort.
+            dsn: 'smtps://bird:%env(urlencode:BIRD_API_KEY)%@eu1.smtp.bird.com:465'
