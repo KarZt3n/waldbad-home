@@ -2165,6 +2165,7 @@ dialog:modal {
 .sauna-duty-remove { width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: 50%; color: var(--forest-900); background: transparent; font-size: 1rem; line-height: 1; cursor: pointer; }
 .sauna-duty-remove:hover { color: var(--white); background: var(--danger); }
 .sauna-duty-assign { font-size: .85rem; }
+.sauna-duty-assign-day { margin-left: auto; }
 .sauna-duty-point.is-free, .sauna-duty-legend-item.is-free { border-left-color: var(--line); }
 .sauna-duty-point.is-running, .sauna-duty-legend-item.is-running { border-left-color: #b8c4bd; background: repeating-linear-gradient(135deg, #f4f6f5 0 .5rem, var(--white) .5rem 1rem); }
 .sauna-duty-point.is-unscheduled { border-style: dashed; }

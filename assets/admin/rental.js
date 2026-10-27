@@ -670,9 +670,11 @@ const dutyPointStatus = (point) => {
 
 /**
  * Dialog „Dienst eintragen“: Die Person wird immer über die Mitgliedersuche ausgewählt (Vorstand
- * zuerst), damit der Dienstplan eindeutig einem Mitglied zugeordnet ist.
+ * zuerst), damit der Dienstplan eindeutig einem Mitglied zugeordnet ist. Ohne `point` wird sie für
+ * alle Dienstzeitpunkte des Tages eingetragen (bereits belegte Zeitpunkte überspringt der Server).
  */
 const openSaunaDutyAssignDialog = (day, point, onAssigned) => {
+    const dayTimes = (day.allPoints || day.points).filter((candidate) => candidate.state !== 'unscheduled').map((candidate) => candidate.time);
     const dialog = element('dialog', {className: 'confirm-dialog'});
     const message = formMessage();
     let selected = null;
@@ -723,8 +725,8 @@ const openSaunaDutyAssignDialog = (day, point, onAssigned) => {
     dialog.addEventListener('close', () => dialog.remove());
     const form = element('form', {className: 'confirm-dialog-content', children: [
         element('p', {className: 'eyebrow', text: 'Saunadienst eintragen'}),
-        element('h2', {text: `${DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))} · ${point.time} Uhr`}),
-        element('p', {text: dutyPointStatus(point).label}),
+        element('h2', {text: `${DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))} · ${point ? `${point.time} Uhr` : 'ganzer Tag'}`}),
+        element('p', {text: point ? dutyPointStatus(point).label : `Wird für alle Zeiten eingetragen: ${dayTimes.join(', ')} Uhr`}),
         search,
         results,
         selection,
@@ -736,8 +738,13 @@ const openSaunaDutyAssignDialog = (day, point, onAssigned) => {
         if (!selected) return;
         save.disabled = true;
         try {
-            await request('/api/admin/v1/sauna-duties', {method: 'POST', body: JSON.stringify({date: day.date, time: point.time, memberId: selected.id})});
-            toast(`${selected.firstName} ${selected.lastName} ist für ${point.time} Uhr eingetragen.`);
+            if (point) {
+                await request('/api/admin/v1/sauna-duties', {method: 'POST', body: JSON.stringify({date: day.date, time: point.time, memberId: selected.id})});
+                toast(`${selected.firstName} ${selected.lastName} ist für ${point.time} Uhr eingetragen.`);
+            } else {
+                const created = await request('/api/admin/v1/sauna-duties/day', {method: 'POST', body: JSON.stringify({date: day.date, memberId: selected.id})});
+                toast(`${selected.firstName} ${selected.lastName} ist für ${created.items.map((duty) => duty.time).join(', ')} Uhr eingetragen.`);
+            }
             dialog.close();
             await onAssigned();
         } catch (error) {
@@ -823,6 +830,10 @@ const showSaunaDuties = async () => {
     // Vergangene Tage sind abgeschlossen: nur noch zum Nachlesen, ohne Ein- oder Austragen.
     const renderDay = (day, todayIso) => {
         const past = day.date < todayIso;
+        const assignDay = canEdit && !past && !day.closed && (day.allPoints || day.points).some((point) => point.state !== 'unscheduled')
+            ? element('button', {className: 'text-button sauna-duty-assign sauna-duty-assign-day', text: '＋ Eintragen für ganzen Tag', attributes: {type: 'button'}})
+            : null;
+        assignDay?.addEventListener('click', () => openSaunaDutyAssignDialog(day, null, load));
 
         return element('section', {
             className: `sauna-duty-day${past ? ' is-past' : ''}${day.date === todayIso ? ' is-today' : ''}`,
@@ -830,6 +841,7 @@ const showSaunaDuties = async () => {
                 element('h4', {children: [
                     element('span', {text: DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))}),
                     ...(past ? [element('span', {className: 'status-badge status-inactive', text: 'Abgeschlossen'})] : []),
+                    ...(assignDay ? [assignDay] : []),
                 ]}),
                 ...(day.closed
                     ? [element('p', {className: 'sauna-duty-closed', text: `Geschlossen${day.closedReason ? ` (${day.closedReason})` : ''}`})]
@@ -853,7 +865,7 @@ const showSaunaDuties = async () => {
         try {
             const roster = await request(`/api/admin/v1/sauna-duties?from=${isoDate(month)}&days=${daysInMonth}`);
             const days = roster.days
-                .map((day) => ({...day, points: bookedOnly ? day.points.filter((point) => isBooked(point) || point.duties.length) : day.points}))
+                .map((day) => ({...day, allPoints: day.points, points: bookedOnly ? day.points.filter((point) => isBooked(point) || point.duties.length) : day.points}))
                 .filter((day) => day.points.length || (day.closed && !bookedOnly));
             const todayIso = isoDate(new Date());
             const missing = roster.days

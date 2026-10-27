@@ -4,6 +4,7 @@ namespace App\UI\Rental\Sauna\Duty\Http;
 
 use App\Logic\Rental\Sauna\Duty\Query\GetSaunaDutyRosterQuery;
 use App\Logic\Rental\Sauna\Duty\Query\SearchSaunaDutyCandidatesQuery;
+use App\Logic\Rental\Sauna\Duty\UseCase\AssignSaunaDutyForDayUseCase;
 use App\Logic\Rental\Sauna\Duty\UseCase\AssignSaunaDutyUseCase;
 use App\Logic\Rental\Sauna\Duty\UseCase\RemoveSaunaDutyUseCase;
 use App\UI\IdentityAccess\Security\Permission;
@@ -56,6 +57,22 @@ final class AdminSaunaDutyController extends AbstractController
 
         return new JsonResponse(
             SaunaDutyResponseFactory::duty($useCase->execute($this->date($data->getString('date')), $time, $memberId)),
+            JsonResponse::HTTP_CREATED,
+        );
+    }
+
+    #[Route('/day', name: 'api_admin_sauna_duty_assign_day', methods: ['POST'])]
+    public function assignDay(Request $request, AssignSaunaDutyForDayUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
+        $data = $request->getPayload();
+        $memberId = trim($data->getString('memberId'));
+        if ($memberId === '') {
+            throw new BadRequestHttpException('Datum und Person sind erforderlich.');
+        }
+
+        return new JsonResponse(
+            ['items' => array_map(SaunaDutyResponseFactory::duty(...), $useCase->execute($this->date($data->getString('date')), $memberId))],
             JsonResponse::HTTP_CREATED,
         );
     }
