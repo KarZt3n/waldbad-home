@@ -183,15 +183,18 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    APP_SECRET=<openssl rand -hex 32>
    DATABASE_URL='mysql://<benutzer>:<passwort-url-kodiert>@<host>:3306/<datenbank>?serverVersion=<version>-MariaDB&charset=utf8mb4'
    DEFAULT_URI=https://<prod-domain>
-   MAILER_DSN=null://null
+   MAILER_DSN='smtp://<benutzer-url-kodiert>:<passwort-url-kodiert>@securesmtp.t-online.de:587'
    MAILER_FROM_ADDRESS=it@waldbad-borkheide.de
    MAILER_FROM_NAME="Naturbad Borkheide e.V."
    MESSENGER_TRANSPORT_DSN=sync://
    ```
 
-   `MAILER_DSN` wird in Prod nicht verwendet (siehe Schritt 3), muss aber gesetzt sein.
+   `MAILER_DSN` ist in Prod der Ausweichweg, wenn Bird den Versand ablehnt (siehe Schritt 3). Er muss auf
+   einen echten Mailserver zeigen; mit `null://null` würden solche Mails stillschweigend verworfen.
 
-3. Mails gehen in Prod über Bird (`eu1.smtp.bird.com:465`, siehe `config/packages/mailer.yaml`). Der
+3. Mails gehen in Prod zuerst über Bird (`eu1.smtp.bird.com:465`, siehe `config/packages/mailer.yaml`) und
+   nur bei einem Fehler über `MAILER_DSN`. Nimmt Bird eine Mail an und verwirft sie danach (z. B. bei nicht
+   verifizierter Domain), greift der Ausweichweg nicht; das zeigt nur das E-Mail-Log im Bird-Dashboard. Der
    API-Key (Scope `emails`) ist das SMTP-Passwort und liegt im Symfony-Secrets-Vault:
 
    ```bash
