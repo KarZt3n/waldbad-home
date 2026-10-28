@@ -102,15 +102,17 @@ WALDBAD_INITIALIZE_SITE=1 ./deploy/stage-deploy.sh
 Spätere Deployments laufen ohne diese Variable. Dadurch werden im CMS verschobene
 oder bewusst gelöschte Standardseiten nicht erneut als Hauptseiten angelegt.
 
-Hochgeladene Medien liegen nicht in einem Release. Stage bindet den gemeinsamen
-Ordner `/srv/webapps/waldbad-home/shared/media` in den öffentlichen Anwendungspfad
-`public/uploads/media` ein. Beim ersten Deployment nach der Umstellung übernimmt
-das Skript automatisch den Inhalt des bisherigen Docker-Volumes. DDEV verwendet
-weiterhin direkt `public/uploads/media` im lokalen Projekt. Für eine weitere
-Produktionsinstanz kann der Hostpfad beim Deployment explizit gesetzt werden:
+Hochgeladene Dateien liegen nicht in einem Release. Stage bindet den gemeinsamen
+Ordner `/srv/webapps/waldbad-home/shared/uploads` in den öffentlichen Anwendungspfad
+`public/uploads` ein, damit alle in der Mediathek angelegten Ordner erhalten bleiben;
+der Seiteneditor lädt weiterhin nach `uploads/media`. Ein vorhandenes
+`shared/media` aus der Zeit vor den Mediathek-Ordnern verschiebt das Skript einmalig
+nach `shared/uploads/media`. DDEV verwendet direkt `public/uploads` im lokalen
+Projekt. Für eine weitere Produktionsinstanz kann der Hostpfad beim Deployment
+explizit gesetzt werden:
 
 ```bash
-WALDBAD_SHARED_MEDIA_DIRECTORY=/srv/webapps/waldbad-home-prod/shared/media ./deploy/stage-deploy.sh
+WALDBAD_SHARED_UPLOADS_DIRECTORY=/srv/webapps/waldbad-home-prod/shared/uploads ./deploy/stage-deploy.sh
 ```
 
 Status und Logs:
@@ -163,8 +165,8 @@ GitHub-hosted Runner, weil der Webspace öffentlich erreichbar ist:
 
 Der Document-Root ist fest `~/public_html` und lässt sich nicht auf `public/` eines Releases legen. Das
 Skript kopiert deshalb die öffentlichen Dateien dorthin und schreibt `public_html/index.php` als Stub, der
-das aktive Release lädt; das Ersetzen dieses Stubs ist der eigentliche Umschaltpunkt. Hochgeladene Medien
-liegen dauerhaft in `public_html/uploads/media`. Andere Dateien in `public_html` außer `uploads/` und
+das aktive Release lädt; das Ersetzen dieses Stubs ist der eigentliche Umschaltpunkt. Hochgeladene Dateien
+liegen dauerhaft in `public_html/uploads` (alle Mediathek-Ordner); das Release verlinkt `public/uploads` dorthin. Andere Dateien in `public_html` außer `uploads/` und
 `.well-known/` werden beim Deployment entfernt.
 
 Der Telekom-Webserver liest `.htaccess` erst, wenn `~/etc/httpd.conf` `AllowOverride All` für
@@ -279,5 +281,5 @@ Das Importskript erstellt vor jeder Änderung automatisch ein Backup der bisheri
 Stage-Datenbank unter `/srv/webapps/waldbad-home/backups/database`, stoppt App und
 Worker während des Imports und prüft anschließend den Health-Endpunkt. Scheitert der
 Import oder der anschließende Start, wird die vorherige Stage-Datenbank automatisch
-wiederhergestellt. Der Import ersetzt ausschließlich die Datenbank. Medien aus
-`public/uploads/media` müssen bei Bedarf separat synchronisiert werden.
+wiederhergestellt. Der Import ersetzt ausschließlich die Datenbank. Dateien aus
+`public/uploads` müssen bei Bedarf separat synchronisiert werden.

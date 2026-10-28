@@ -717,3 +717,19 @@ Das Modul „Fotos“ (`Media/PhotoAlbum`, CMS-Modul `photos`) verwaltet das Fot
 Öffentliche Seiten binden das Archiv über den Blocktyp `extension` mit dem Schlüssel `photo_albums` ein (`GET /api/public/v1/photo-albums`). Die Einträge werden nach Jahren gruppiert und absteigend sortiert; die zwei neuesten Jahre sind aufgeklappt.
 
 Die Einträge der Bestandsseite „Fotos u.a.“ (2003–2026) liegen in `docs/content-migration/photo-albums.json` und werden mit `bin/console app:photo-albums:import` übernommen. Der Import ist wiederholbar; Einträge mit gleichem Titel und Datum werden übersprungen. Google-Kurzlinks (`goo.gl`) wurden dabei auf ihre dauerhaften Ziel-URLs aufgelöst. Ergebnislisten und Audio-/Videodateien, die noch auf der Bestandsdomain liegen, müssen vor dem Domainwechsel in die Medienbibliothek übernommen werden.
+
+## 24. Fachliche Erweiterung: Mediathek
+
+Die „Mediathek“ (`Media/Library`, CMS-Modul `media_library`) verwaltet alle Dateien unter `/uploads` in einer frei anlegbaren Ordnerstruktur, z. B. `/uploads/media` für Bilder und `/uploads/dokumente` für PDFs. Links steht der Ordnerbaum, rechts die Dateien des gewählten Ordners; „Unterordner einbeziehen“ zeigt zusätzlich alle Dateien darunter. Per Rechtsklick auf einen Ordner werden Unterordner angelegt oder leere Ordner gelöscht. Ordnernamen sind Teil der Adresse und bestehen aus Kleinbuchstaben, Ziffern und Bindestrichen (höchstens fünf Ebenen). Der Ordner `media` nimmt die Uploads aus dem Seiteneditor auf und bleibt immer bestehen. Hochladen, Ersetzen, Verschieben und Löschen erfordern Bearbeitungsrechte für `media_library`; die Aktionen einer Datei liegen im Menü oben rechts auf der Vorschau.
+
+Erlaubt sind Bilder (JPEG, PNG, WebP, GIF), PDF, MP3, MP4 sowie Word-, Excel-, PowerPoint- und OpenDocument-Dateien bis 10 MB; der Typ wird serverseitig am Inhalt erkannt. Für Bilder werden Originalname und Bildquelle wie bisher in `media_image` gespeichert, alle übrigen Dateien beschreibt das Dateisystem. Die Bildauswahl im Seiteneditor zeigt Bilder aus allen Ordnern.
+
+Als Verwendung gelten Bildblöcke, Bild-und-Text-Blöcke, Seitenteaser und Collection-Einträge in Seiten (Entwurf und veröffentlichte Fassung getrennt ausgewiesen) sowie das Bild von Veranstaltungen, Arbeitseinsätzen und Veranstaltungsvorlagen. Die Mediathek fragt diese Module ausschließlich über ihr Adapter-Interface `MediaUsageSourceInterface` ab (`ChainMediaUsageSource` bündelt die Adapter für Seiten, Veranstaltungen und Vorlagen). Links in Rich-Text-Inhalten und Buttons werden nicht erkannt.
+
+Beim Löschen werden zuerst alle Verweise entfernt und danach die Datei gelöscht. Reine Bildblöcke entfallen, Bild-und-Text-Blöcke werden zu Textblöcken, bei allen übrigen Verwendungen werden Bild, Alternativtext und Bildquelle geleert. Der Veröffentlichungsstatus einer Seite bleibt dabei unverändert.
+
+Beim Verschieben (Menü oder Drag & Drop auf einen Ordner) behält die Datei ihren Namen, sofern er im Zielordner frei ist; alle Verweise in Seiten, Veranstaltungen und Vorlagen werden auf die neue Adresse umgestellt. Scheitert das Umstellen, werden bereits geänderte Verweise zurückgesetzt und die Datei zurückverschoben.
+
+Beim Ersetzen erhält ein Bild eine eigene URL im selben Ordner (passende Dateiendung, kein veralteter Browser-Cache); alle Verweise werden umgestellt und danach wird das alte Bild gelöscht. Ein Bild kann nur durch ein Bild ersetzt werden. Andere Dateien werden unter derselben Adresse überschrieben, damit Links aus Texten gültig bleiben; dafür muss der Dateityp gleich bleiben.
+
+Prod verlinkt `public/uploads` des Releases auf `public_html/uploads`, Stage bindet `shared/uploads` ein, damit alle Ordner Deployments überdauern (siehe `deployment.md`).

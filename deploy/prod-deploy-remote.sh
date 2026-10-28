@@ -20,9 +20,11 @@ archive="$deploy_dir/incoming/$release_name.tar.gz"
 release_dir="$releases_dir/$release_name"
 # Der Document-Root des Webspace ist fest auf public_html eingestellt und lässt sich nicht auf
 # public/ eines Releases umbiegen. Er enthält deshalb eine Kopie der öffentlichen Dateien und einen
-# index.php-Stub, der auf das aktive Release zeigt; die Medien liegen dauerhaft direkt darin.
+# index.php-Stub, der auf das aktive Release zeigt; die Uploads (alle Mediathek-Ordner) liegen dauerhaft
+# direkt darin.
 docroot="$HOME/public_html"
-media_dir="$docroot/uploads/media"
+uploads_dir="$docroot/uploads"
+media_dir="$uploads_dir/media"
 
 export APP_ENV=prod APP_DEBUG=0
 
@@ -78,8 +80,8 @@ if [ -e "$secrets_decrypt_key" ]; then
     mkdir -p "$release_dir/config/secrets/prod"
     ln -s "$secrets_decrypt_key" "$release_dir/config/secrets/prod/prod.decrypt.private.php"
 fi
-rm -rf "$release_dir/public/uploads/media"
-ln -s "$media_dir" "$release_dir/public/uploads/media"
+rm -rf "$release_dir/public/uploads"
+ln -s "$uploads_dir" "$release_dir/public/uploads"
 mkdir -p "$release_dir/var"
 
 cd "$release_dir"

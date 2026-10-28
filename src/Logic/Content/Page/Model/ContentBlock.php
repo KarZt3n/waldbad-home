@@ -162,4 +162,87 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Die Collection benötigt mindestens einen Eintrag.');
         }
     }
+
+    /**
+     * @return list<string>
+     */
+    public function mediaUrls(): array
+    {
+        $urls = $this->mediaUrl === null ? [] : [$this->mediaUrl];
+        foreach ($this->collectionItems as $item) {
+            if ($item->mediaUrl !== null) {
+                $urls[] = $item->mediaUrl;
+            }
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    /**
+     * Liefert `null`, wenn der Block ohne das entfernte Bild keinen Inhalt mehr hätte.
+     */
+    public function withMediaReplaced(string $url, ?string $replacementUrl): ?self
+    {
+        if (!in_array($url, $this->mediaUrls(), true)) {
+            return $this;
+        }
+
+        $collectionItems = array_map(
+            static fn (ContentCollectionItem $item): ContentCollectionItem => $item->withMediaReplaced($url, $replacementUrl),
+            $this->collectionItems,
+        );
+        if ($this->mediaUrl !== $url) {
+            return $this->withMedia($this->mediaUrl, $this->mediaAlt, $this->mediaSource, $collectionItems);
+        }
+        if ($replacementUrl !== null) {
+            return $this->withMedia($replacementUrl, $this->mediaAlt, $this->mediaSource, $collectionItems);
+        }
+
+        if ($this->type === ContentBlockType::Image) {
+            return null;
+        }
+        if ($this->type === ContentBlockType::ImageText) {
+            return trim($this->content) === '' ? null : new self(type: ContentBlockType::RichText, content: $this->content);
+        }
+        if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
+            && trim($this->content) === ''
+            && $this->embeddedPageId === null) {
+            return null;
+        }
+
+        return $this->withMedia(null, null, null, $collectionItems);
+    }
+
+    /**
+     * @param list<ContentCollectionItem> $collectionItems
+     */
+    private function withMedia(?string $mediaUrl, ?string $mediaAlt, ?string $mediaSource, array $collectionItems): self
+    {
+        return new self(
+            type: $this->type,
+            content: $this->content,
+            mediaUrl: $mediaUrl,
+            mediaAlt: $mediaAlt,
+            mediaSource: $mediaSource,
+            linkUrl: $this->linkUrl,
+            linkLabel: $this->linkLabel,
+            layout: $this->layout,
+            imageWidthPercent: $this->imageWidthPercent,
+            verticalAlignment: $this->verticalAlignment,
+            textAlignment: $this->textAlignment,
+            imageFit: $this->imageFit,
+            embeddedPageId: $this->embeddedPageId,
+            eventTitle: $this->eventTitle,
+            eventDate: $this->eventDate,
+            eventTime: $this->eventTime,
+            eventIdentifier: $this->eventIdentifier,
+            eventHelpEnabled: $this->eventHelpEnabled,
+            eventHelpButtonLabel: $this->eventHelpButtonLabel,
+            eventActivities: $this->eventActivities,
+            eventCallToActions: $this->eventCallToActions,
+            extensionKey: $this->extensionKey,
+            collectionColumns: $this->collectionColumns,
+            collectionItems: $collectionItems,
+        );
+    }
 }

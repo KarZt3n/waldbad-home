@@ -3,6 +3,7 @@
 namespace App\Data\Media\Image;
 
 use App\Data\Media\Image\Entity\StoredImageEntity;
+use App\Data\Media\Library\UploadDirectory;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Media\Image\ImageStorageInterface;
@@ -22,6 +23,7 @@ readonly class LocalImageStorage implements ImageStorageInterface
     public function __construct(
         private IdentifierGeneratorInterface $identifierGenerator,
         private EntityManagerInterface $entityManager,
+        private UploadDirectory $uploads,
         private string $mediaUploadDirectory,
     ) {
     }
@@ -44,13 +46,13 @@ readonly class LocalImageStorage implements ImageStorageInterface
             throw new \RuntimeException('Das Medienverzeichnis konnte nicht angelegt werden.');
         }
 
-        $filename = $this->availableFilename($upload->originalName, self::EXTENSIONS[$mimeType]);
+        $filename = $this->uploads->availableFilename($this->mediaUploadDirectory, $upload->originalName, self::EXTENSIONS[$mimeType]);
         $target = $this->mediaUploadDirectory.DIRECTORY_SEPARATOR.$filename;
         if (!move_uploaded_file($upload->temporaryPath, $target) && !rename($upload->temporaryPath, $target)) {
             throw new \RuntimeException('Das Bild konnte nicht gespeichert werden.');
         }
         $source = $this->normalizeSource($upload->source);
-        $url = '/uploads/media/'.$filename;
+        $url = $this->uploads->urlFromPath($target);
         $now = new \DateTimeImmutable();
         $entity = new StoredImageEntity(
             id: $this->identifierGenerator->generate(),
@@ -86,34 +88,28 @@ readonly class LocalImageStorage implements ImageStorageInterface
      */
     private function images(?int $limit): array
     {
-        if (!is_dir($this->mediaUploadDirectory)) {
-            return [];
-        }
-
-        $paths = glob($this->mediaUploadDirectory.DIRECTORY_SEPARATOR.'*');
-        if ($paths === false) {
-            throw new \RuntimeException('Das Medienverzeichnis konnte nicht gelesen werden.');
-        }
-
+        $paths = $this->uploads->files('', true);
         usort($paths, static fn (string $left, string $right): int => filemtime($right) <=> filemtime($left));
         $images = [];
         $legacySourcePaths = [];
         $metadataImported = false;
-        $selectedPaths = $limit === null ? $paths : array_slice($paths, 0, $limit);
-        foreach ($selectedPaths as $path) {
-            if (!is_file($path)) {
-                continue;
+        foreach ($paths as $path) {
+            if ($limit !== null && count($images) >= $limit) {
+                break;
             }
 
             $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->file($path);
+            if (!is_string($mimeType) || !isset(self::EXTENSIONS[$mimeType])) {
+                continue;
+            }
             $dimensions = getimagesize($path);
             $size = filesize($path);
-            if (!is_string($mimeType) || !isset(self::EXTENSIONS[$mimeType]) || $dimensions === false || $size === false) {
+            if ($dimensions === false || $size === false) {
                 continue;
             }
 
             $filename = basename($path);
-            $url = '/uploads/media/'.$filename;
+            $url = $this->uploads->urlFromPath($path);
             $entity = $this->entityManager->getRepository(StoredImageEntity::class)->findOneBy(['url' => $url]);
             if (!$entity instanceof StoredImageEntity) {
                 $now = new \DateTimeImmutable();
@@ -189,42 +185,8 @@ readonly class LocalImageStorage implements ImageStorageInterface
 
     private function imagePathFromUrl(string $url): string
     {
-        $prefix = '/uploads/media/';
-        if (!str_starts_with($url, $prefix)) {
-            throw new BusinessRuleViolationException('Die Bildquelle kann nur für Bibliotheksbilder gespeichert werden.');
-        }
-        $filename = substr($url, strlen($prefix));
-        if ($filename === '' || basename($filename) !== $filename) {
-            throw new BusinessRuleViolationException('Die Bild-URL ist ungültig.');
-        }
-        $path = $this->mediaUploadDirectory.DIRECTORY_SEPARATOR.$filename;
-        if (!is_file($path)) {
-            throw new BusinessRuleViolationException('Das Bibliotheksbild wurde nicht gefunden.');
-        }
-
-        return $path;
-    }
-
-    private function availableFilename(string $originalName, string $extension): string
-    {
-        $basename = pathinfo(basename($originalName), PATHINFO_FILENAME);
-        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $basename);
-        if (is_string($transliterated)) {
-            $basename = $transliterated;
-        }
-        $basename = mb_strtolower($basename);
-        $basename = preg_replace('/[^a-z0-9]+/', '-', $basename);
-        $basename = is_string($basename) ? trim($basename, '-') : '';
-        $basename = mb_substr($basename === '' ? 'bild' : $basename, 0, 180);
-
-        $filename = $basename.'.'.$extension;
-        $suffix = 2;
-        while (is_file($this->mediaUploadDirectory.DIRECTORY_SEPARATOR.$filename)) {
-            $filename = $basename.'-'.$suffix.'.'.$extension;
-            ++$suffix;
-        }
-
-        return $filename;
+        return $this->uploads->filePathFromUrl($url)
+            ?? throw new BusinessRuleViolationException('Das Bibliotheksbild wurde nicht gefunden.');
     }
 
     private function legacySourcePath(string $imagePath): string

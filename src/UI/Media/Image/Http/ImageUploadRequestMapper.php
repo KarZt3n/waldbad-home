@@ -1,0 +1,58 @@
+<?php
+
+namespace App\UI\Media\Image\Http;
+
+use App\Logic\Media\Image\Model\ImageUpload;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+
+final class ImageUploadRequestMapper
+{
+    public function fromRequest(Request $request): ImageUpload
+    {
+        $file = $request->files->get('image');
+        if (!$file instanceof UploadedFile) {
+            $contentLength = $request->headers->get('Content-Length');
+            if (is_string($contentLength) && ctype_digit($contentLength) && (int) $contentLength > ImageUpload::MAX_SIZE) {
+                throw new BadRequestHttpException('Das Bild darf maximal 10 MB groß sein.');
+            }
+            throw new BadRequestHttpException('Bitte wählen Sie eine gültige Bilddatei aus.');
+        }
+        if (!$file->isValid()) {
+            if (in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                throw new BadRequestHttpException('Das Bild darf maximal 10 MB groß sein.');
+            }
+            throw new BadRequestHttpException('Die Bilddatei konnte nicht vollständig hochgeladen werden.');
+        }
+
+        $size = $file->getSize();
+        if ($size === false) {
+            throw new BadRequestHttpException('Die Dateigröße konnte nicht ermittelt werden.');
+        }
+
+        return new ImageUpload(
+            temporaryPath: $file->getPathname(),
+            originalName: $file->getClientOriginalName(),
+            size: $size,
+            source: $this->source($request->request->get('source')),
+        );
+    }
+
+    public function source(mixed $source): ?string
+    {
+        if ($source === null || $source === '') {
+            return null;
+        }
+        if (!is_string($source)) {
+            throw new BadRequestHttpException('Die Bildquelle muss eine Zeichenkette sein.');
+        }
+        $source = trim(strip_tags($source));
+        if (mb_strlen($source) > 300) {
+            throw new BadRequestHttpException('Die Bildquelle darf höchstens 300 Zeichen lang sein.');
+        }
+
+        return $source === '' ? null : $source;
+    }
+
+}

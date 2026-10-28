@@ -61,6 +61,12 @@ class StoredImageEntity
         $this->updatedAt = $updatedAt;
     }
 
+    public function relocate(string $url, \DateTimeImmutable $updatedAt): void
+    {
+        $this->url = $url;
+        $this->updatedAt = $updatedAt;
+    }
+
     public function updateSource(?string $source, \DateTimeImmutable $updatedAt): void
     {
         $this->source = $source;

@@ -100,4 +100,28 @@ readonly class EventTemplate
             updatedAt: $updatedAt,
         );
     }
+
+    /**
+     * Ersetzt das Bild; ohne Ersatz entfallen auch Alternativtext und Bildquelle.
+     */
+    public function withMediaUrl(?string $mediaUrl, \DateTimeImmutable $updatedAt): self
+    {
+        return $this->revise(
+            title: $this->title,
+            content: $this->content,
+            mediaUrl: $mediaUrl,
+            mediaAlt: $mediaUrl === null ? null : $this->mediaAlt,
+            mediaSource: $mediaUrl === null ? null : $this->mediaSource,
+            layout: $this->layout,
+            imageWidthPercent: $this->imageWidthPercent,
+            verticalAlignment: $this->verticalAlignment,
+            textAlignment: $this->textAlignment,
+            imageFit: $this->imageFit,
+            helpEnabled: $this->helpEnabled,
+            helpButtonLabel: $this->helpButtonLabel,
+            activities: $this->activities,
+            callToActions: $this->callToActions,
+            updatedAt: $updatedAt,
+        );
+    }
 }

@@ -51,5 +51,10 @@ interface PageManagerInterface
      */
     public function saveAll(array $pages): array;
 
+    /**
+     * Aktualisiert nur die Blöcke der veröffentlichten Fassung, ohne den Entwurf anzufassen.
+     */
+    public function savePublishedBlocks(Page $publishedPage): void;
+
     public function delete(string $id): void;
 }

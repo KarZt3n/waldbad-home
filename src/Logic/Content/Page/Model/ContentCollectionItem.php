@@ -23,4 +23,19 @@ readonly class ContentCollectionItem
             throw new BusinessRuleViolationException('Die Bildquelle darf höchstens 300 Zeichen lang sein.');
         }
     }
+
+    public function withMediaReplaced(string $url, ?string $replacementUrl): self
+    {
+        if ($this->mediaUrl !== $url) {
+            return $this;
+        }
+
+        return new self(
+            title: $this->title,
+            content: $this->content,
+            mediaUrl: $replacementUrl,
+            mediaAlt: $replacementUrl === null ? null : $this->mediaAlt,
+            mediaSource: $replacementUrl === null ? null : $this->mediaSource,
+        );
+    }
 }

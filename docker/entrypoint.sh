@@ -25,7 +25,7 @@ export MAILER_EXPRESS_DSN="$MAILER_DSN"
 mkdir -p var/cache var/log public/uploads/media
 
 if [ "$(id -u)" = '0' ]; then
-    chown -R www-data:www-data var public/uploads/media
+    chown -R www-data:www-data var public/uploads
 fi
 
 php bin/console cache:clear --no-warmup --no-interaction

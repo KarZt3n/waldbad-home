@@ -14,5 +14,7 @@ interface PageProcessorInterface
      */
     public function saveAll(array $pages): array;
 
+    public function savePublishedBlocks(Page $publishedPage): void;
+
     public function delete(string $id): void;
 }

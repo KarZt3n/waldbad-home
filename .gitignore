@@ -19,5 +19,7 @@
 /assets/vendor/
 ###< symfony/asset-mapper ###
 
+/public/uploads/*
+!/public/uploads/media/
 /public/uploads/media/*
 !/public/uploads/media/.gitkeep

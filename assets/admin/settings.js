@@ -25,6 +25,7 @@ const CMS_MODULES = [
     ['member_messages', 'Mitgliedernachrichten'],
     ['rental_sauna', 'Vermietung: Sauna'],
     ['photos', 'Fotos'],
+    ['media_library', 'Mediathek'],
 ];
 const showPinProtection = async () => {
     const data = await request('/api/admin/v1/pin-settings');

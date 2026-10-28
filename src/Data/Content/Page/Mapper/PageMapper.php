@@ -212,6 +212,11 @@ readonly class PageMapper
         );
     }
 
+    public function updatePublishedBlocks(Page $page, PublishedPageEntity $entity): void
+    {
+        $entity->setBlocks($this->mapBlocks($page));
+    }
+
     public function updateEntity(Page $page, PageEntity $entity): void
     {
         $entity->update(

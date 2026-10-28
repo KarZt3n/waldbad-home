@@ -78,6 +78,20 @@ readonly class DoctrinePageProcessor implements PageProcessorInterface
         return array_map($this->mapper->toModel(...), $entities);
     }
 
+    public function savePublishedBlocks(Page $publishedPage): void
+    {
+        $entity = $this->entityManager->find(PageEntity::class, $publishedPage->id);
+        $publication = $entity === null
+            ? null
+            : $this->entityManager->getRepository(PublishedPageEntity::class)->findOneBy(['page' => $entity]);
+        if ($publication === null) {
+            throw new PageNotFoundException($publishedPage->id);
+        }
+
+        $this->mapper->updatePublishedBlocks($publishedPage, $publication);
+        $this->entityManager->flush();
+    }
+
     public function delete(string $id): void
     {
         $entity = $this->entityManager->find(PageEntity::class, $id);

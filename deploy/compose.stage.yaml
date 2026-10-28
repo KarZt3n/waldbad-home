@@ -52,8 +52,8 @@ services:
       - mailer_dsn
     volumes:
       - type: bind
-        source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
-        target: /var/www/html/public/uploads/media
+        source: ${WALDBAD_SHARED_UPLOADS_DIRECTORY:-/srv/webapps/waldbad-home/shared/uploads}
+        target: /var/www/html/public/uploads
     ports:
       - "127.0.0.1:8083:80"
       - "192.168.178.119:8083:80"
@@ -92,8 +92,8 @@ services:
       - mailer_dsn
     volumes:
       - type: bind
-        source: ${WALDBAD_SHARED_MEDIA_DIRECTORY:-/srv/webapps/waldbad-home/shared/media}
-        target: /var/www/html/public/uploads/media
+        source: ${WALDBAD_SHARED_UPLOADS_DIRECTORY:-/srv/webapps/waldbad-home/shared/uploads}
+        target: /var/www/html/public/uploads
     depends_on:
       app:
         condition: service_healthy

@@ -35,7 +35,7 @@ ENV APP_ENV=prod \
 
 RUN chmod 0755 /usr/local/bin/waldbad-entrypoint \
     && mkdir -p var/cache var/log public/assets public/uploads/media \
-    && chown -R www-data:www-data var public/assets public/uploads/media \
+    && chown -R www-data:www-data var public/assets public/uploads \
     && APP_SECRET=build-placeholder \
        DATABASE_URL='mysql://build:build@database:3306/build?serverVersion=11.4.0-MariaDB&charset=utf8mb4' \
        DEFAULT_URI='http://localhost' \

@@ -143,6 +143,52 @@ readonly class Page
         );
     }
 
+    /**
+     * @return list<string>
+     */
+    public function mediaUrls(): array
+    {
+        $urls = [];
+        foreach ($this->blocks as $block) {
+            array_push($urls, ...$block->mediaUrls());
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    /**
+     * Ersetzt bzw. entfernt ein Bild in allen Blöcken, ohne den Veröffentlichungsstatus zu ändern.
+     */
+    public function withMediaReplaced(string $url, ?string $replacementUrl, \DateTimeImmutable $updatedAt): self
+    {
+        $blocks = [];
+        foreach ($this->blocks as $block) {
+            $replaced = $block->withMediaReplaced($url, $replacementUrl);
+            if ($replaced !== null) {
+                $blocks[] = $replaced;
+            }
+        }
+
+        return new self(
+            id: $this->id,
+            title: $this->title,
+            slug: $this->slug,
+            navigationLabel: $this->navigationLabel,
+            parentId: $this->parentId,
+            blocks: $blocks,
+            status: $this->status,
+            visible: $this->visible,
+            showInNavigation: $this->showInNavigation,
+            navigationPosition: $this->navigationPosition,
+            seoTitle: $this->seoTitle,
+            seoDescription: $this->seoDescription,
+            version: $this->version,
+            createdAt: $this->createdAt,
+            updatedAt: $updatedAt,
+            publishedAt: $this->publishedAt,
+        );
+    }
+
     private function withStatus(
         PageStatus $status,
         \DateTimeImmutable $updatedAt,

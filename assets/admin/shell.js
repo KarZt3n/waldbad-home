@@ -20,6 +20,7 @@ import {showContactFeedbackManagement} from './contact.js';
 import {showSettingsManagement} from './settings.js';
 import {showRentalManagement} from './rental.js';
 import {showPhotoManagement} from './photos.js';
+import {showMediaLibrary} from './media.js';
 
 let workspace = null;
 
@@ -193,6 +194,10 @@ const mountAdminShell = async (session) => {
 
     if (hasModule('photos')) {
         menuItems.push(addMenu('Fotos', 'fotos', ['fotos'], showPhotoManagement));
+    }
+
+    if (hasModule('media_library')) {
+        menuItems.push(addMenu('Mediathek', 'mediathek', ['mediathek'], showMediaLibrary));
     }
 
     if (hasModule('rental_sauna')) {

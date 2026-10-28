@@ -310,7 +310,7 @@ const openImagePicker = async (onSelect) => {
             return element('article', {className: 'media-card', children: [
                 element('img', {attributes: {src: image.url, alt: '', loading: 'lazy'}}),
                 element('strong', {text: image.originalName}),
-                element('small', {text: `${image.width} × ${image.height} px`}),
+                element('small', {text: `${image.width} × ${image.height} px · ${image.url.slice(0, image.url.lastIndexOf('/'))}`}),
                 ...(image.source ? [element('small', {className: 'media-card-source', text: `Quelle: ${image.source}`})] : []),
                 choose,
             ]});
@@ -333,7 +333,7 @@ const collectionItemMediaEditor = (item, key) => {
     sourceInput.addEventListener('input', () => item.mediaSource = sourceInput.value || null);
     sourceInput.addEventListener('blur', async () => {
         const normalizedSource = sourceInput.value.trim() || null;
-        if (!item.mediaUrl?.startsWith('/uploads/media/') || normalizedSource === storedSource) return;
+        if (!item.mediaUrl?.startsWith('/uploads/') || normalizedSource === storedSource) return;
         try {
             const updated = await request('/api/admin/v1/media/images/source', {
                 method: 'PATCH',
@@ -823,7 +823,7 @@ const blockEditor = (block, index, handlers) => {
         sourceInput.addEventListener('input', (event) => block.mediaSource = event.target.value || null);
         sourceInput.addEventListener('blur', async () => {
             const normalizedSource = sourceInput.value.trim() || null;
-            if (!block.mediaUrl?.startsWith('/uploads/media/') || normalizedSource === storedSource) return;
+            if (!block.mediaUrl?.startsWith('/uploads/') || normalizedSource === storedSource) return;
             try {
                 const updated = await request('/api/admin/v1/media/images/source', {
                     method: 'PATCH',

@@ -7,7 +7,8 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
-    media_upload_directory: '%kernel.project_dir%/public/uploads/media'
+    uploads_root_directory: '%kernel.project_dir%/public/uploads'
+    media_upload_directory: '%uploads_root_directory%/media'
     email_logo_path: '%kernel.project_dir%/public/downloads/waldbad-borkheide-logo-email.png'
 
 services:
@@ -30,6 +31,7 @@ services:
             $memberSelfServiceUpdateLimiter: '@limiter.member_self_service_update'
             $saunaBookingLimiter: '@limiter.sauna_booking'
             $mediaUploadDirectory: '%media_upload_directory%'
+            $uploadsRootDirectory: '%uploads_root_directory%'
             $logoPath: '%email_logo_path%'
             $fromAddress: '%env(MAILER_FROM_ADDRESS)%'
             $fromName: '%env(MAILER_FROM_NAME)%'
@@ -56,5 +58,8 @@ services:
     # Multiple VolunteerEventProviderInterface implementations exist (the „Veranstaltung“ module and
     # the legacy page-content-block lookup), so autowiring can no longer pick one automatically.
     App\Logic\Event\HelpRequest\VolunteerEventProviderInterface: '@App\Data\Event\Schedule\Provider\ChainVolunteerEventProvider'
+
+    # Seiten, Veranstaltungen und Vorlagen liefern je einen Adapter; die Mediathek fragt alle gebündelt ab.
+    App\Logic\Media\Library\MediaUsageSourceInterface: '@App\Data\Media\Library\Adapter\ChainMediaUsageSource'
 
     App\Logic\Common\Messaging\AsyncEventPublisherInterface: '@App\Data\Infrastructure\Messenger\SymfonyAsyncEventPublisher'

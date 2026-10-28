@@ -8,7 +8,8 @@ releases_dir="$deploy_dir/releases"
 current_link="$deploy_dir/current"
 secret_dir="$deploy_dir/secrets"
 shared_dir="$deploy_dir/shared"
-shared_media_dir="$shared_dir/media"
+shared_uploads_dir="$shared_dir/uploads"
+shared_media_dir="$shared_uploads_dir/media"
 
 if ! git -C "$project_root" rev-parse --verify HEAD >/dev/null 2>&1; then
     printf 'Das Stage-Deployment muss aus einem Git-Checkout gestartet werden.\n' >&2
@@ -27,6 +28,12 @@ release_prefix="$(date -u '+%Y%m%d%H%M%S')-$commit"
 install -d -m 0700 "$secret_dir"
 install -d -m 0755 "$shared_dir"
 install -d -m 0755 "$releases_dir"
+# Bis zur Mediathek mit Ordnern war nur `shared/media` eingebunden; es wird einmalig nach
+# `shared/uploads/media` verschoben, damit alle Ordner unter `public/uploads` dauerhaft erhalten bleiben.
+if [ -d "$shared_dir/media" ] && [ ! -e "$shared_media_dir" ]; then
+    install -d -m 0775 "$shared_uploads_dir"
+    mv "$shared_dir/media" "$shared_media_dir"
+fi
 if [ ! -d "$shared_media_dir" ]; then
     install -d -m 0775 "$shared_media_dir"
 fi

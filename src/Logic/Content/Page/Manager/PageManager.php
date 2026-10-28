@@ -172,6 +172,11 @@ readonly class PageManager implements PageManagerInterface
         return $this->processor->saveAll($pages);
     }
 
+    public function savePublishedBlocks(Page $publishedPage): void
+    {
+        $this->processor->savePublishedBlocks($publishedPage);
+    }
+
     public function delete(string $id): void
     {
         $this->processor->delete($id);
