@@ -14,6 +14,7 @@ import {moduleIcon} from './icons.js';
 import {hasModule, isGlobalAdministrator, setSessionState} from './session.js';
 import {clearPinSessionUnlocks, ensurePinUnlocked} from './pin.js';
 import {renderLogin} from './auth.js';
+import {showOverview} from './overview.js';
 import {showPages} from './pages.js';
 import {showMembershipManagement} from './members.js';
 import {showEventManagement} from './events.js';
@@ -180,6 +181,7 @@ const mountAdminShell = async (session) => {
         item.link.setAttribute('aria-current', 'page');
         menu.querySelectorAll('.admin-menu-item:not(.active)').forEach((menuItem) => menuItem.removeAttribute('aria-current'));
         closeAdminNavigation();
+        workspace.scrollTop = 0;
         try {
             await item.action(segments);
         } catch (error) {
@@ -206,6 +208,7 @@ const mountAdminShell = async (session) => {
         return item;
     };
     const menuItems = [];
+    menuItems.push(addMenu('Übersicht', 'overview', 'uebersicht', ['uebersicht'], showOverview));
     if (hasModule('pages')) menuItems.push(addMenu('Seiten', 'pages', 'seiten', ['seiten'], showPages));
 
     if (hasModule('events') || hasModule('event_helpers') || hasModule('activities')) {

@@ -38,6 +38,10 @@ services:
             $workAssignmentSelfServicePeriod: '%work_assignment_self_service_period%'
             $workAssignmentRequiredHoursTiers: '%work_assignment_required_hours_tiers%'
 
+    _instanceof:
+        App\Logic\Overview\OverviewTaskSourceInterface:
+            tags: ['app.overview_task_source']
+
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
     App\:
@@ -61,5 +65,10 @@ services:
 
     # Seiten, Veranstaltungen und Vorlagen liefern je einen Adapter; die Mediathek fragt alle gebündelt ab.
     App\Logic\Media\Library\MediaUsageSourceInterface: '@App\Data\Media\Library\Adapter\ChainMediaUsageSource'
+
+    # Jedes Fachmodul liefert einen Adapter (`src/Data/Overview/Adapter`) für die Übersicht der offenen Aufgaben.
+    App\Logic\Overview\Query\GetOverviewQuery:
+        arguments:
+            $sources: !tagged_iterator app.overview_task_source
 
     App\Logic\Common\Messaging\AsyncEventPublisherInterface: '@App\Data\Infrastructure\Messenger\SymfonyAsyncEventPublisher'

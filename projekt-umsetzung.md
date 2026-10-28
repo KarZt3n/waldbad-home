@@ -737,3 +737,21 @@ Beim Umbenennen bleibt die Datei im Ordner und behält ihre Endung; der neue Nam
 Beim Ersetzen erhält ein Bild eine eigene URL im selben Ordner (passende Dateiendung, kein veralteter Browser-Cache); alle Verweise werden umgestellt und danach wird das alte Bild gelöscht. Ein Bild kann nur durch ein Bild ersetzt werden. Andere Dateien werden unter derselben Adresse überschrieben, damit Links aus Texten gültig bleiben; dafür muss der Dateityp gleich bleiben.
 
 Prod verlinkt `public/uploads` des Releases auf `public_html/uploads`, Stage bindet `shared/uploads` ein, damit alle Ordner Deployments überdauern (siehe `deployment.md`).
+
+## 25. Fachliche Erweiterung: Übersicht (Startseite der Redaktion)
+
+Nach der Anmeldung öffnet sich unter `/admin/uebersicht` die „Übersicht“ (`Overview`). Sie zeigt je offener Aufgabe eine Kennzahl und verlinkt direkt in den zuständigen Bereich. Die Kennzahlen sind nach den Bereichen der Redaktionsnavigation gruppiert, grundsätzlich in der Reihenfolge Seiten, Veranstaltung, Mitgliederverwaltung, Kontakt und Feedback, Vermietung. Gruppen mit offenen Aufgaben rücken nach oben; hat die Mitgliederverwaltung offene Aufgaben, steht sie immer ganz oben. Innerhalb einer Gruppe stehen Aufgaben mit offenen Einträgen vorn. Zu jeder Kennzahl steht das Alter des ältesten Eintrags, bei Terminen wie Saunadiensten der nächste fällige Zeitpunkt. Berücksichtigt werden nur Module, die für die angemeldete Person freigeschaltet sind; für alle anderen wird nichts abgefragt.
+
+| Aufgabe | Modul | Gilt als offen |
+| --- | --- | --- |
+| Mitgliedsanträge | `membership_applications` | weder als Mitglied angelegt noch abgelehnt |
+| Nachrichten von Mitgliedern | `member_messages` | nicht erledigt |
+| Kontaktanfragen | `contact_requests` | nicht erledigt |
+| Gästebucheinträge | `guestbook` | noch nicht moderiert |
+| Sauna-Anmeldungen | `rental_sauna` | weder angenommen, abgelehnt noch storniert |
+| Offene Saunadienste | `rental_sauna` | Dienstzeitpunkt der nächsten vier Wochen, an dem eine angenommene Buchung beginnt oder endet und noch niemand Dienst hat (im Dienstplan rot) |
+| Helferanmeldungen | `event_helpers` | neu eingegangen |
+| Seiten zur Prüfung | `pages` | zur Prüfung eingereicht |
+| Unveröffentlichte Änderungen | `pages` | veröffentlichte Seite mit seitdem geändertem Entwurf |
+
+Jedes Fachmodul liefert seine offenen Einträge über einen Adapter (`OverviewTaskSourceInterface`, Implementierungen unter `src/Data/Overview/Adapter`); neue Aufgaben entstehen durch einen weiteren Fall in `OverviewTaskType` und einen Adapter. Die Kennzahlen enthalten keine personenbezogenen Daten; die Mitgliederverwaltung bleibt beim Öffnen weiterhin PIN-geschützt.

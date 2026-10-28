@@ -942,8 +942,13 @@ a { color: var(--forest-700); }
 @media (min-width: 761px) {
     .admin-layout { transition: grid-template-columns .2s ease; }
     .admin-layout.admin-sidebar-collapsed { grid-template-columns: 4.5rem minmax(0, 1fr); }
-    /* Die Leiste selbst füllt die volle Höhe, ihr Inhalt bleibt beim Scrollen oben stehen. */
-    .admin-sidebar-inner { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; overflow-x: hidden; }
+    /* Kopfzeile und Seitenleiste stehen fest; gescrollt wird nur der Arbeitsbereich. */
+    .admin-site #app:has(> .admin-layout) { display: flex; height: 100vh; height: 100dvh; flex-direction: column; overflow: hidden; }
+    .admin-site #app:has(> .admin-layout) > .admin-header { flex: 0 0 auto; }
+    .admin-site #app:has(> .admin-layout) > .admin-layout { min-height: 0; flex: 1 1 auto; }
+    .admin-sidebar { overflow-y: auto; }
+    .admin-workspace { overflow-y: auto; overscroll-behavior: contain; }
+    .admin-workspace .tree-panel { max-height: calc(100vh - 7rem); max-height: calc(100dvh - 7rem); }
     .admin-sidebar h1, .admin-menu-label { transition: opacity .15s ease; }
     /* Nur unsichtbar, nicht entfernt: Screenreader lesen die Beschriftungen weiter vor. */
     .admin-sidebar-collapsed .admin-sidebar h1, .admin-sidebar-collapsed .admin-menu-label { opacity: 0; }
@@ -1440,6 +1445,21 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .media-dialog::backdrop { background: rgb(11 46 32 / 75%); }
 .media-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; color: var(--ink); background: var(--white); }
 .media-dialog-header h2 { margin: .2rem 0 0; }
+/* Übersicht (Startseite der Redaktion): eine Kachel je offener Aufgabe, offene zuerst. */
+.overview-groups { display: grid; gap: 1.75rem; }
+.overview-group { display: grid; gap: .75rem; }
+.overview-group-header { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
+.overview-group-header h3 { margin: 0; font-size: 1.2rem; }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr)); gap: 1rem; }
+.overview-tile { display: grid; align-content: start; gap: .3rem; min-width: 0; padding: 1.25rem; border: 1px solid var(--line); border-radius: .9rem; color: var(--ink); background: var(--white); text-decoration: none; transition: border-color .15s ease, box-shadow .15s ease; }
+.overview-tile:hover, .overview-tile:focus-visible { border-color: var(--forest-700); box-shadow: 0 6px 20px rgb(16 40 28 / .12); }
+.overview-tile-count { color: var(--muted); font-size: 2.6rem; font-weight: 900; line-height: 1; }
+.overview-tile-label { font-weight: 800; overflow-wrap: anywhere; }
+.overview-tile small { color: var(--muted); }
+.overview-tile.is-open { border-left: .35rem solid var(--forest-700); }
+.overview-tile.is-open .overview-tile-count { color: var(--forest-800); }
+.overview-tile:not(.is-open) { background: #f6f8f7; }
+
 /* Baum-Layout (Mediathek-Ordner, Seitenbaum): links Baum, rechts Inhalt; Aktionen per Kontextmenü. */
 .tree-layout { display: grid; grid-template-columns: var(--tree-width, minmax(13rem, 17rem)) .9rem minmax(0, 1fr); gap: .2rem; width: 100%; margin: 1rem 0; align-items: start; }
 .tree-layout.is-resizing, .tree-layout.is-resizing * { cursor: col-resize; user-select: none; }
