@@ -30,9 +30,14 @@ install -d -m 0755 "$shared_dir"
 install -d -m 0755 "$releases_dir"
 # Bis zur Mediathek mit Ordnern war nur `shared/media` eingebunden; es wird einmalig nach
 # `shared/uploads/media` verschoben, damit alle Ordner unter `public/uploads` dauerhaft erhalten bleiben.
+# `shared/media` gehört dem Webserver-Benutzer des Containers; ein Verzeichnis in einen anderen
+# Elternordner zu verschieben, erfordert Schreibrecht auf das Verzeichnis selbst, daher als root im
+# Container. Die Rechte unter `public/uploads` setzt der Entrypoint beim Start.
 if [ -d "$shared_dir/media" ] && [ ! -e "$shared_media_dir" ]; then
-    install -d -m 0775 "$shared_uploads_dir"
-    mv "$shared_dir/media" "$shared_media_dir"
+    docker run --rm \
+        -v "$shared_dir:/shared" \
+        nginx:1.28-alpine \
+        sh -c 'mkdir -p /shared/uploads && chmod 0775 /shared/uploads && mv /shared/media /shared/uploads/media'
 fi
 if [ ! -d "$shared_media_dir" ]; then
     install -d -m 0775 "$shared_media_dir"
