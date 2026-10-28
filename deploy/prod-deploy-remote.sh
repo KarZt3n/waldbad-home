@@ -122,7 +122,7 @@ printf 'Datenbank gesichert: %s\n' "$backup_file"
 "$php" bin/console app:media:synchronize-metadata --no-interaction
 
 # Neue Assets haben gehashte Dateinamen und können vor dem Umschalten bereitliegen.
-rsync -a --chmod=D755,F644 --exclude=/index.php --exclude=/uploads/ "$release_dir/public/" "$docroot/"
+rsync -a --chmod=D755,F644 --exclude=/index.php --exclude=/uploads "$release_dir/public/" "$docroot/"
 install -m 0644 "$release_dir/deploy/prod/public.htaccess" "$docroot/.htaccess"
 install -m 0644 "$release_dir/deploy/prod/uploads.htaccess" "$docroot/uploads/.htaccess"
 
@@ -145,7 +145,7 @@ ln -s "releases/$release_name" "$deploy_dir/.current-$release_name"
 mv -Tf "$deploy_dir/.current-$release_name" "$current_link"
 
 # Erst jetzt veraltete öffentliche Dateien entfernen; Medien, Stub und .htaccess bleiben.
-rsync -a --chmod=D755,F644 --delete --exclude=/index.php --exclude=/.htaccess --exclude=/uploads/ --exclude=/.well-known/ \
+rsync -a --chmod=D755,F644 --delete --exclude=/index.php --exclude=/.htaccess --exclude=/uploads --exclude=/.well-known/ \
     "$release_dir/public/" "$docroot/"
 
 for release_marker in "$releases_dir"/*/.waldbad-release; do
