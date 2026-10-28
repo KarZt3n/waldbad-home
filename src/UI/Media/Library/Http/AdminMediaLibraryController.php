@@ -38,7 +38,7 @@ final class AdminMediaLibraryController extends AbstractController
     #[Route('', name: 'api_admin_media_library_list', methods: ['GET'])]
     public function list(Request $request, ListMediaLibraryQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::MediaLibraryView->value);
+        $this->denyUnlessLibraryReadable();
         $items = $query->execute(new ListMediaLibraryRequest(
             folderPath: $this->requestMapper->folderPath($request->query->get('folder')),
             recursive: $request->query->getBoolean('recursive'),
@@ -118,7 +118,7 @@ final class AdminMediaLibraryController extends AbstractController
     #[Route('/folders', name: 'api_admin_media_library_folders', methods: ['GET'])]
     public function folders(ListMediaFoldersQuery $query): JsonResponse
     {
-        $this->denyAccessUnlessGranted(Permission::MediaLibraryView->value);
+        $this->denyUnlessLibraryReadable();
 
         return new JsonResponse(['items' => array_map($this->folder(...), $query->execute())]);
     }
@@ -147,6 +147,14 @@ final class AdminMediaLibraryController extends AbstractController
         $useCase->execute($this->requestMapper->folderPath($request->getPayload()->get('path')));
 
         return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
+    }
+
+    /** Seitenredaktion wählt im Editor Mediathek-Dateien als Linkziel aus, auch ohne eigenes Mediathek-Modul. */
+    private function denyUnlessLibraryReadable(): void
+    {
+        if (!$this->isGranted(Permission::MediaLibraryView->value) && !$this->isGranted(Permission::PagesEdit->value)) {
+            throw $this->createAccessDeniedException();
+        }
     }
 
     /**

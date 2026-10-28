@@ -6,6 +6,8 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 
 readonly class ContentBlock
 {
+    private const string MEDIA_URL_PREFIX = '/uploads/';
+
     public function __construct(
         public ContentBlockType $type,
         public string $content,
@@ -169,6 +171,9 @@ readonly class ContentBlock
     public function mediaUrls(): array
     {
         $urls = $this->mediaUrl === null ? [] : [$this->mediaUrl];
+        if ($this->linkUrl !== null && str_starts_with($this->linkUrl, self::MEDIA_URL_PREFIX)) {
+            $urls[] = $this->linkUrl;
+        }
         foreach ($this->collectionItems as $item) {
             if ($item->mediaUrl !== null) {
                 $urls[] = $item->mediaUrl;
@@ -179,7 +184,8 @@ readonly class ContentBlock
     }
 
     /**
-     * Liefert `null`, wenn der Block ohne das entfernte Bild keinen Inhalt mehr hätte.
+     * Ersetzt Bild und auf Mediathek-Dateien zeigende Links. Liefert `null`, wenn der Block ohne die
+     * entfernte Datei keinen Inhalt mehr hätte; ein Handlungsaufruf ohne Ziel wird zu Fließtext.
      */
     public function withMediaReplaced(string $url, ?string $replacementUrl): ?self
     {
@@ -187,15 +193,19 @@ readonly class ContentBlock
             return $this;
         }
 
+        $linkUrl = $this->linkUrl === $url ? $replacementUrl : $this->linkUrl;
+        if ($this->type === ContentBlockType::CallToAction && $linkUrl === null) {
+            return trim($this->content) === '' ? null : new self(type: ContentBlockType::RichText, content: $this->content);
+        }
         $collectionItems = array_map(
             static fn (ContentCollectionItem $item): ContentCollectionItem => $item->withMediaReplaced($url, $replacementUrl),
             $this->collectionItems,
         );
         if ($this->mediaUrl !== $url) {
-            return $this->withMedia($this->mediaUrl, $this->mediaAlt, $this->mediaSource, $collectionItems);
+            return $this->withMedia($this->mediaUrl, $this->mediaAlt, $this->mediaSource, $linkUrl, $collectionItems);
         }
         if ($replacementUrl !== null) {
-            return $this->withMedia($replacementUrl, $this->mediaAlt, $this->mediaSource, $collectionItems);
+            return $this->withMedia($replacementUrl, $this->mediaAlt, $this->mediaSource, $linkUrl, $collectionItems);
         }
 
         if ($this->type === ContentBlockType::Image) {
@@ -210,13 +220,13 @@ readonly class ContentBlock
             return null;
         }
 
-        return $this->withMedia(null, null, null, $collectionItems);
+        return $this->withMedia(null, null, null, $linkUrl, $collectionItems);
     }
 
     /**
      * @param list<ContentCollectionItem> $collectionItems
      */
-    private function withMedia(?string $mediaUrl, ?string $mediaAlt, ?string $mediaSource, array $collectionItems): self
+    private function withMedia(?string $mediaUrl, ?string $mediaAlt, ?string $mediaSource, ?string $linkUrl, array $collectionItems): self
     {
         return new self(
             type: $this->type,
@@ -224,7 +234,7 @@ readonly class ContentBlock
             mediaUrl: $mediaUrl,
             mediaAlt: $mediaAlt,
             mediaSource: $mediaSource,
-            linkUrl: $this->linkUrl,
+            linkUrl: $linkUrl,
             linkLabel: $this->linkLabel,
             layout: $this->layout,
             imageWidthPercent: $this->imageWidthPercent,

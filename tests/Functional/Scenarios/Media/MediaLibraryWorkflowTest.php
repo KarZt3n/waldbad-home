@@ -262,6 +262,57 @@ final class MediaLibraryWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testCallToActionLinkingAFileFollowsRenameAndDeletion(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/folders', ['parentPath' => '', 'name' => self::TEST_FOLDER], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $pdfUrl = $this->upload('/api/admin/v1/media-library', 'Badeordnung.pdf', $headers, ['folder' => self::TEST_FOLDER], self::pdf())['url'];
+        self::assertIsString($pdfUrl);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages', [
+            'title' => 'Mediathek-Handlungsaufruf',
+            'slug' => 'mediathek-handlungsaufruf',
+            'navigationLabel' => 'Mediathek-Handlungsaufruf',
+            'parentId' => null,
+            'blocks' => [
+                ['type' => 'call_to_action', 'content' => '<p>Alle Regeln im Überblick.</p>', 'linkUrl' => $pdfUrl, 'linkLabel' => 'Badeordnung öffnen'],
+            ],
+            'visible' => true,
+            'showInNavigation' => false,
+            'navigationPosition' => 0,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $pageId = $this->responseData()['id'];
+        self::assertIsString($pageId);
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages/'.$pageId.'/publish', [], $headers);
+        self::assertResponseIsSuccessful();
+
+        $usages = $this->list($this->libraryItem($pdfUrl)['usages']);
+        self::assertCount(1, $usages);
+        self::assertSame('page', $usages[0]['area']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/rename', ['url' => $pdfUrl, 'filename' => 'Badeordnung 2026'], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['updatedReferences']);
+        $renamedUrl = $this->map($this->responseData()['file'])['url'];
+        self::assertSame('/uploads/'.self::TEST_FOLDER.'/badeordnung-2026.pdf', $renamedUrl);
+        $this->client->request('GET', '/api/public/v1/pages/mediathek-handlungsaufruf');
+        $block = $this->map($this->list($this->responseData()['blocks'])[0]);
+        self::assertSame('call_to_action', $block['type']);
+        self::assertSame($renamedUrl, $block['linkUrl']);
+        self::assertSame('Badeordnung öffnen', $block['linkLabel']);
+
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/media-library', ['url' => $renamedUrl], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['removedReferences']);
+        $this->client->request('GET', '/api/public/v1/pages/mediathek-handlungsaufruf');
+        $block = $this->map($this->list($this->responseData()['blocks'])[0]);
+        self::assertSame('rich_text', $block['type']);
+        self::assertSame('<p>Alle Regeln im Überblick.</p>', $block['content']);
+        self::assertNull($block['linkUrl']);
+    }
+
     public function testAdminEndpointsRequireAuthentication(): void
     {
         $this->client->request('GET', '/api/admin/v1/media-library');

@@ -585,7 +585,7 @@ a { color: var(--forest-700); }
 }
 
 .button:hover { background: var(--forest-900); }
-.button[hidden], .secondary-button[hidden] { display: none; }
+.button[hidden], .secondary-button[hidden], .field[hidden], .text-button[hidden] { display: none; }
 
 .secondary-button {
     border: 1px solid var(--forest-700);
@@ -1521,6 +1521,19 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .media-usage-list a, .media-usage-list li > span:not(.media-usage-area) { overflow-wrap: anywhere; font-weight: 700; }
 .media-usage-area { color: var(--muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .confirm-dialog-content .media-usage-list { max-height: 12rem; overflow: auto; }
+.media-file-picker-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; padding: 0 1.5rem 1rem; }
+.media-file-picker-toolbar input { flex: 1 1 16rem; }
+.media-file-picker-toolbar select { flex: 0 1 18rem; }
+.media-file-picker-list { display: grid; gap: .35rem; max-height: 60vh; margin: 0; padding: 0 1.5rem 1.5rem; overflow: auto; list-style: none; }
+.media-file-picker-item { display: flex; width: 100%; align-items: center; gap: .75rem; min-width: 0; padding: .5rem; border: 1px solid var(--line); border-radius: .6rem; color: inherit; background: var(--white); font: inherit; text-align: left; cursor: pointer; }
+.media-file-picker-item:hover, .media-file-picker-item:focus-visible { border-color: var(--forest-700); background: var(--forest-100); }
+.media-file-picker-item img, .media-file-picker-type { width: 3rem; height: 3rem; flex: 0 0 3rem; border-radius: .4rem; object-fit: cover; }
+.media-file-picker-type { display: grid; place-items: center; color: var(--forest-700); background: var(--forest-100); font-size: .7rem; font-weight: 900; letter-spacing: .04em; }
+.media-file-picker-item > span:last-child { display: grid; min-width: 0; gap: .1rem; }
+.media-file-picker-item strong, .media-file-picker-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-file-picker-item small { color: var(--muted); }
+.media-file-picker-selection { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.media-file-picker-current { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
 .media-rename-preview { margin: 0; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
 
 .preview-dialog {

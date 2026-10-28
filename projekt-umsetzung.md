@@ -730,6 +730,8 @@ Beim Löschen werden zuerst alle Verweise entfernt und danach die Datei gelösch
 
 Beim Verschieben (Menü oder Drag & Drop auf einen Ordner) behält die Datei ihren Namen, sofern er im Zielordner frei ist; alle Verweise in Seiten, Veranstaltungen und Vorlagen werden auf die neue Adresse umgestellt. Scheitert das Umstellen, werden bereits geänderte Verweise zurückgesetzt und die Datei zurückverschoben.
 
+Ein Handlungsaufruf kann statt auf eine eingegebene Adresse auf eine Datei der Mediathek zeigen (z. B. eine PDF); die Dateiauswahl im Seiteneditor steht allen offen, die Seiten bearbeiten dürfen, auch ohne Mediathek-Modul. Solche Links und Bild-Linkziele mit einer `/uploads/`-Adresse zählen als Verwendung und werden beim Ersetzen, Umbenennen und Verschieben mit umgestellt; wird die Datei gelöscht, wird aus dem Handlungsaufruf ein Fließtextblock mit seinem Text, ein Bild verliert nur sein Linkziel.
+
 Beim Umbenennen bleibt die Datei im Ordner und behält ihre Endung; der neue Name wird wie beim Hochladen in Kleinbuchstaben, Ziffern und Bindestriche umgewandelt (Umlaute als ae/oe/ue, ß als ss) und ist danach auch der angezeigte Dateiname. Ist der Name im Ordner bereits vergeben, wird das Umbenennen abgelehnt. Alle Verweise werden wie beim Verschieben auf die neue Adresse umgestellt; scheitert das, werden sie zurückgesetzt und der alte Name wiederhergestellt.
 
 Beim Ersetzen erhält ein Bild eine eigene URL im selben Ordner (passende Dateiendung, kein veralteter Browser-Cache); alle Verweise werden umgestellt und danach wird das alte Bild gelöscht. Ein Bild kann nur durch ein Bild ersetzt werden. Andere Dateien werden unter derselben Adresse überschrieben, damit Links aus Texten gültig bleiben; dafür muss der Dateityp gleich bleiben.

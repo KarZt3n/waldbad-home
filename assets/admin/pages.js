@@ -319,6 +319,63 @@ const openImagePicker = async (onSelect) => {
         content.replaceChildren(emptyState(error.message));
     }
 };
+const mediaFileTypeLabel = (file) => (file.url.split('.').pop() || 'Datei').toUpperCase();
+// Dateiauswahl aus der Mediathek (alle Ordner) für Linkziele wie den Handlungsaufruf.
+const openMediaFilePicker = async (onSelect) => {
+    const dialog = element('dialog', {className: 'media-dialog'});
+    const close = element('button', {className: 'text-button', text: 'Schließen', attributes: {type: 'button'}});
+    close.addEventListener('click', () => dialog.close());
+    const search = element('input', {attributes: {type: 'search', placeholder: 'Dateiname oder Ordner suchen …', 'aria-label': 'Dateiname oder Ordner suchen'}});
+    const folder = element('select', {attributes: {'aria-label': 'Ordner'}, children: [element('option', {text: 'Alle Ordner', attributes: {value: ''}})]});
+    const list = element('ul', {className: 'media-file-picker-list', children: [element('li', {text: 'Dateien werden geladen …'})]});
+    dialog.append(
+        element('header', {className: 'media-dialog-header', children: [
+            element('div', {children: [element('p', {className: 'eyebrow', text: 'Mediathek'}), element('h2', {text: 'Datei auswählen'})]}),
+            close,
+        ]}),
+        element('div', {className: 'media-file-picker-toolbar', children: [search, folder]}),
+        list,
+    );
+    dialog.addEventListener('close', () => dialog.remove());
+    document.body.append(dialog);
+    dialog.showModal();
+    search.focus();
+
+    try {
+        const [library, folders] = await Promise.all([
+            request('/api/admin/v1/media-library?recursive=1'),
+            request('/api/admin/v1/media-library/folders'),
+        ]);
+        folder.append(...folders.items.map((item) => element('option', {text: `/uploads/${item.path}`, attributes: {value: item.path}})));
+        const render = () => {
+            const term = search.value.trim().toLowerCase();
+            const files = library.items.filter((file) => (!folder.value || file.folder === folder.value || file.folder.startsWith(`${folder.value}/`))
+                && (!term || `${file.originalName} ${file.url}`.toLowerCase().includes(term)));
+            list.replaceChildren(...(files.length ? files.map((file) => {
+                const choose = element('button', {className: 'media-file-picker-item', attributes: {type: 'button'}, children: [
+                    file.isImage
+                        ? element('img', {attributes: {src: file.url, alt: '', loading: 'lazy'}})
+                        : element('span', {className: 'media-file-picker-type', text: mediaFileTypeLabel(file)}),
+                    element('span', {children: [
+                        element('strong', {text: file.originalName}),
+                        element('small', {text: file.url}),
+                    ]}),
+                ]});
+                choose.addEventListener('click', () => {
+                    onSelect(file);
+                    dialog.close();
+                });
+
+                return element('li', {children: [choose]});
+            }) : [element('li', {children: [emptyState(library.items.length ? 'Keine Datei passt zur Auswahl.' : 'Die Mediathek enthält noch keine Dateien.')]})]));
+        };
+        search.addEventListener('input', render);
+        folder.addEventListener('change', render);
+        render();
+    } catch (error) {
+        list.replaceChildren(element('li', {children: [emptyState(error.message)]}));
+    }
+};
 const collectionItemMediaEditor = (item, key) => {
     const media = field('Bild-URL (optional)', `collection-media-${key}`, item.mediaUrl || '');
     const alt = field('Alternativtext (optional; leer = dekorativ)', `collection-alt-${key}`, item.mediaAlt || '');
@@ -1005,11 +1062,57 @@ const blockEditor = (block, index, handlers) => {
         ]}));
     }
     if (block.type === 'call_to_action') {
-        const link = field('Link', 'block-link-' + index, block.linkUrl || '');
+        const isMediaFile = (url) => (url || '').startsWith('/uploads/');
+        let externalUrl = isMediaFile(block.linkUrl) ? '' : block.linkUrl || '';
+        let mediaFileUrl = isMediaFile(block.linkUrl) ? block.linkUrl : null;
+        const targetType = element('select', {attributes: {id: 'block-link-type-' + index}, children: [
+            element('option', {text: 'Link (Adresse eingeben)', attributes: {value: 'link'}}),
+            element('option', {text: 'Datei aus der Mediathek öffnen', attributes: {value: 'file'}}),
+        ]});
+        targetType.value = mediaFileUrl ? 'file' : 'link';
+        const link = field('Link', 'block-link-' + index, externalUrl);
+        const linkInput = link.querySelector('input');
+        linkInput.placeholder = 'https://…, /seite/…, mailto:…';
         const label = field('Linktext', 'block-label-' + index, block.linkLabel || '');
-        link.querySelector('input').addEventListener('input', (event) => block.linkUrl = event.target.value || null);
-        label.querySelector('input').addEventListener('input', (event) => block.linkLabel = event.target.value || null);
-        card.append(link, label);
+        const labelInput = label.querySelector('input');
+        const fileName = element('span', {className: 'media-file-picker-current'});
+        const openFile = element('a', {className: 'text-button', text: 'Öffnen', attributes: {target: '_blank', rel: 'noopener'}});
+        const chooseFile = element('button', {className: 'secondary-button', text: 'Datei auswählen …', attributes: {type: 'button'}});
+        const fileRow = element('div', {className: 'field', children: [
+            element('span', {text: 'Datei'}),
+            element('div', {className: 'media-file-picker-selection', children: [fileName, openFile, chooseFile]}),
+        ]});
+        const refresh = () => {
+            const fileMode = targetType.value === 'file';
+            link.hidden = fileMode;
+            fileRow.hidden = !fileMode;
+            fileName.textContent = mediaFileUrl || 'Noch keine Datei ausgewählt.';
+            openFile.hidden = !mediaFileUrl;
+            if (mediaFileUrl) openFile.href = mediaFileUrl;
+            block.linkUrl = fileMode ? mediaFileUrl : externalUrl || null;
+        };
+        targetType.addEventListener('change', refresh);
+        linkInput.addEventListener('input', () => {
+            externalUrl = linkInput.value.trim();
+            refresh();
+        });
+        chooseFile.addEventListener('click', () => openMediaFilePicker((file) => {
+            mediaFileUrl = file.url;
+            if (!labelInput.value.trim()) {
+                labelInput.value = 'Datei öffnen';
+                block.linkLabel = labelInput.value;
+            }
+            refresh();
+            chooseFile.closest('form')?.dispatchEvent(new Event('change', {bubbles: true}));
+        }));
+        labelInput.addEventListener('input', (event) => block.linkLabel = event.target.value || null);
+        refresh();
+        card.append(
+            element('label', {className: 'field', children: [element('span', {text: 'Linkziel'}), targetType]}),
+            link,
+            fileRow,
+            label,
+        );
     }
 
     const remove = element('button', {className: 'text-button danger', text: 'Block entfernen', attributes: {type: 'button'}});

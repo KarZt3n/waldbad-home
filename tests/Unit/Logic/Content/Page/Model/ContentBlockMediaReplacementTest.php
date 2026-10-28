@@ -24,6 +24,49 @@ final class ContentBlockMediaReplacementTest extends TestCase
         self::assertSame('center', $replaced->layout);
     }
 
+    public function testCallToActionFollowsALinkedMediaFile(): void
+    {
+        $block = new ContentBlock(type: ContentBlockType::CallToAction, content: '<p>Regeln</p>', linkUrl: '/uploads/dokumente/alt.pdf', linkLabel: 'Öffnen');
+
+        self::assertSame(['/uploads/dokumente/alt.pdf'], $block->mediaUrls());
+        $replaced = $block->withMediaReplaced('/uploads/dokumente/alt.pdf', '/uploads/dokumente/neu.pdf');
+
+        self::assertNotNull($replaced);
+        self::assertSame(ContentBlockType::CallToAction, $replaced->type);
+        self::assertSame('/uploads/dokumente/neu.pdf', $replaced->linkUrl);
+        self::assertSame('Öffnen', $replaced->linkLabel);
+    }
+
+    public function testRemovingTheLinkedFileTurnsCallToActionIntoRichText(): void
+    {
+        $block = new ContentBlock(type: ContentBlockType::CallToAction, content: '<p>Regeln</p>', linkUrl: '/uploads/dokumente/alt.pdf', linkLabel: 'Öffnen');
+
+        $replaced = $block->withMediaReplaced('/uploads/dokumente/alt.pdf', null);
+
+        self::assertNotNull($replaced);
+        self::assertSame(ContentBlockType::RichText, $replaced->type);
+        self::assertSame('<p>Regeln</p>', $replaced->content);
+        self::assertNull($replaced->linkUrl);
+    }
+
+    public function testExternalLinksAreNoMediaReferences(): void
+    {
+        $block = new ContentBlock(type: ContentBlockType::CallToAction, content: '<p>Kontakt</p>', linkUrl: 'https://example.org/uploads/datei.pdf', linkLabel: 'Öffnen');
+
+        self::assertSame([], $block->mediaUrls());
+    }
+
+    public function testRemovingAFileClearsOnlyTheImageLinkTarget(): void
+    {
+        $block = new ContentBlock(type: ContentBlockType::Image, content: '', mediaUrl: self::URL, linkUrl: '/uploads/dokumente/plan.pdf');
+
+        $replaced = $block->withMediaReplaced('/uploads/dokumente/plan.pdf', null);
+
+        self::assertNotNull($replaced);
+        self::assertSame(self::URL, $replaced->mediaUrl);
+        self::assertNull($replaced->linkUrl);
+    }
+
     public function testRemovingTheImageDropsPureImageBlocks(): void
     {
         $block = new ContentBlock(type: ContentBlockType::Image, content: '', mediaUrl: self::URL);
