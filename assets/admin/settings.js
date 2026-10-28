@@ -6,7 +6,7 @@ import {
     buildPageTree, confirmAction, element, field, fieldRow, flattenPageTree, formMessage,
     request, selectField, toast,
 } from '../core.js';
-import {emptyState, sectionHeading} from './ui.js';
+import {emptyState, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasAnyRole, hasModule, isGlobalAdministrator} from './session.js';
 import {promptForPin} from './pin.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
@@ -422,7 +422,7 @@ const showEmailSettingsManagement = async () => {
             event.preventDefault();
             activeEmailSettingsTab = key;
             setAdminPath(['einstellungen', 'e-mail', emailSlugsByTab[key]]);
-            await showSettingsManagement();
+            await whileNavigating(() => showSettingsManagement());
         });
 
         return button;
@@ -794,7 +794,7 @@ const showSettingsManagement = async (segments = []) => {
             } else {
                 setAdminPath(['einstellungen', settingsSlugsByTab[key]]);
             }
-            await showSettingsManagement();
+            await whileNavigating(() => showSettingsManagement());
         });
 
         return button;

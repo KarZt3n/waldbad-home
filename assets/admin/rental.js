@@ -4,7 +4,7 @@
 // (`/admin/vermietung/...`).
 
 import {confirmAction, element, field, formatDateDE, formatEuro, formMessage, request, toast} from '../core.js';
-import {actionButton, emptyState, searchField, sectionHeading} from './ui.js';
+import {actionButton, emptyState, searchField, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -984,7 +984,7 @@ const showRentalManagement = async (segments = []) => {
         (item) => ['vermietung', item.slug, activeSectionSlugs[item.slug] || item.sections[0].slug],
         async (item) => {
             activeSubmoduleSlug = item.slug;
-            await showRentalManagement();
+            await whileNavigating(() => showRentalManagement());
         },
     );
     const sectionStrip = tabStrip(
@@ -994,7 +994,7 @@ const showRentalManagement = async (segments = []) => {
         (item) => ['vermietung', submodule.slug, item.slug],
         async (item) => {
             activeSectionSlugs[submodule.slug] = item.slug;
-            await showRentalManagement();
+            await whileNavigating(() => showRentalManagement());
         },
     );
     sectionStrip.classList.add('sub-tab-strip-nested');

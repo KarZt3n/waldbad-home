@@ -3,7 +3,7 @@
 // exakt denselben Rendering-Pfad wie die öffentliche Website nutzt.
 
 import {buildPageTree, confirmAction, element, field, fieldRow, flattenPageTree, pageHref, request, toast} from '../core.js';
-import {emptyState, openContextMenuAtElement, openContextMenuFromEvent, sectionHeading, treeLayout} from './ui.js';
+import {emptyState, openContextMenuAtElement, openContextMenuFromEvent, sectionHeading, treeLayout, whileNavigating} from './ui.js';
 import {canEditPages, canManagePageStructure, canPublishPages} from './session.js';
 import {renderContentCard} from '../content-rendering.js';
 import {setAdminPath, workspace} from './shell.js';
@@ -1487,7 +1487,7 @@ const renderPages = async (creating = null) => {
         if (!(await confirmDiscard())) return;
         selectedPageId = pageId;
         setAdminPath(['seiten', pageId]);
-        await renderPages();
+        await whileNavigating(() => renderPages());
     };
     const createPage = async (parentId) => {
         if (!(await confirmDiscard())) return;

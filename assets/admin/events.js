@@ -4,7 +4,7 @@
 import {
     buildPageTree, confirmAction, element, field, flattenPageTree, formMessage, request, toast,
 } from '../core.js';
-import {actionButton, actionMenu, emptyState, focusLinkedItem, searchField, sectionHeading} from './ui.js';
+import {actionButton, actionMenu, emptyState, focusLinkedItem, searchField, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {collectionItemMediaEditor, richTextEditor} from './pages.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
@@ -1737,7 +1737,7 @@ const showEventManagement = async (segments = []) => {
             event.preventDefault();
             activeEventTab = key;
             setAdminPath(['veranstaltungen', eventSlugsByTab[key]]);
-            await showEventManagement();
+            await whileNavigating(() => showEventManagement());
         });
 
         return button;

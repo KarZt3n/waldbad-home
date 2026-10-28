@@ -2,7 +2,7 @@
 // einer gemeinsamen Route (`/admin/kontakt-feedback/...`).
 
 import {confirmAction, element, request, toast} from '../core.js';
-import {actionButton, emptyState, focusLinkedItem, sectionHeading} from './ui.js';
+import {actionButton, emptyState, focusLinkedItem, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -170,7 +170,7 @@ const showContactFeedbackManagement = async (segments = []) => {
             event.preventDefault();
             activeContactTab = key;
             setAdminPath(['kontakt-feedback', contactSlugsByTab[key]]);
-            await showContactFeedbackManagement();
+            await whileNavigating(() => showContactFeedbackManagement());
         });
 
         return button;

@@ -9,7 +9,7 @@
 // immer schon fertig aufgebaut.
 
 import {app, element, millisecondsSinceSessionRefresh, refreshSession, request, setCsrfToken, setUnauthenticatedHandler, toast} from '../core.js';
-import {emptyState} from './ui.js';
+import {emptyState, whileNavigating} from './ui.js';
 import {moduleIcon} from './icons.js';
 import {hasModule, isGlobalAdministrator, setSessionState} from './session.js';
 import {clearPinSessionUnlocks, ensurePinUnlocked} from './pin.js';
@@ -183,7 +183,7 @@ const mountAdminShell = async (session) => {
         closeAdminNavigation();
         workspace.scrollTop = 0;
         try {
-            await item.action(segments);
+            await whileNavigating(() => item.action(segments));
         } catch (error) {
             toast(error.message, 'error');
             workspace.replaceChildren(emptyState(error.message));

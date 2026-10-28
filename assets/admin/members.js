@@ -8,7 +8,7 @@ import {
     PAYMENT_DAY_LABELS, PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, PERSON_GROUP_LABELS,
     radioGroup, request, SALUTATION_LABELS, selectField, toast,
 } from '../core.js';
-import {actionButton, actionMenu, emptyState, searchField, sectionHeading} from './ui.js';
+import {actionButton, actionMenu, emptyState, searchField, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {ensurePinUnlocked, promptForPin} from './pin.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
@@ -2283,7 +2283,7 @@ const showMembershipManagement = async (segments = []) => {
             event.preventDefault();
             activeMembershipTab = key;
             setAdminPath(['mitglieder', membershipSlugsByTab[key]]);
-            await showMembershipManagement();
+            await whileNavigating(() => showMembershipManagement());
         });
 
         return button;

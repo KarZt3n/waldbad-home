@@ -5,7 +5,7 @@
 // derselben URL überschrieben, damit Links darauf gültig bleiben.
 
 import {confirmAction, element, field, formMessage, request, selectField, toast} from '../core.js';
-import {emptyState, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, sectionHeading, treeLayout} from './ui.js';
+import {emptyState, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, sectionHeading, treeLayout, whileNavigating} from './ui.js';
 import {canEditModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -62,7 +62,7 @@ const pickFiles = (accept, multiple = false) => new Promise((resolve) => {
 const openFolder = async (path) => {
     currentFolder = path;
     setAdminPath(['mediathek', ...path.split('/').filter(Boolean)]);
-    await renderMediaLibrary();
+    await whileNavigating(() => renderMediaLibrary());
 };
 
 const uploadFiles = async (button) => {

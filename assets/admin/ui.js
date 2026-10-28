@@ -219,6 +219,61 @@ const treeLayout = (panel, content, {storageKey, defaultWidth, className = ''}) 
     return layout;
 };
 
+// Lade-Hinweis für Ansichtswechsel (Menü, Reiter, Baum): erscheint erst, wenn der Wechsel länger
+// als eine Sekunde dauert, damit schnelle Wechsel nicht flackern. Liegt die Ansicht hinter einem
+// Dialog (z. B. PIN-Abfrage), zählt die Wartezeit erst ab dessen Schließen.
+const NAVIGATION_LOADER_DELAY_MS = 1000;
+const DIALOG_POLL_MS = 250;
+let pendingNavigations = 0;
+let navigationLoaderTimer = null;
+let navigationLoader = null;
+const showNavigationLoader = () => {
+    if (document.querySelector('dialog[open]')) {
+        navigationLoaderTimer = window.setTimeout(() => {
+            navigationLoaderTimer = document.querySelector('dialog[open]')
+                ? window.setTimeout(showNavigationLoader, 0)
+                : window.setTimeout(showNavigationLoader, NAVIGATION_LOADER_DELAY_MS);
+        }, DIALOG_POLL_MS);
+        return;
+    }
+    const target = document.querySelector('.admin-workspace');
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const top = Math.max(rect.top, 0);
+    navigationLoader = element('div', {
+        className: 'navigation-loader',
+        attributes: {role: 'status', 'aria-live': 'polite'},
+        children: [
+            element('span', {className: 'navigation-loader-spinner', attributes: {'aria-hidden': 'true'}}),
+            element('span', {text: 'Wird geladen …'}),
+        ],
+    });
+    Object.assign(navigationLoader.style, {
+        top: `${top}px`,
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+        height: `${Math.min(rect.bottom, window.innerHeight) - top}px`,
+    });
+    document.body.append(navigationLoader);
+    target.setAttribute('aria-busy', 'true');
+};
+const whileNavigating = async (task) => {
+    pendingNavigations += 1;
+    if (pendingNavigations === 1) navigationLoaderTimer = window.setTimeout(showNavigationLoader, NAVIGATION_LOADER_DELAY_MS);
+    try {
+        return await task();
+    } finally {
+        pendingNavigations -= 1;
+        if (pendingNavigations === 0) {
+            window.clearTimeout(navigationLoaderTimer);
+            navigationLoaderTimer = null;
+            navigationLoader?.remove();
+            navigationLoader = null;
+            document.querySelector('.admin-workspace')?.removeAttribute('aria-busy');
+        }
+    }
+};
+
 /**
  * Springt zu einem Eintrag aus einem Link in einer Benachrichtigungsmail (z. B.
  * `/admin/kontakt-feedback/gaestebuch/{id}`): sucht in `root` das Element mit passendem
@@ -235,4 +290,4 @@ const focusLinkedItem = (root, id, notFoundMessage) => {
     target.scrollIntoView({block: 'start'});
 };
 
-export {sectionHeading, emptyState, actionMenu, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, treeLayout, actionButton, focusLinkedItem};
+export {sectionHeading, emptyState, actionMenu, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, treeLayout, whileNavigating, actionButton, focusLinkedItem};

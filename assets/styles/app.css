@@ -52,6 +52,14 @@ a { color: var(--forest-700); }
     background-repeat: no-repeat;
     animation: page-loading 1.1s ease-in-out 150ms infinite both;
 }
+/* Redaktion: Lade-Hinweis über dem Arbeitsbereich, wenn ein Ansichtswechsel länger als eine Sekunde dauert. */
+.navigation-loader { position: fixed; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .9rem; color: var(--forest-900); background: rgb(240 244 241 / 72%); font-weight: 750; backdrop-filter: blur(1px); animation: navigation-loader-in .2s ease both; }
+.navigation-loader-spinner { width: 2.6rem; height: 2.6rem; border: .3rem solid var(--forest-100); border-top-color: var(--forest-700); border-radius: 50%; animation: navigation-loader-spin .8s linear infinite; }
+@keyframes navigation-loader-spin { to { transform: rotate(360deg); } }
+@keyframes navigation-loader-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .navigation-loader-spinner { animation-duration: 2.4s; }
+}
 @keyframes page-loading {
     from { background-position: -100% 0; }
     to { background-position: 200% 0; }
