@@ -230,7 +230,29 @@ final class MediaLibraryWorkflowTest extends WebTestCase
         $this->client->request('GET', '/api/admin/v1/media/images');
         self::assertStringContainsString(str_replace('/', '\/', $movedUrl), (string) $this->client->getResponse()->getContent());
 
-        $this->client->jsonRequest('DELETE', '/api/admin/v1/media-library', ['url' => $movedUrl], $headers);
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/rename', ['url' => $movedUrl, 'filename' => 'Großer Teich'], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $this->responseData()['updatedReferences']);
+        $renamed = $this->map($this->responseData()['file']);
+        $renamedUrl = $renamed['url'];
+        self::assertSame('/uploads/'.self::TEST_FOLDER.'/dokumente/grosser-teich.png', $renamedUrl);
+        self::assertSame('grosser-teich.png', $renamed['originalName']);
+        self::assertFileDoesNotExist($this->publicPath($movedUrl));
+        self::assertFileExists($this->publicPath($renamedUrl));
+        self::assertSame($renamedUrl, $this->event($eventId)['mediaUrl']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/rename', ['url' => $renamedUrl, 'filename' => 'grosser-teich'], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['updatedReferences']);
+        $other = $this->upload('/api/admin/v1/media-library', 'zweiter.png', $headers, ['folder' => self::TEST_FOLDER.'/dokumente']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/rename', ['url' => $other['url'], 'filename' => 'Großer Teich'], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->jsonRequest('POST', '/api/admin/v1/media-library/rename', ['url' => $other['url'], 'filename' => '  '], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/media-library', ['url' => $other['url']], $headers);
+        self::assertResponseIsSuccessful();
+
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/media-library', ['url' => $renamedUrl], $headers);
         self::assertResponseIsSuccessful();
         $this->client->jsonRequest('DELETE', '/api/admin/v1/media-library', ['url' => $pdf['url']], $headers);
         self::assertResponseIsSuccessful();

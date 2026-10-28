@@ -101,15 +101,7 @@ final readonly class UploadDirectory
      */
     public function availableFilename(string $directory, string $originalName, string $extension): string
     {
-        $basename = pathinfo(basename($originalName), PATHINFO_FILENAME);
-        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $basename);
-        if (is_string($transliterated)) {
-            $basename = $transliterated;
-        }
-        $basename = mb_strtolower($basename);
-        $basename = preg_replace('/[^a-z0-9]+/', '-', $basename);
-        $basename = is_string($basename) ? trim($basename, '-') : '';
-        $basename = mb_substr($basename === '' ? 'datei' : $basename, 0, 180);
+        $basename = $this->normalizedBasename(pathinfo(basename($originalName), PATHINFO_FILENAME));
 
         $filename = $basename.'.'.$extension;
         $suffix = 2;
@@ -119,6 +111,20 @@ final readonly class UploadDirectory
         }
 
         return $filename;
+    }
+
+    /** URL-tauglicher Dateiname ohne Endung: Kleinbuchstaben, Ziffern und Bindestriche. */
+    public function normalizedBasename(string $name): string
+    {
+        $name = str_replace(['Ä', 'Ö', 'Ü', 'ä', 'ö', 'ü', 'ß'], ['Ae', 'Oe', 'Ue', 'ae', 'oe', 'ue', 'ss'], $name);
+        $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+        if (is_string($transliterated)) {
+            $name = $transliterated;
+        }
+        $name = preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($name));
+        $name = is_string($name) ? trim($name, '-') : '';
+
+        return mb_substr($name === '' ? 'datei' : $name, 0, 180);
     }
 
     /**

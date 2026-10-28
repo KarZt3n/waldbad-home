@@ -35,5 +35,12 @@ interface MediaLibraryStorageInterface
     /** Verschiebt die Datei samt Metadaten; bei Namensgleichheit erhält sie im Zielordner einen freien Namen. */
     public function move(string $url, string $targetFolderPath): MediaFile;
 
+    /**
+     * Benennt die Datei samt Metadaten im selben Ordner um. `$filename` ist ohne Endung und wird wie
+     * beim Hochladen in einen URL-tauglichen Namen umgewandelt; die Endung bleibt. Ist der Name im
+     * Ordner bereits vergeben, wird abgelehnt.
+     */
+    public function rename(string $url, string $filename): MediaFile;
+
     public function delete(string $url): void;
 }

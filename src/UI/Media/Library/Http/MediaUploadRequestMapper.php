@@ -59,6 +59,15 @@ final class MediaUploadRequestMapper
         return $url;
     }
 
+    public function filename(mixed $filename): string
+    {
+        if (!is_string($filename) || mb_strlen($filename) > 255) {
+            throw new BadRequestHttpException('Der Dateiname ist ungültig.');
+        }
+
+        return trim($filename);
+    }
+
     public function folderPath(mixed $path): string
     {
         if ($path === null) {

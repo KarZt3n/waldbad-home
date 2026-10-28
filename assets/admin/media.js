@@ -157,6 +157,74 @@ const openMoveDialog = (item, folders) => {
     dialog.showModal();
 };
 
+// Spiegelt `UploadDirectory::normalizedBasename()`, damit der Dialog die künftige Adresse zeigt.
+const normalizeFilename = (value) => value
+    .trim()
+    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')
+    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 180) || 'datei';
+
+const openRenameDialog = (item) => {
+    const filename = item.url.slice(item.url.lastIndexOf('/') + 1);
+    const extensionIndex = filename.lastIndexOf('.');
+    const basename = extensionIndex > 0 ? filename.slice(0, extensionIndex) : filename;
+    const extension = extensionIndex > 0 ? filename.slice(extensionIndex) : '';
+    const directory = item.url.slice(0, item.url.lastIndexOf('/') + 1);
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const name = field('Neuer Dateiname', 'media-rename-filename', basename);
+    const input = name.querySelector('input');
+    input.required = true;
+    input.maxLength = 180;
+    const preview = element('p', {className: 'media-rename-preview'});
+    const updatePreview = () => {
+        preview.textContent = `Neue Adresse: ${directory}${normalizeFilename(input.value)}${extension}`;
+    };
+    input.addEventListener('input', updatePreview);
+    updatePreview();
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'Umbenennen', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Datei umbenennen'}),
+        element('h2', {text: item.originalName}),
+        element('p', {text: item.usages.length
+            ? `Die Datei wird an ${item.usages.length === 1 ? 'einer Stelle' : `${item.usages.length} Stellen`} verwendet; alle Verweise werden auf die neue Adresse umgestellt. Die Endung ${extension || '(keine)'} bleibt erhalten.`
+            : `Die Endung ${extension || '(keine)'} bleibt erhalten. Umlaute, Leerzeichen und Sonderzeichen werden umgewandelt.`}),
+        name,
+        preview,
+        ...(item.usages.length ? [usageList(item.usages)] : []),
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        try {
+            const result = await request('/api/admin/v1/media-library/rename', {
+                method: 'POST',
+                body: JSON.stringify({url: item.url, filename: input.value}),
+            });
+            dialog.close();
+            const newName = result.file.url.slice(result.file.url.lastIndexOf('/') + 1);
+            toast(result.updatedReferences
+                ? `In „${newName}“ umbenannt, ${result.updatedReferences} Einträge wurden angepasst.`
+                : `In „${newName}“ umbenannt.`);
+            await renderMediaLibrary();
+        } catch (error) {
+            submit.disabled = false;
+            toast(error.message, 'error');
+        }
+    });
+    dialog.addEventListener('close', () => dialog.remove());
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    input.select();
+};
+
 const deleteFile = async (item) => {
     const inUse = item.usages.length > 0;
     const confirmed = await confirmAction(
@@ -312,6 +380,7 @@ const mediaCard = (item, folders, editable) => {
         }},
         ...(editable ? [
             {label: item.isImage ? 'Ersetzen …' : 'Ersetzen (gleiche Adresse) …', run: () => replaceFile(item)},
+            {label: 'Umbenennen …', run: () => openRenameDialog(item)},
             {label: 'Verschieben …', run: () => openMoveDialog(item, folders)},
             {label: 'Löschen', danger: true, run: () => deleteFile(item)},
         ] : []),

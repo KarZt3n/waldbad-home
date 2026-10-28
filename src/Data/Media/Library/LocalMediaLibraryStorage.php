@@ -170,27 +170,22 @@ readonly class LocalMediaLibraryStorage implements MediaLibraryStorageInterface
                 pathinfo($filename, PATHINFO_EXTENSION),
             );
         }
-        if (!rename($source, $target)) {
-            throw new \RuntimeException('Die Datei konnte nicht verschoben werden.');
-        }
-        if (is_file($source.'.source.txt')) {
-            @rename($source.'.source.txt', $target.'.source.txt');
-        }
 
-        $targetUrl = $this->uploads->urlFromPath($target);
-        $entity = $this->entity($url);
-        if ($entity !== null) {
-            try {
-                $entity->relocate($targetUrl, new \DateTimeImmutable());
-                $this->entityManager->flush();
-            } catch (\Throwable $exception) {
-                @rename($target, $source);
+        return $this->relocate($url, $source, $target, null);
+    }
 
-                throw $exception;
-            }
+    public function rename(string $url, string $filename): MediaFile
+    {
+        $source = $this->uploads->filePathFromUrl($url) ?? throw new MediaFileNotFoundException($url);
+        $target = dirname($source).DIRECTORY_SEPARATOR.$this->uploads->normalizedBasename($filename).'.'.pathinfo($source, PATHINFO_EXTENSION);
+        if ($target === $source) {
+            return $this->find($url) ?? throw new MediaFileNotFoundException($url);
+        }
+        if (file_exists($target)) {
+            throw new BusinessRuleViolationException(sprintf('Im Ordner gibt es bereits eine Datei „%s“.', basename($target)));
         }
 
-        return $this->find($targetUrl) ?? throw new MediaFileNotFoundException($targetUrl);
+        return $this->relocate($url, $source, $target, basename($target));
     }
 
     public function delete(string $url): void
@@ -208,6 +203,39 @@ readonly class LocalMediaLibraryStorage implements MediaLibraryStorageInterface
             $this->entityManager->remove($entity);
             $this->entityManager->flush();
         }
+    }
+
+    /**
+     * Benennt die Datei auf der Platte um und zieht Bildmetadaten nach; `$originalName` ersetzt den
+     * angezeigten Namen, sonst bleibt er.
+     */
+    private function relocate(string $url, string $source, string $target, ?string $originalName): MediaFile
+    {
+        if (!rename($source, $target)) {
+            throw new \RuntimeException('Die Datei konnte nicht verschoben werden.');
+        }
+        if (is_file($source.'.source.txt')) {
+            @rename($source.'.source.txt', $target.'.source.txt');
+        }
+
+        $targetUrl = $this->uploads->urlFromPath($target);
+        $entity = $this->entity($url);
+        if ($entity !== null) {
+            try {
+                $now = new \DateTimeImmutable();
+                $entity->relocate($targetUrl, $now);
+                if ($originalName !== null) {
+                    $entity->updateFileMetadata($originalName, $entity->getMimeType(), $entity->getSize(), $entity->getWidth(), $entity->getHeight(), $now);
+                }
+                $this->entityManager->flush();
+            } catch (\Throwable $exception) {
+                @rename($target, $source);
+
+                throw $exception;
+            }
+        }
+
+        return $this->find($targetUrl) ?? throw new MediaFileNotFoundException($targetUrl);
     }
 
     private function mediaFile(string $path, ?StoredImageEntity $entity): ?MediaFile

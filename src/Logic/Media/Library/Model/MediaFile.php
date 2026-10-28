@@ -21,4 +21,9 @@ readonly class MediaFile
     {
         return str_starts_with($this->mimeType, 'image/');
     }
+
+    public function filenameWithoutExtension(): string
+    {
+        return pathinfo($this->url, PATHINFO_FILENAME);
+    }
 }

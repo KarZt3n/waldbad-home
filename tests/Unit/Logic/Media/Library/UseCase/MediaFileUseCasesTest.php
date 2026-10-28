@@ -4,6 +4,7 @@ namespace App\Tests\Unit\Logic\Media\Library\UseCase;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Media\Library\Dto\MoveMediaFileRequest;
+use App\Logic\Media\Library\Dto\RenameMediaFileRequest;
 use App\Logic\Media\Library\Dto\ReplaceMediaFileRequest;
 use App\Logic\Media\Library\Exception\MediaFileNotFoundException;
 use App\Logic\Media\Library\MediaLibraryStorageInterface;
@@ -12,6 +13,7 @@ use App\Logic\Media\Library\Model\MediaFile;
 use App\Logic\Media\Library\Model\MediaUpload;
 use App\Logic\Media\Library\UseCase\DeleteMediaFileUseCase;
 use App\Logic\Media\Library\UseCase\MoveMediaFileUseCase;
+use App\Logic\Media\Library\UseCase\RenameMediaFileUseCase;
 use App\Logic\Media\Library\UseCase\ReplaceMediaFileUseCase;
 use PHPUnit\Framework\TestCase;
 
@@ -136,6 +138,71 @@ final class MediaFileUseCasesTest extends TestCase
             self::assertSame('Seite gesperrt', $exception->getMessage());
         }
         self::assertSame([['/uploads/media/teich.png', 'bilder'], ['/uploads/bilder/teich.png', 'media']], $moves);
+    }
+
+    public function testRenameRedirectsReferencesToTheNewUrl(): void
+    {
+        $storage = $this->createMock(MediaLibraryStorageInterface::class);
+        $storage->method('find')->willReturn($this->file('/uploads/media/img-123.png'));
+        $storage->expects(self::once())->method('rename')->with('/uploads/media/img-123.png', 'Teich im Sommer')
+            ->willReturn($this->file('/uploads/media/teich-im-sommer.png'));
+        $usages = $this->createMock(MediaUsageSourceInterface::class);
+        $usages->expects(self::once())->method('replaceReferences')->with('/uploads/media/img-123.png', '/uploads/media/teich-im-sommer.png')->willReturn(2);
+
+        $response = (new RenameMediaFileUseCase($storage, $usages))->execute(new RenameMediaFileRequest('/uploads/media/img-123.png', ' Teich im Sommer '));
+
+        self::assertSame('/uploads/media/teich-im-sommer.png', $response->file->url);
+        self::assertSame(2, $response->updatedReferences);
+    }
+
+    public function testRenameToTheSameNameLeavesReferencesUntouched(): void
+    {
+        $storage = $this->createStub(MediaLibraryStorageInterface::class);
+        $storage->method('find')->willReturn($this->file('/uploads/media/teich.png'));
+        $storage->method('rename')->willReturn($this->file('/uploads/media/teich.png'));
+        $usages = $this->createMock(MediaUsageSourceInterface::class);
+        $usages->expects(self::never())->method('replaceReferences');
+
+        $response = (new RenameMediaFileUseCase($storage, $usages))->execute(new RenameMediaFileRequest('/uploads/media/teich.png', 'teich'));
+
+        self::assertSame(0, $response->updatedReferences);
+    }
+
+    public function testRenameRequiresAFilename(): void
+    {
+        $storage = $this->createMock(MediaLibraryStorageInterface::class);
+        $storage->expects(self::never())->method('rename');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        (new RenameMediaFileUseCase($storage, $this->createStub(MediaUsageSourceInterface::class)))->execute(new RenameMediaFileRequest('/uploads/media/teich.png', '   '));
+    }
+
+    public function testFailedReferenceUpdateRestoresTheOldName(): void
+    {
+        $storage = $this->createMock(MediaLibraryStorageInterface::class);
+        $storage->method('find')->willReturn($this->file('/uploads/media/teich.png'));
+        $renames = [];
+        $storage->expects(self::exactly(2))->method('rename')->willReturnCallback(function (string $url, string $filename) use (&$renames): MediaFile {
+            $renames[] = [$url, $filename];
+
+            return $this->file('/uploads/media/'.$filename.'.png');
+        });
+        $usages = $this->createMock(MediaUsageSourceInterface::class);
+        $usages->expects(self::exactly(2))->method('replaceReferences')->willReturnCallback(static function (string $url): int {
+            if ($url === '/uploads/media/teich.png') {
+                throw new \RuntimeException('Seite gesperrt');
+            }
+
+            return 0;
+        });
+
+        try {
+            (new RenameMediaFileUseCase($storage, $usages))->execute(new RenameMediaFileRequest('/uploads/media/teich.png', 'see'));
+            self::fail('Die Exception wurde nicht weitergereicht.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Seite gesperrt', $exception->getMessage());
+        }
+        self::assertSame([['/uploads/media/teich.png', 'see'], ['/uploads/media/see.png', 'teich']], $renames);
     }
 
     private function upload(): MediaUpload

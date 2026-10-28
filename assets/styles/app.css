@@ -1521,6 +1521,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .media-usage-list a, .media-usage-list li > span:not(.media-usage-area) { overflow-wrap: anywhere; font-weight: 700; }
 .media-usage-area { color: var(--muted); font-size: .72rem; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .confirm-dialog-content .media-usage-list { max-height: 12rem; overflow: auto; }
+.media-rename-preview { margin: 0; color: var(--muted); font-size: .88rem; overflow-wrap: anywhere; }
 
 .preview-dialog {
     width: min(94rem, calc(100vw - 2rem));

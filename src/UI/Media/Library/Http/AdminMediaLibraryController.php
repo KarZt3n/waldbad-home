@@ -6,6 +6,7 @@ use App\Logic\Media\Library\Dto\CreateMediaFolderRequest;
 use App\Logic\Media\Library\Dto\ListMediaLibraryRequest;
 use App\Logic\Media\Library\Dto\MediaLibraryItemResponse;
 use App\Logic\Media\Library\Dto\MoveMediaFileRequest;
+use App\Logic\Media\Library\Dto\RenameMediaFileRequest;
 use App\Logic\Media\Library\Dto\ReplaceMediaFileRequest;
 use App\Logic\Media\Library\Dto\UploadMediaFileRequest;
 use App\Logic\Media\Library\Model\MediaFile;
@@ -17,6 +18,7 @@ use App\Logic\Media\Library\UseCase\CreateMediaFolderUseCase;
 use App\Logic\Media\Library\UseCase\DeleteMediaFileUseCase;
 use App\Logic\Media\Library\UseCase\DeleteMediaFolderUseCase;
 use App\Logic\Media\Library\UseCase\MoveMediaFileUseCase;
+use App\Logic\Media\Library\UseCase\RenameMediaFileUseCase;
 use App\Logic\Media\Library\UseCase\ReplaceMediaFileUseCase;
 use App\Logic\Media\Library\UseCase\UploadMediaFileUseCase;
 use App\UI\IdentityAccess\Security\Permission;
@@ -80,6 +82,22 @@ final class AdminMediaLibraryController extends AbstractController
         $response = $useCase->execute(new MoveMediaFileRequest(
             url: $this->requestMapper->url($data->get('url')),
             targetFolderPath: $this->requestMapper->folderPath($data->get('targetFolder')),
+        ));
+
+        return new JsonResponse([
+            'file' => $this->fileResponse($response->file),
+            'updatedReferences' => $response->updatedReferences,
+        ]);
+    }
+
+    #[Route('/rename', name: 'api_admin_media_library_rename', methods: ['POST'])]
+    public function rename(Request $request, RenameMediaFileUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MediaLibraryEdit->value);
+        $data = $request->getPayload();
+        $response = $useCase->execute(new RenameMediaFileRequest(
+            url: $this->requestMapper->url($data->get('url')),
+            filename: $this->requestMapper->filename($data->get('filename')),
         ));
 
         return new JsonResponse([
