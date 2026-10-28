@@ -1,7 +1,7 @@
 // Modul „Kontakt und Feedback": Kontaktanfragen und Gästebuch-Moderation als Unter-Reiter unter
 // einer gemeinsamen Route (`/admin/kontakt-feedback/...`).
 
-import {element, request} from '../core.js';
+import {confirmAction, element, request, toast} from '../core.js';
 import {actionButton, emptyState, focusLinkedItem, sectionHeading} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
@@ -18,7 +18,7 @@ const showGuestbook = async () => {
         ]}),
         element('div', {
             className: 'card-list guestbook-archive-list',
-            children: entries.map((entry) => moderationCard(entry, showGuestbook)),
+            children: entries.map((entry) => moderationCard(entry, refreshContactFeedback)),
         }),
     ]});
 
@@ -32,7 +32,7 @@ const showGuestbook = async () => {
             element('div', {
                 className: 'card-list',
                 children: pendingEntries.length
-                    ? pendingEntries.map((entry) => moderationCard(entry, showGuestbook))
+                    ? pendingEntries.map((entry) => moderationCard(entry, refreshContactFeedback))
                     : [emptyState('Keine neuen Gästebucheinträge vorhanden.')],
             }),
             ...(publishedEntries.length ? [archive('Veröffentlichte Einträge', publishedEntries)] : []),
@@ -41,11 +41,42 @@ const showGuestbook = async () => {
     );
 };
 
+// Offene Anfragen oben, erledigte nach dem Jahr des Eingangs gruppiert (neuestes Jahr zuerst).
 const showContact = async () => {
     const data = await request('/api/admin/v1/contact-requests');
-    workspace.replaceChildren(sectionHeading('Kontaktanfragen', 'Anfragen bearbeiten und abschließen'), element('div', {
-        className: 'card-list', children: data.items.length ? data.items.map((item) => contactCard(item, showContact)) : [emptyState('Keine Kontaktanfragen vorhanden.')],
+    const openRequests = data.items.filter((item) => item.status !== 'resolved');
+    const resolvedByYear = new Map();
+    data.items.filter((item) => item.status === 'resolved').forEach((item) => {
+        const year = new Date(item.submittedAt).getFullYear();
+        resolvedByYear.set(year, [...(resolvedByYear.get(year) || []), item]);
+    });
+    const archives = [...resolvedByYear.entries()].sort(([left], [right]) => right - left).map(([year, items]) => element('details', {
+        className: 'guestbook-archive',
+        children: [
+            element('summary', {children: [
+                element('strong', {text: `Abgeschlossen ${year}`}),
+                element('span', {className: 'status-badge', text: String(items.length)}),
+            ]}),
+            element('div', {className: 'card-list guestbook-archive-list', children: items.map((item) => contactCard(item, refreshContactFeedback))}),
+        ],
     }));
+
+    workspace.replaceChildren(
+        sectionHeading('Kontaktanfragen', 'Anfragen beantworten, als erledigt markieren oder löschen'),
+        element('section', {className: 'guestbook-admin', children: [
+            element('div', {className: 'guestbook-pending-heading', children: [
+                element('h3', {text: 'Offene Anfragen'}),
+                element('span', {className: 'status-badge status-pending', text: String(openRequests.length)}),
+            ]}),
+            element('div', {
+                className: 'card-list',
+                children: openRequests.length
+                    ? openRequests.map((item) => contactCard(item, refreshContactFeedback))
+                    : [emptyState('Keine offenen Kontaktanfragen.')],
+            }),
+            ...archives,
+        ]}),
+    );
 };
 
 const guestbookStatusLabel = (status) => ({
@@ -70,16 +101,46 @@ const moderationCard = (entry, refresh) => element('article', {className: `manag
         })] : []),
     ]})] : []),
 ]});
+const deleteContactButton = (item, refresh) => {
+    const button = element('button', {className: 'text-button danger', text: 'Löschen', attributes: {type: 'button'}});
+    button.addEventListener('click', async () => {
+        const confirmed = await confirmAction(
+            'Kontaktanfrage löschen?',
+            `Die Anfrage von ${item.name} wird dauerhaft gelöscht.`,
+            'Löschen',
+        );
+        if (!confirmed) return;
+        button.disabled = true;
+        try {
+            await request(`/api/admin/v1/contact-requests/${item.id}`, {method: 'DELETE'});
+            toast('Kontaktanfrage wurde gelöscht.');
+            await refresh();
+        } catch (error) {
+            toast(error.message, 'error');
+            button.disabled = false;
+        }
+    });
+
+    return button;
+};
 const contactCard = (item, refresh) => element('article', {className: 'management-card', attributes: {'data-link-target': item.id}, children: [
-    element('header', {children: [element('strong', {text: item.subject || 'Kontaktanfrage'}), element('small', {text: item.status + ' · ' + new Date(item.submittedAt).toLocaleString('de-DE')})]}),
+    element('header', {children: [
+        element('strong', {text: item.subject || 'Kontaktanfrage'}),
+        element('small', {text: `${item.status === 'resolved' ? 'Erledigt' : 'Offen'} · eingegangen ${new Date(item.submittedAt).toLocaleString('de-DE')}`}),
+    ]}),
     element('p', {text: item.message}),
     element('a', {text: item.name + ' · ' + item.email, attributes: {href: 'mailto:' + item.email}}),
     ...(canEditModule('contact_requests') ? [element('div', {className: 'card-actions', children: [
-        actionButton('In Bearbeitung', `/api/admin/v1/contact-requests/${item.id}/status/in_progress`, refresh, 'secondary-button', {success: 'Kontaktanfrage ist jetzt in Bearbeitung.'}),
-        actionButton('Erledigt', `/api/admin/v1/contact-requests/${item.id}/status/resolved`, refresh, 'button', {success: 'Kontaktanfrage wurde als erledigt markiert.'}),
+        item.status === 'resolved'
+            ? actionButton('Wieder öffnen', `/api/admin/v1/contact-requests/${item.id}/status/new`, refresh, 'secondary-button', {success: 'Kontaktanfrage ist wieder offen.'})
+            : actionButton('Erledigt', `/api/admin/v1/contact-requests/${item.id}/status/resolved`, refresh, 'button', {success: 'Kontaktanfrage wurde als erledigt markiert.'}),
+        deleteContactButton(item, refresh),
     ]})] : []),
 ]});
 
+// Nach Aktionen auf einer Karte den ganzen Bereich samt Reiterleiste neu aufbauen; die Listen allein
+// ersetzen den Arbeitsbereich und würden die Reiter entfernen.
+const refreshContactFeedback = () => showContactFeedbackManagement();
 const contactTabsBySlug = {kontaktanfragen: 'contact', gaestebuch: 'guestbook'};
 const contactSlugsByTab = Object.fromEntries(Object.entries(contactTabsBySlug).map(([slug, tab]) => [tab, slug]));
 let activeContactTab = null;

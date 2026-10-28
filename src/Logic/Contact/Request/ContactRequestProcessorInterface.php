@@ -7,4 +7,6 @@ use App\Logic\Contact\Request\Model\ContactRequest;
 interface ContactRequestProcessorInterface
 {
     public function save(ContactRequest $request): ContactRequest;
+
+    public function delete(ContactRequest $request): void;
 }

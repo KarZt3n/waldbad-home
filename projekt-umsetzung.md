@@ -67,7 +67,7 @@ Aus den vorhandenen Inhalten ergeben sich mindestens folgende CMS-Arbeitsabläuf
 - Medienarchive und externe Foto-, Video- oder Ergebnislinks nach Jahr und Veranstaltung verwalten
 - Unterstützer mit Logo, Text, Link und Reihenfolge pflegen
 - Gästebucheinträge prüfen, freigeben, ablehnen, ausblenden oder als Spam markieren
-- eingehende Kontaktanfragen einsehen und ihren Bearbeitungsstatus pflegen
+- eingehende Kontaktanfragen einsehen, als erledigt markieren (offene oben, erledigte nach Eingangsjahr gruppiert) und löschen
 - Benutzer, Rollen und Berechtigungen administrieren
 
 ### 4.3 Gestalterische Ausgangslage
@@ -346,7 +346,7 @@ Die fachlichen Rechte werden pro Modul zugewiesen. Das Modul `pages` kennt `View
 | Seiten | Viewer: lesen; Editor: bearbeiten; Publisher: bearbeiten und veröffentlichen; Moderator: bearbeiten und redaktionell prüfen |
 | Aktivitäten | Viewer: lesen; Editor: bearbeiten |
 | Gästebuch | Viewer: lesen; Editor: moderieren |
-| Kontaktanfragen | Viewer: lesen; Editor: Status bearbeiten |
+| Kontaktanfragen | Viewer: lesen; Editor: erledigen, wieder öffnen, löschen |
 | Veranstaltungshelfer | Viewer: lesen; Editor: Teilnahme und Zeiten bearbeiten |
 | Mitgliedsanträge | Viewer: lesen; Editor: fachliche Aktionen ausführen |
 | Benutzerverwaltung | Viewer: lesen; Editor: Benutzer und Zugriffe gemäß globaler Schutzstufe verwalten |

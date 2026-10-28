@@ -29,4 +29,9 @@ readonly class ContactRequestManager implements ContactRequestManagerInterface
     {
         return $this->processor->save($request);
     }
+
+    public function delete(ContactRequest $request): void
+    {
+        $this->processor->delete($request);
+    }
 }

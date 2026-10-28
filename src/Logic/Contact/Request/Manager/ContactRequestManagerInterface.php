@@ -14,4 +14,6 @@ interface ContactRequestManagerInterface
     public function all(): array;
 
     public function save(ContactRequest $request): ContactRequest;
+
+    public function delete(ContactRequest $request): void;
 }

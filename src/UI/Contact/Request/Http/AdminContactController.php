@@ -5,6 +5,7 @@ namespace App\UI\Contact\Request\Http;
 use App\Logic\Contact\Request\Model\ContactRequestStatus;
 use App\Logic\Contact\Request\Query\ListContactRequestsQuery;
 use App\Logic\Contact\Request\UseCase\ChangeContactRequestStatusUseCase;
+use App\Logic\Contact\Request\UseCase\DeleteContactRequestUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -25,11 +26,20 @@ class AdminContactController extends AbstractController
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
 
-    #[Route('/{id}/status/{status}', name: 'api_admin_contact_status', requirements: ['status' => 'new|in_progress|resolved'], methods: ['POST'])]
+    #[Route('/{id}/status/{status}', name: 'api_admin_contact_status', requirements: ['status' => 'new|resolved'], methods: ['POST'])]
     public function status(string $id, ContactRequestStatus $status, ChangeContactRequestStatusUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::ContactRequestsEdit->value);
 
         return new JsonResponse($this->responseFactory->request($useCase->execute($id, $status)));
+    }
+
+    #[Route('/{id}', name: 'api_admin_contact_delete', methods: ['DELETE'])]
+    public function delete(string $id, DeleteContactRequestUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::ContactRequestsEdit->value);
+        $useCase->execute($id);
+
+        return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
     }
 }

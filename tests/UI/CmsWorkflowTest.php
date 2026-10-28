@@ -147,6 +147,19 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertEmailTextBodyContains($contactMail, 'Wann beginnt die Saison?');
         self::assertEmailTextBodyContains($contactMail, '/admin/kontakt-feedback/kontaktanfragen/'.$contactRequest['id']);
 
+        $csrf = ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']];
+        $this->client->jsonRequest('POST', '/api/admin/v1/contact-requests/'.$contactRequest['id'].'/status/in_progress', [], $csrf);
+        self::assertResponseStatusCodeSame(404);
+        $this->client->jsonRequest('POST', '/api/admin/v1/contact-requests/'.$contactRequest['id'].'/status/resolved', [], $csrf);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('"status":"resolved"', $this->responseContent());
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/contact-requests/'.$contactRequest['id'], [], $csrf);
+        self::assertResponseStatusCodeSame(204);
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/contact-requests/'.$contactRequest['id'], [], $csrf);
+        self::assertResponseStatusCodeSame(404);
+        $this->client->request('GET', '/api/admin/v1/contact-requests');
+        self::assertStringNotContainsString($contactRequest['id'], $this->responseContent());
+
         $this->client->jsonRequest('POST', '/api/public/v1/guestbook-entries', [
             'displayName' => 'Badegast',
             'email' => '',

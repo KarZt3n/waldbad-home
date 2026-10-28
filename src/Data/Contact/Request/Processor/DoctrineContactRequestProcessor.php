@@ -35,4 +35,14 @@ readonly class DoctrineContactRequestProcessor implements ContactRequestProcesso
 
         return $this->mapper->toModel($entity);
     }
+
+    public function delete(ContactRequest $request): void
+    {
+        $entity = $this->entityManager->find(ContactRequestEntity::class, $request->id);
+        if ($entity === null) {
+            return;
+        }
+        $this->entityManager->remove($entity);
+        $this->entityManager->flush();
+    }
 }
