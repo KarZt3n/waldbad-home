@@ -98,7 +98,32 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
                 $entities[] = $item;
             }
         }
+        $this->preloadCollections($entities);
 
         return array_map($this->mapper->toModel(...), $entities);
+    }
+
+    /**
+     * Lädt Bemerkungen und Einmalgebühren für alle Treffer in je einer Abfrage pro Block, statt sie
+     * beim Mappen einzeln pro Mitglied nachzuladen (2 Abfragen je Mitglied). Die Blockgröße bleibt
+     * unter der Parametergrenze von SQL Server (2100).
+     *
+     * @param list<MemberEntity> $entities
+     */
+    private function preloadCollections(array $entities): void
+    {
+        foreach (array_chunk(array_map(static fn (MemberEntity $entity): string => $entity->getId(), $entities), 1000) as $ids) {
+            foreach (['remarks' => 'createdAt', 'oneTimeCharges' => 'chargedAt'] as $association => $orderField) {
+                $this->entityManager->createQueryBuilder()
+                    ->select('m', 'c')
+                    ->from(MemberEntity::class, 'm')
+                    ->leftJoin('m.'.$association, 'c')
+                    ->where('m.id IN (:ids)')
+                    ->setParameter('ids', $ids)
+                    ->orderBy('c.'.$orderField, 'ASC')
+                    ->getQuery()
+                    ->getResult();
+            }
+        }
     }
 }
