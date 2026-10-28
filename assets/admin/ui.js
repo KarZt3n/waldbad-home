@@ -90,6 +90,135 @@ const actionButton = (label, url, refresh, className = 'secondary-button', optio
     return button;
 };
 
+// Kontextmenü (Rechtsklick bzw. ☰-Button), z. B. für Mediathek-Ordner und Seitenbaum: schließt bei Auswahl, Klick daneben,
+// Escape, Scrollen und Größenänderung. Shift+F10/Menütaste lösen `contextmenu` ebenfalls aus.
+let closeOpenMenu = null;
+const openContextMenu = (x, y, items, returnFocus = null) => {
+    closeOpenMenu?.();
+    const menu = element('div', {className: 'context-menu', attributes: {role: 'menu'}});
+    const close = () => {
+        menu.remove();
+        document.removeEventListener('pointerdown', onPointerDown, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+        window.removeEventListener('scroll', close, true);
+        window.removeEventListener('resize', close);
+        closeOpenMenu = null;
+    };
+    const onPointerDown = (event) => {
+        if (!menu.contains(event.target)) close();
+    };
+    const onKeyDown = (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+            returnFocus?.focus();
+        }
+    };
+    menu.append(...items.map((item) => {
+        const button = element('button', {
+            className: `context-menu-item${item.danger ? ' is-danger' : ''}`,
+            text: item.label,
+            attributes: {type: 'button', role: 'menuitem', ...(item.disabled ? {disabled: 'disabled', title: item.disabled} : {})},
+        });
+        button.addEventListener('click', () => {
+            close();
+            item.run();
+        });
+
+        return button;
+    }));
+    document.body.append(menu);
+    const {width, height} = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - height - 8))}px`;
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    closeOpenMenu = close;
+    menu.querySelector('button:not([disabled])')?.focus();
+};
+const openContextMenuAtElement = (anchor, items) => {
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu(rect.right - 200, rect.bottom + 4, items, anchor);
+};
+// Per Tastatur (Shift+F10/Menütaste) ausgelöste `contextmenu`-Events haben keine Mauskoordinaten;
+// das Menü erscheint dann unter dem Element.
+const openContextMenuFromEvent = (event, anchor, items) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu(fromKeyboard ? rect.left + 24 : event.clientX, fromKeyboard ? rect.bottom : event.clientY, items, anchor);
+};
+
+// Zweispaltiges Baum-Layout (Mediathek, Seiten) mit ziehbarem ⋮-Griff zwischen Baum und Inhalt.
+// Die gezogene Breite gilt nur für diesen Browser; Doppelklick auf den Griff stellt den Standard
+// (`defaultWidth`, eine CSS-Spurbreite) wieder her.
+const TREE_MIN_WIDTH = 176;
+const TREE_MAX_SHARE = 0.6;
+const treeLayout = (panel, content, {storageKey, defaultWidth, className = ''}) => {
+    const handle = element('div', {
+        className: 'tree-resize-handle',
+        attributes: {role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-label': 'Breite des Baums ändern', title: 'Ziehen, um die Breite zu ändern · Doppelklick setzt sie zurück'},
+        children: [element('span', {className: 'tree-resize-grip', text: '⋮', attributes: {'aria-hidden': 'true'}})],
+    });
+    const layout = element('div', {className: `tree-layout ${className}`.trim(), children: [panel, handle, content]});
+    const clamp = (width) => Math.round(Math.max(TREE_MIN_WIDTH, Math.min(width, layout.clientWidth * TREE_MAX_SHARE)));
+    const applyWidth = (width) => layout.style.setProperty('--tree-width', width === null ? defaultWidth : `${width}px`);
+    const storeWidth = (width) => {
+        try {
+            if (width === null) window.localStorage.removeItem(storageKey);
+            else window.localStorage.setItem(storageKey, String(width));
+        } catch {
+            // Ohne Speicherzugriff gilt die Breite nur bis zum Neuladen.
+        }
+    };
+    let storedWidth = null;
+    try {
+        const value = Number.parseInt(window.localStorage.getItem(storageKey) || '', 10);
+        storedWidth = Number.isFinite(value) && value >= TREE_MIN_WIDTH ? value : null;
+    } catch {
+        storedWidth = null;
+    }
+    applyWidth(storedWidth);
+
+    let pointerId = null;
+    handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        pointerId = event.pointerId;
+        handle.setPointerCapture?.(event.pointerId);
+        layout.classList.add('is-resizing');
+    });
+    handle.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== pointerId) return;
+        applyWidth(clamp(event.clientX - panel.getBoundingClientRect().left));
+    });
+    const endResize = (event) => {
+        if (event.pointerId !== pointerId) return;
+        pointerId = null;
+        handle.releasePointerCapture?.(event.pointerId);
+        layout.classList.remove('is-resizing');
+        storeWidth(Math.round(panel.getBoundingClientRect().width));
+    };
+    handle.addEventListener('pointerup', endResize);
+    handle.addEventListener('pointercancel', endResize);
+    handle.addEventListener('dblclick', () => {
+        applyWidth(null);
+        storeWidth(null);
+    });
+    handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const width = clamp(panel.getBoundingClientRect().width + (event.key === 'ArrowRight' ? 16 : -16));
+        applyWidth(width);
+        storeWidth(width);
+    });
+
+    return layout;
+};
+
 /**
  * Springt zu einem Eintrag aus einem Link in einer Benachrichtigungsmail (z. B.
  * `/admin/kontakt-feedback/gaestebuch/{id}`): sucht in `root` das Element mit passendem
@@ -106,4 +235,4 @@ const focusLinkedItem = (root, id, notFoundMessage) => {
     target.scrollIntoView({block: 'start'});
 };
 
-export {sectionHeading, emptyState, actionMenu, searchField, actionButton, focusLinkedItem};
+export {sectionHeading, emptyState, actionMenu, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, treeLayout, actionButton, focusLinkedItem};

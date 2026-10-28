@@ -10,6 +10,7 @@
 
 import {app, element, millisecondsSinceSessionRefresh, refreshSession, request, setCsrfToken, setUnauthenticatedHandler, toast} from '../core.js';
 import {emptyState} from './ui.js';
+import {moduleIcon} from './icons.js';
 import {hasModule, isGlobalAdministrator, setSessionState} from './session.js';
 import {clearPinSessionUnlocks, ensurePinUnlocked} from './pin.js';
 import {renderLogin} from './auth.js';
@@ -43,6 +44,7 @@ const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
 const SESSION_REFRESH_INTERVAL_MS = 10 * 60 * 1000;
 const SESSION_ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'];
 let sessionIdleTimer = null;
+const SIDEBAR_STORAGE_KEY = 'waldbad.admin.sidebar';
 let sessionRefreshTimer = null;
 
 const resetSessionIdleTimer = () => {
@@ -110,11 +112,39 @@ const mountAdminShell = async (session) => {
     workspace = element('section', {className: 'admin-workspace'});
     const sidebarTitle = element('h1', {text: 'Redaktion'});
     const menu = element('nav', {className: 'admin-menu', attributes: {id: 'admin-navigation-menu', 'aria-label': 'Redaktionsbereiche'}});
+    const sidebarToggle = element('button', {className: 'admin-sidebar-toggle', attributes: {type: 'button', 'aria-controls': 'admin-navigation'}});
     const sidebar = element('aside', {className: 'admin-sidebar', attributes: {id: 'admin-navigation'}, children: [
-        sidebarTitle,
-        menu,
+        element('div', {className: 'admin-sidebar-inner', children: [
+            element('div', {className: 'admin-sidebar-heading', children: [sidebarToggle, sidebarTitle]}),
+            menu,
+        ]}),
     ]});
     const adminLayout = element('main', {className: 'admin-layout', children: [sidebar, workspace]});
+    // Auf dem Desktop ist die Seitenleiste standardmäßig auf Icons eingeklappt; die Wahl gilt nur
+    // für diesen Browser.
+    const setSidebarCollapsed = (collapsed) => {
+        adminLayout.classList.toggle('admin-sidebar-collapsed', collapsed);
+        sidebarToggle.textContent = collapsed ? '»' : '«';
+        sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+        sidebarToggle.setAttribute('aria-label', collapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen');
+        sidebarToggle.title = collapsed ? 'Seitenleiste ausklappen' : 'Seitenleiste einklappen';
+    };
+    let sidebarCollapsed = true;
+    try {
+        sidebarCollapsed = window.localStorage.getItem(SIDEBAR_STORAGE_KEY) !== 'expanded';
+    } catch {
+        // Ohne Speicherzugriff (z. B. privates Fenster) bleibt es beim eingeklappten Standard.
+    }
+    setSidebarCollapsed(sidebarCollapsed);
+    sidebarToggle.addEventListener('click', () => {
+        const collapsed = !adminLayout.classList.contains('admin-sidebar-collapsed');
+        setSidebarCollapsed(collapsed);
+        try {
+            window.localStorage.setItem(SIDEBAR_STORAGE_KEY, collapsed ? 'collapsed' : 'expanded');
+        } catch {
+            // Die Wahl gilt dann nur bis zum Neuladen.
+        }
+    });
     const navigationToggle = element('button', {
         className: 'admin-nav-toggle',
         attributes: {
@@ -157,11 +187,14 @@ const mountAdminShell = async (session) => {
             workspace.replaceChildren(emptyState(error.message));
         }
     };
-    const addMenu = (label, slug, defaultSegments, action) => {
+    const addMenu = (label, icon, slug, defaultSegments, action) => {
         const link = element('a', {
             className: 'admin-menu-item',
-            text: label,
-            attributes: {href: adminPath(...defaultSegments)},
+            attributes: {href: adminPath(...defaultSegments), title: label},
+            children: [
+                moduleIcon(icon),
+                element('span', {className: 'admin-menu-label', text: label}),
+            ],
         });
         const item = {slug, defaultSegments, action, link};
         link.addEventListener('click', async (event) => {
@@ -173,11 +206,11 @@ const mountAdminShell = async (session) => {
         return item;
     };
     const menuItems = [];
-    if (hasModule('pages')) menuItems.push(addMenu('Seiten', 'seiten', ['seiten'], showPages));
+    if (hasModule('pages')) menuItems.push(addMenu('Seiten', 'pages', 'seiten', ['seiten'], showPages));
 
     if (hasModule('events') || hasModule('event_helpers') || hasModule('activities')) {
         const defaultEventSlug = hasModule('events') ? 'termine' : hasModule('event_helpers') ? 'helfer' : 'aktivitaeten';
-        menuItems.push(addMenu('Veranstaltung', 'veranstaltungen', ['veranstaltungen', defaultEventSlug], showEventManagement));
+        menuItems.push(addMenu('Veranstaltung', 'events', 'veranstaltungen', ['veranstaltungen', defaultEventSlug], showEventManagement));
     }
 
     if (hasModule('members') || hasModule('contribution_rates') || hasModule('membership_applications') || hasModule('member_messages')) {
@@ -186,32 +219,32 @@ const mountAdminShell = async (session) => {
             : hasModule('contribution_rates')
                 ? 'beitragssaetze'
                 : hasModule('membership_applications') ? 'antraege' : 'nachrichten';
-        menuItems.push(addMenu('Mitgliederverwaltung', 'mitglieder', ['mitglieder', defaultMembershipSlug], async (segments) => {
+        menuItems.push(addMenu('Mitgliederverwaltung', 'members', 'mitglieder', ['mitglieder', defaultMembershipSlug], async (segments) => {
             if (!(await ensurePinUnlocked('members.module_access', 'Mitgliederverwaltung'))) return;
             await showMembershipManagement(segments);
         }));
     }
 
     if (hasModule('photos')) {
-        menuItems.push(addMenu('Fotos', 'fotos', ['fotos'], showPhotoManagement));
+        menuItems.push(addMenu('Fotos', 'photos', 'fotos', ['fotos'], showPhotoManagement));
     }
 
     if (hasModule('media_library')) {
-        menuItems.push(addMenu('Mediathek', 'mediathek', ['mediathek'], showMediaLibrary));
+        menuItems.push(addMenu('Mediathek', 'media', 'mediathek', ['mediathek'], showMediaLibrary));
     }
 
     if (hasModule('rental_sauna')) {
-        menuItems.push(addMenu('Vermietung', 'vermietung', ['vermietung', 'sauna', 'anmeldungen'], showRentalManagement));
+        menuItems.push(addMenu('Vermietung', 'rental', 'vermietung', ['vermietung', 'sauna', 'anmeldungen'], showRentalManagement));
     }
 
     if (hasModule('contact_requests') || hasModule('guestbook')) {
         const defaultContactSlug = hasModule('contact_requests') ? 'kontaktanfragen' : 'gaestebuch';
-        menuItems.push(addMenu('Kontakt und Feedback', 'kontakt-feedback', ['kontakt-feedback', defaultContactSlug], showContactFeedbackManagement));
+        menuItems.push(addMenu('Kontakt und Feedback', 'contact', 'kontakt-feedback', ['kontakt-feedback', defaultContactSlug], showContactFeedbackManagement));
     }
 
     if (hasModule('user_management') || isGlobalAdministrator()) {
         const defaultSettingsSlug = hasModule('user_management') ? 'benutzer' : 'pin-schutz';
-        menuItems.push(addMenu('Einstellungen', 'einstellungen', ['einstellungen', defaultSettingsSlug], showSettingsManagement));
+        menuItems.push(addMenu('Einstellungen', 'settings', 'einstellungen', ['einstellungen', defaultSettingsSlug], showSettingsManagement));
     }
 
     // Anders als früher kennt diese Funktion die Unter-Reiter der einzelnen Bereiche nicht mehr

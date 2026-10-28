@@ -5,7 +5,7 @@
 // derselben URL überschrieben, damit Links darauf gültig bleiben.
 
 import {confirmAction, element, field, formMessage, request, selectField, toast} from '../core.js';
-import {emptyState, searchField, sectionHeading} from './ui.js';
+import {emptyState, openContextMenu, openContextMenuAtElement, openContextMenuFromEvent, searchField, sectionHeading, treeLayout} from './ui.js';
 import {canEditModule} from './session.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
@@ -58,59 +58,6 @@ const pickFiles = (accept, multiple = false) => new Promise((resolve) => {
     input.addEventListener('cancel', () => resolve([]));
     input.click();
 });
-
-// Kontextmenü für Ordner (Rechtsklick) und Dateien (☰-Button): schließt bei Auswahl, Klick daneben,
-// Escape, Scrollen und Größenänderung. Shift+F10/Menütaste lösen `contextmenu` ebenfalls aus.
-let closeOpenMenu = null;
-const openMenu = (x, y, items, returnFocus = null) => {
-    closeOpenMenu?.();
-    const menu = element('div', {className: 'media-context-menu', attributes: {role: 'menu'}});
-    const close = () => {
-        menu.remove();
-        document.removeEventListener('pointerdown', onPointerDown, true);
-        document.removeEventListener('keydown', onKeyDown, true);
-        window.removeEventListener('scroll', close, true);
-        window.removeEventListener('resize', close);
-        closeOpenMenu = null;
-    };
-    const onPointerDown = (event) => {
-        if (!menu.contains(event.target)) close();
-    };
-    const onKeyDown = (event) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            close();
-            returnFocus?.focus();
-        }
-    };
-    menu.append(...items.map((item) => {
-        const button = element('button', {
-            className: `media-context-menu-item${item.danger ? ' is-danger' : ''}`,
-            text: item.label,
-            attributes: {type: 'button', role: 'menuitem', ...(item.disabled ? {disabled: 'disabled', title: item.disabled} : {})},
-        });
-        button.addEventListener('click', () => {
-            close();
-            item.run();
-        });
-
-        return button;
-    }));
-    document.body.append(menu);
-    const {width, height} = menu.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - width - 8))}px`;
-    menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - height - 8))}px`;
-    document.addEventListener('pointerdown', onPointerDown, true);
-    document.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    closeOpenMenu = close;
-    menu.querySelector('button:not([disabled])')?.focus();
-};
-const openMenuAtElement = (anchor, items) => {
-    const rect = anchor.getBoundingClientRect();
-    openMenu(rect.right - 200, rect.bottom + 4, items, anchor);
-};
 
 const openFolder = async (path) => {
     currentFolder = path;
@@ -306,22 +253,17 @@ const folderTree = (folders, items, editable) => {
     const childrenOf = (parentPath) => folders.filter((folder) => folder.parentPath === parentPath);
     const node = (path, label, count) => {
         const button = element('button', {
-            className: `media-folder-button${path === currentFolder ? ' active' : ''}`,
+            className: `tree-item${path === currentFolder ? ' active' : ''}`,
             attributes: {type: 'button', ...(path === currentFolder ? {'aria-current': 'true'} : {})},
             children: [
-                element('span', {className: 'media-folder-icon', text: path === currentFolder ? '📂' : '📁', attributes: {'aria-hidden': 'true'}}),
-                element('span', {className: 'media-folder-name', text: label}),
-                ...(count ? [element('span', {className: 'media-folder-count', text: String(count)})] : []),
+                element('span', {className: 'tree-item-icon', text: path === currentFolder ? '📂' : '📁', attributes: {'aria-hidden': 'true'}}),
+                element('span', {className: 'tree-item-name', text: label}),
+                ...(count ? [element('span', {className: 'tree-item-count', text: String(count)})] : []),
             ],
         });
         button.addEventListener('click', () => openFolder(path));
         if (editable) {
-            button.addEventListener('contextmenu', (event) => {
-                event.preventDefault();
-                const fromKeyboard = event.clientX === 0 && event.clientY === 0;
-                const rect = button.getBoundingClientRect();
-                openMenu(fromKeyboard ? rect.left + 24 : event.clientX, fromKeyboard ? rect.bottom : event.clientY, folderMenuItems(path), button);
-            });
+            button.addEventListener('contextmenu', (event) => openContextMenuFromEvent(event, button, folderMenuItems(path)));
             button.addEventListener('dragover', (event) => {
                 if (!event.dataTransfer.types.includes(MEDIA_DRAG_TYPE)) return;
                 event.preventDefault();
@@ -343,7 +285,7 @@ const folderTree = (folders, items, editable) => {
         ]});
     };
 
-    return element('aside', {className: 'media-folder-tree', attributes: {'aria-label': 'Ordner'}, children: [
+    return element('aside', {className: 'tree-panel', attributes: {'aria-label': 'Ordner'}, children: [
         element('ul', {children: [node('', 'uploads', 0)]}),
         ...(editable ? [element('small', {text: 'Rechtsklick auf einen Ordner: neuer Unterordner oder löschen. Dateien per Drag & Drop auf einen Ordner verschieben.'})] : []),
     ]});
@@ -381,7 +323,7 @@ const mediaCard = (item, folders, editable) => {
     });
     menuButton.addEventListener('click', (event) => {
         event.stopPropagation();
-        openMenuAtElement(menuButton, fileMenuItems());
+        openContextMenuAtElement(menuButton, fileMenuItems());
     });
     const children = [
         element('div', {className: 'media-card-preview', children: [
@@ -403,7 +345,7 @@ const mediaCard = (item, folders, editable) => {
     card.addEventListener('contextmenu', (event) => {
         if (event.target.closest('a[href]:not(.media-library-preview)')) return;
         event.preventDefault();
-        openMenu(event.clientX || menuButton.getBoundingClientRect().left, event.clientY || menuButton.getBoundingClientRect().bottom, fileMenuItems(), menuButton);
+        openContextMenu(event.clientX || menuButton.getBoundingClientRect().left, event.clientY || menuButton.getBoundingClientRect().bottom, fileMenuItems(), menuButton);
     });
     if (editable) {
         card.draggable = true;
@@ -488,17 +430,18 @@ const renderMediaLibrary = async () => {
 
     workspace.replaceChildren(
         heading,
-        element('div', {className: 'media-library-layout', children: [
+        treeLayout(
             folderTree(folders, data.items, editable),
-            element('section', {className: 'media-library-content', attributes: {'aria-label': 'Dateien'}, children: [
-                element('header', {className: 'media-library-content-header', children: [
+            element('section', {className: 'tree-content', attributes: {'aria-label': 'Dateien'}, children: [
+                element('header', {className: 'tree-content-header', children: [
                     element('h3', {text: folderLabel(currentFolder)}),
                     element('label', {className: 'check-field', children: [recursive, element('span', {text: 'Unterordner einbeziehen'})]}),
                 ]}),
                 element('div', {className: 'media-library-toolbar', children: [search, filter, countLabel]}),
                 grid,
             ]}),
-        ]}),
+            {storageKey: 'waldbad.admin.tree-width.media', defaultWidth: 'minmax(13rem, 17rem)'},
+        ),
     );
 };
 

@@ -2,11 +2,11 @@
 // Veranstaltungsblöcke, Erweiterungen) sowie die Entwurfsvorschau, die über `content-rendering.js`
 // exakt denselben Rendering-Pfad wie die öffentliche Website nutzt.
 
-import {buildPageTree, confirmAction, element, field, fieldRow, flattenPageTree, request, toast} from '../core.js';
-import {emptyState, sectionHeading} from './ui.js';
+import {buildPageTree, confirmAction, element, field, fieldRow, flattenPageTree, pageHref, request, toast} from '../core.js';
+import {emptyState, openContextMenuAtElement, openContextMenuFromEvent, sectionHeading, treeLayout} from './ui.js';
 import {canEditPages, canManagePageStructure, canPublishPages} from './session.js';
 import {renderContentCard} from '../content-rendering.js';
-import {workspace} from './shell.js';
+import {setAdminPath, workspace} from './shell.js';
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
@@ -1195,7 +1195,7 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
                 unpublish: 'Seite wurde zurückgezogen.',
             };
             toast(messages[action] || 'Status wurde aktualisiert.');
-            await onSaved();
+            await onSaved(page);
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
@@ -1312,7 +1312,7 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
                 message.textContent = 'Entwurf gespeichert.';
                 toast(page ? 'Entwurf wurde gespeichert.' : 'Seite wurde angelegt.');
             }
-            await onSaved();
+            await onSaved(savedPage);
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
@@ -1323,21 +1323,87 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
         await savePage();
     });
     refreshBlocks();
+    let dirty = false;
+    const markDirty = () => dirty = true;
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
+    blockList.addEventListener('click', (event) => {
+        if (event.target.closest('button:not(.block-plus)')) markDirty();
+    });
+    blockList.addEventListener('drop', markDirty);
+    form.hasUnsavedChanges = () => dirty;
 
     return form;
 };
 
-const showPages = async () => {
-    const [pages, activityData] = await Promise.all([
+const PAGE_STATUS_LABELS = {
+    draft: 'Entwurf',
+    in_review: 'In Prüfung',
+    published: 'Veröffentlicht',
+    archived: 'Archiviert',
+};
+
+let selectedPageId = null;
+
+const pageStatusText = (page) => `${PAGE_STATUS_LABELS[page.status] || page.status}${page.publishedAt && page.status !== 'published' ? ' · letzte Version online' : ''}${page.visible ? '' : ' · ausgeblendet'}`;
+
+// Zweispaltige Seitenverwaltung wie die Mediathek: links der Seitenbaum (Aktionen per Rechtsklick
+// bzw. ⋮, Verschieben per Ziehen mit der Maus), rechts der Editor der ausgewählten Seite. Ohne
+// Auswahl in der URL (`/admin/seiten/<id>`) ist die Startseite geöffnet.
+const renderPages = async (creating = null) => {
+    const [pageData, activityData] = await Promise.all([
         request('/api/admin/v1/pages'),
         request('/api/admin/v1/event-activities'),
     ]);
+    const pages = pageData.items;
     const activities = activityData.items || [];
-    const list = element('div', {className: 'management-list page-tree-panel'});
-    const pageById = new Map(pages.items.map((page) => [page.id, page]));
-    let draggedPageId = null;
-    let disabledPageIds = new Set();
-    let dropTarget = null;
+    const pageById = new Map(pages.map((page) => [page.id, page]));
+    const tree = buildPageTree(pages);
+    const structureEditable = canManagePageStructure();
+    const selectedPage = creating ? null : (pageById.get(selectedPageId)
+        || pages.find((page) => page.slug === 'startseite')
+        || tree[0]
+        || null);
+    selectedPageId = selectedPage?.id ?? null;
+    if (selectedPage) setAdminPath(['seiten', selectedPage.id], true);
+
+    const reload = async () => renderPages();
+    const editor = creating || selectedPage
+        ? pageEditor(selectedPage ? pageById.get(selectedPage.id) : null, async (savedPage) => {
+            if (savedPage?.id) selectedPageId = savedPage.id;
+            await reload();
+        }, pages, creating?.parentId ?? null, activities)
+        : emptyState('Noch keine Seiten vorhanden. Lege per Rechtsklick im Seitenbaum eine Hauptseite an.');
+    const confirmDiscard = async () => !editor.hasUnsavedChanges?.() || confirmAction(
+        'Ungespeicherte Änderungen verwerfen?',
+        'Die Änderungen an der geöffneten Seite wurden noch nicht gespeichert und gehen verloren.',
+        'Verwerfen',
+    );
+    const selectPage = async (pageId) => {
+        if (!creating && pageId === selectedPageId) return;
+        if (!(await confirmDiscard())) return;
+        selectedPageId = pageId;
+        setAdminPath(['seiten', pageId]);
+        await renderPages();
+    };
+    const createPage = async (parentId) => {
+        if (!(await confirmDiscard())) return;
+        await renderPages({parentId});
+    };
+    const runPageAction = async (url, method, success, afterSuccess = () => {}) => {
+        try {
+            const result = await request(url, {method});
+            toast(success);
+            afterSuccess(result);
+        } catch (error) {
+            toast(error.message, 'error');
+        }
+        await reload();
+    };
+    const siblingsOf = (parentId) => pages
+        .filter((candidate) => candidate.parentId === parentId)
+        .sort((left, right) => (left.navigationPosition - right.navigationPosition)
+            || left.title.localeCompare(right.title, 'de') || left.id.localeCompare(right.id));
     const isDescendantOf = (pageId, possibleAncestorId) => {
         let current = pageById.get(pageId);
         while (current?.parentId) {
@@ -1347,28 +1413,75 @@ const showPages = async () => {
 
         return false;
     };
-    const siblingsOf = (parentId) => pages.items
-        .filter((candidate) => candidate.parentId === parentId)
-        .sort((left, right) => (left.navigationPosition - right.navigationPosition)
-            || left.title.localeCompare(right.title, 'de') || left.id.localeCompare(right.id));
+
+    const pageMenuItems = (page, siblingIndex, siblingCount) => [
+        {label: 'Bearbeiten', run: () => selectPage(page.id)},
+        ...(page.publishedAt ? [{label: 'Im Frontend öffnen', run: () => window.open(pageHref(page.slug), '_blank', 'noopener')}] : []),
+        ...(structureEditable ? [
+            {label: 'Unterseite hinzufügen …', run: () => createPage(page.id)},
+            {
+                label: 'Duplizieren',
+                run: () => runPageAction(
+                    `/api/admin/v1/pages/${page.id}/duplicate`,
+                    'POST',
+                    `„${page.title}“ wurde als ausgeblendeter Entwurf dupliziert.`,
+                    (duplicate) => {
+                        if (duplicate?.id) {
+                            selectedPageId = duplicate.id;
+                            setAdminPath(['seiten', duplicate.id]);
+                        }
+                    },
+                ),
+            },
+            {
+                label: 'Nach oben verschieben',
+                disabled: siblingIndex === 0 ? 'Die Seite steht bereits an erster Stelle.' : null,
+                run: () => runPageAction(`/api/admin/v1/pages/${page.id}/move/up`, 'POST', `„${page.title}“ wurde nach oben verschoben.`),
+            },
+            {
+                label: 'Nach unten verschieben',
+                disabled: siblingIndex === siblingCount - 1 ? 'Die Seite steht bereits an letzter Stelle.' : null,
+                run: () => runPageAction(`/api/admin/v1/pages/${page.id}/move/down`, 'POST', `„${page.title}“ wurde nach unten verschoben.`),
+            },
+            {
+                label: 'Löschen',
+                danger: true,
+                run: async () => {
+                    const confirmed = await confirmAction(
+                        `„${page.title}“ löschen?`,
+                        'Die Seite und ihre Inhalte werden dauerhaft gelöscht. Seiten mit Unterseiten oder Einbettungen können erst gelöscht werden, nachdem diese Abhängigkeiten entfernt wurden.',
+                        'Seite löschen',
+                    );
+                    if (!confirmed) return;
+                    await runPageAction(`/api/admin/v1/pages/${page.id}`, 'DELETE', `„${page.title}“ wurde gelöscht.`, () => {
+                        if (selectedPageId === page.id) selectedPageId = page.parentId;
+                    });
+                },
+            },
+        ] : []),
+    ];
+    const rootMenuItems = () => structureEditable ? [{label: 'Neue Hauptseite …', run: () => createPage(null)}] : [];
+
+    const panel = element('aside', {className: 'tree-panel page-tree-nav', attributes: {'aria-label': 'Seitenbaum'}});
+    let draggedPageId = null;
+    let disabledPageIds = new Set();
+    let dropTarget = null;
     const clearDropIndicator = () => {
-        list.querySelectorAll('.drop-before, .drop-after, .drop-into')
+        panel.querySelectorAll('.drop-before, .drop-after, .drop-into')
             .forEach((node) => node.classList.remove('drop-before', 'drop-after', 'drop-into'));
         dropTarget = null;
     };
     const clearDragState = () => {
         draggedPageId = null;
         disabledPageIds = new Set();
-        list.classList.remove('is-page-dragging');
-        list.querySelectorAll('.dragging').forEach((node) => node.classList.remove('dragging'));
+        panel.classList.remove('is-page-dragging');
+        panel.querySelectorAll('.dragging').forEach((node) => node.classList.remove('dragging'));
         clearDropIndicator();
     };
-    // Ermittelt beim Ziehen anhand der Mausposition, über welcher Zeile der Zeiger steht und in
-    // welchem Drittel: oberes/unteres Drittel = als Geschwisterseite davor/danach einsortieren,
-    // mittleres Drittel = als Unterseite in die Zielseite hinein ablegen. So verhält sich das
-    // Verschieben wie in einem Datei-Explorer, ohne eigene, dauerhaft sichtbare Ablagefelder.
+    // Beim Ziehen entscheidet die Zeigerposition über der Zielzeile: oberes/unteres Drittel =
+    // davor/danach einsortieren, mittleres Drittel = als Unterseite ablegen (wie im Datei-Explorer).
     const updateDropTarget = (clientX, clientY) => {
-        const rows = Array.from(list.querySelectorAll('.page-tree-row'));
+        const rows = Array.from(panel.querySelectorAll('.page-tree-item'));
         if (!rows.length) {
             clearDropIndicator();
             return;
@@ -1378,14 +1491,12 @@ const showPages = async () => {
             return clientY >= rect.top && clientY <= rect.bottom;
         });
         if (!targetRow) {
-            const firstRect = rows[0].getBoundingClientRect();
-            const lastRect = rows[rows.length - 1].getBoundingClientRect();
-            if (clientY < firstRect.top) targetRow = rows[0];
-            else if (clientY > lastRect.bottom) targetRow = rows[rows.length - 1];
+            if (clientY < rows[0].getBoundingClientRect().top) targetRow = rows[0];
+            else if (clientY > rows[rows.length - 1].getBoundingClientRect().bottom) targetRow = rows[rows.length - 1];
         }
-        const pageId = targetRow?.closest('.page-tree-node')?.dataset.pageId;
+        const pageId = targetRow?.dataset.pageId;
         const targetPage = pageId ? pageById.get(pageId) : null;
-        if (!targetPage || pageId === draggedPageId || disabledPageIds.has(pageId)) {
+        if (!targetPage || disabledPageIds.has(pageId)) {
             clearDropIndicator();
             return;
         }
@@ -1417,8 +1528,7 @@ const showPages = async () => {
         const target = dropTarget;
         clearDragState();
         if (!draggedPage || !target) return;
-        const targetSiblings = siblingsOf(target.parentId);
-        const sourceIndex = targetSiblings.findIndex((candidate) => candidate.id === draggedPage.id);
+        const sourceIndex = siblingsOf(target.parentId).findIndex((candidate) => candidate.id === draggedPage.id);
         const adjustedPosition = sourceIndex >= 0 && sourceIndex < target.position ? target.position - 1 : target.position;
         if (draggedPage.parentId === target.parentId && sourceIndex === adjustedPosition) return;
         try {
@@ -1432,231 +1542,121 @@ const showPages = async () => {
             });
             const label = target.parentId ? `unter „${pageById.get(target.parentId)?.title || 'Seite'}“` : 'als Hauptseite';
             toast(`„${draggedPage.title}“ wurde ${label} einsortiert.`);
-            await showPages();
         } catch (error) {
             toast(error.message, 'error');
-            await showPages();
         }
+        await reload();
     };
-    if (canManagePageStructure()) {
-        const create = element('button', {className: 'secondary-button full', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
-        create.addEventListener('click', () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, null, activities)));
-        list.append(create);
-    }
-    const renderTreeNode = (page, siblingIndex, siblings) => {
-        const title = element('button', {
-            className: 'page-tree-title',
-            attributes: {type: 'button', title: `${page.title} bearbeiten`},
-            children: [
-                element('span', {className: 'page-icon', text: page.visible ? '▤' : '⊘', attributes: {'aria-hidden': 'true'}}),
-                element('span', {children: [
-                    element('strong', {text: page.title}),
-                    element('small', {
-                        text: `${page.status}${page.publishedAt && page.status !== 'published' ? ' · letzte Version online' : ''}${page.visible ? '' : ' · ausgeblendet'} · /${page.slug}`,
-                    }),
-                ]}),
-            ],
+    // Ziehen startet erst nach einigen Pixeln Mausbewegung, damit ein einfacher Klick die Seite
+    // öffnet. Touch bleibt dem Scrollen vorbehalten; dort gibt es „Nach oben/unten“ im Menü.
+    const enablePointerDrag = (button, page) => {
+        let pointer = null;
+        let suppressClick = false;
+        button.addEventListener('pointerdown', (event) => {
+            if (event.pointerType === 'touch' || event.button !== 0) return;
+            pointer = {id: event.pointerId, x: event.clientX, y: event.clientY};
         });
-        title.addEventListener('click', () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)));
-
-        const actionDefinitions = [];
-        if (canManagePageStructure()) {
-            const runPageAction = async (button, url, method, success) => {
-                button.disabled = true;
-                try {
-                    await request(url, {method});
-                    toast(success);
-                    await showPages();
-                } catch (error) {
-                    toast(error.message, 'error');
-                    button.disabled = false;
-                }
-            };
-            actionDefinitions.push(
-                {
-                    icon: '＋',
-                    label: `Unterseite zu ${page.title} hinzufügen`,
-                    menuLabel: 'Unterseite hinzufügen',
-                    run: () => workspace.replaceChildren(pageEditor(null, showPages, pages.items, page.id, activities)),
-                },
-                {
-                    icon: '✎',
-                    label: `${page.title} bearbeiten`,
-                    menuLabel: 'Bearbeiten',
-                    run: () => workspace.replaceChildren(pageEditor(page, showPages, pages.items, null, activities)),
-                },
-                {
-                    icon: '⧉',
-                    label: `${page.title} duplizieren`,
-                    menuLabel: 'Duplizieren',
-                    run: (button) => runPageAction(
-                        button,
-                        `/api/admin/v1/pages/${page.id}/duplicate`,
-                        'POST',
-                        `„${page.title}“ wurde als ausgeblendeter Entwurf dupliziert.`,
-                    ),
-                },
-                {
-                    icon: '↑',
-                    label: `${page.title} nach oben verschieben`,
-                    menuLabel: 'Nach oben verschieben',
-                    disabled: siblingIndex === 0,
-                    run: (button) => runPageAction(
-                        button,
-                        `/api/admin/v1/pages/${page.id}/move/up`,
-                        'POST',
-                        `„${page.title}“ wurde nach oben verschoben.`,
-                    ),
-                },
-                {
-                    icon: '↓',
-                    label: `${page.title} nach unten verschieben`,
-                    menuLabel: 'Nach unten verschieben',
-                    disabled: siblingIndex === siblings.length - 1,
-                    run: (button) => runPageAction(
-                        button,
-                        `/api/admin/v1/pages/${page.id}/move/down`,
-                        'POST',
-                        `„${page.title}“ wurde nach unten verschoben.`,
-                    ),
-                },
-                {
-                    icon: '✕',
-                    label: `${page.title} löschen`,
-                    menuLabel: 'Löschen',
-                    danger: true,
-                    run: async (button) => {
-                        const confirmed = await confirmAction(
-                            `„${page.title}“ löschen?`,
-                            'Die Seite und ihre Inhalte werden dauerhaft gelöscht. Seiten mit Unterseiten oder Einbettungen können erst gelöscht werden, nachdem diese Abhängigkeiten entfernt wurden.',
-                            'Seite löschen',
-                        );
-                        if (!confirmed) return;
-                        await runPageAction(button, `/api/admin/v1/pages/${page.id}`, 'DELETE', `„${page.title}“ wurde gelöscht.`);
-                    },
-                },
-            );
-        }
-
-        const createActionButton = (definition, mobile = false) => {
-            const button = element('button', {
-                className: mobile
-                    ? `page-tree-menu-action${definition.danger ? ' danger' : ''}`
-                    : `tree-icon-button${definition.danger ? ' danger' : ''}`,
-                text: mobile ? definition.menuLabel : definition.icon,
-                attributes: {type: 'button', title: definition.label, 'aria-label': definition.label},
-            });
-            button.disabled = definition.disabled === true;
-            button.addEventListener('click', () => definition.run(button));
-
-            return button;
-        };
-        const actionContainers = [];
-        if (actionDefinitions.length) {
-            const mobileActionMenu = element('details', {
-                className: 'page-tree-action-menu',
-                children: [
-                    element('summary', {
-                        className: 'page-tree-action-menu-toggle',
-                        text: '⋮',
-                        attributes: {title: `Aktionen für ${page.title}`, 'aria-label': `Aktionen für ${page.title}`},
-                    }),
-                    element('div', {
-                        className: 'page-tree-action-menu-popover',
-                        children: actionDefinitions.map((definition) => createActionButton(definition, true)),
-                    }),
-                ],
-            });
-            mobileActionMenu.querySelectorAll('.page-tree-menu-action').forEach((button) => {
-                button.addEventListener('click', () => mobileActionMenu.removeAttribute('open'));
-            });
-            mobileActionMenu.addEventListener('toggle', () => {
-                if (!mobileActionMenu.open) return;
-                list.querySelectorAll('.page-tree-action-menu[open]').forEach((menu) => {
-                    if (menu !== mobileActionMenu) menu.removeAttribute('open');
-                });
-            });
-            actionContainers.push(
-                element('div', {
-                    className: 'page-tree-actions',
-                    children: actionDefinitions.map((definition) => createActionButton(definition)),
-                }),
-                mobileActionMenu,
-            );
-        }
-
-        const dragHandle = element('div', {
-            className: 'page-tree-drag-handle',
-            text: '↕',
-            attributes: {title: `${page.title} ziehen`, 'aria-label': `${page.title} per Drag-and-drop verschieben`},
-        });
-        let pointerId = null;
-        const endPointerDrag = async (event, drop) => {
-            if (event.pointerId !== pointerId) return;
-            dragHandle.releasePointerCapture?.(event.pointerId);
-            pointerId = null;
-            if (drop && dropTarget) await applyDrop();
-            else clearDragState();
-        };
-        dragHandle.addEventListener('pointerdown', (event) => {
-            if (event.pointerType === 'mouse' && event.button !== 0) return;
-            event.preventDefault();
-            pointerId = event.pointerId;
-            draggedPageId = page.id;
-            disabledPageIds = new Set([
-                page.id,
-                ...pages.items.filter((candidate) => isDescendantOf(candidate.id, page.id)).map((candidate) => candidate.id),
-            ]);
-            list.classList.add('is-page-dragging');
-            item.classList.add('dragging');
-            dragHandle.setPointerCapture?.(event.pointerId);
-        });
-        dragHandle.addEventListener('pointermove', (event) => {
-            if (event.pointerId !== pointerId) return;
+        button.addEventListener('pointermove', (event) => {
+            if (event.pointerId !== pointer?.id) return;
+            if (draggedPageId === null) {
+                if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) < 5) return;
+                draggedPageId = page.id;
+                disabledPageIds = new Set([page.id, ...pages.filter((candidate) => isDescendantOf(candidate.id, page.id)).map((candidate) => candidate.id)]);
+                panel.classList.add('is-page-dragging');
+                button.classList.add('dragging');
+                button.setPointerCapture?.(event.pointerId);
+            }
             event.preventDefault();
             updateDropTarget(event.clientX, event.clientY);
         });
-        dragHandle.addEventListener('pointerup', (event) => endPointerDrag(event, true));
-        dragHandle.addEventListener('pointercancel', (event) => endPointerDrag(event, false));
-        const row = element('div', {
-            className: 'page-tree-row',
-            children: [...(canManagePageStructure() ? [dragHandle] : []), title, ...actionContainers],
+        button.addEventListener('pointerup', async (event) => {
+            if (event.pointerId !== pointer?.id) return;
+            pointer = null;
+            if (draggedPageId === null) return;
+            suppressClick = true;
+            button.releasePointerCapture?.(event.pointerId);
+            await (dropTarget ? applyDrop() : clearDragState());
         });
-        const item = element('li', {
-            className: `page-tree-node${page.visible ? '' : ' is-hidden'}`,
-            attributes: {'data-page-id': page.id},
-            children: [row],
+        button.addEventListener('pointercancel', () => {
+            pointer = null;
+            clearDragState();
         });
-        if (page.children.length) {
-            const children = renderTreeLevel(page.children);
-            const toggle = element('button', {className: 'tree-toggle', text: '▾', attributes: {type: 'button', title: 'Unterseiten ein- oder ausblenden', 'aria-label': `Unterseiten von ${page.title} ausblenden`, 'aria-expanded': 'true'}});
-            toggle.addEventListener('click', () => {
-                children.hidden = !children.hidden;
-                toggle.textContent = children.hidden ? '▸' : '▾';
-                toggle.setAttribute('aria-expanded', String(!children.hidden));
-                toggle.setAttribute('aria-label', `Unterseiten von ${page.title} ${children.hidden ? 'anzeigen' : 'ausblenden'}`);
-            });
-            row.prepend(toggle);
-            item.append(children);
-        } else {
-            row.prepend(element('span', {className: 'tree-toggle-placeholder', attributes: {'aria-hidden': 'true'}}));
-        }
-
-        return item;
+        button.addEventListener('click', (event) => {
+            if (!suppressClick) return;
+            suppressClick = false;
+            event.stopImmediatePropagation();
+        }, true);
     };
-    const renderTreeLevel = (nodes, rootLevel = false) => element('ul', {
-        className: rootLevel ? 'page-tree' : 'page-tree-children',
-        children: nodes.map((node, index) => renderTreeNode(node, index, nodes)),
+
+    const newPagePlaceholder = () => element('li', {children: [element('div', {className: 'page-tree-entry', children: [
+        element('span', {className: 'tree-item active', attributes: {'aria-current': 'page'}, children: [
+            element('span', {className: 'tree-item-icon', text: '✚', attributes: {'aria-hidden': 'true'}}),
+            element('span', {className: 'tree-item-name', text: 'Neue Seite'}),
+        ]}),
+    ]})]});
+    const renderLevel = (nodes, parentId) => {
+        const children = nodes.map((node, index) => renderNode(node, index, nodes.length));
+        if (creating && creating.parentId === parentId) children.push(newPagePlaceholder());
+
+        return children.length ? [element('ul', {children})] : [];
+    };
+    const renderNode = (page, siblingIndex, siblingCount) => {
+        const active = page.id === selectedPageId;
+        const button = element('button', {
+            className: `tree-item page-tree-item${active ? ' active' : ''}${page.visible ? '' : ' is-hidden'}`,
+            attributes: {type: 'button', title: `/${page.slug}`, 'data-page-id': page.id, ...(active ? {'aria-current': 'page'} : {})},
+            children: [
+                element('span', {className: 'tree-item-icon', text: page.slug === 'startseite' ? '🏠' : '📄', attributes: {'aria-hidden': 'true'}}),
+                element('span', {className: 'tree-item-name', text: page.title}),
+                element('span', {className: `page-status-dot is-${page.status}${page.publishedAt && page.status !== 'published' ? ' has-online-version' : ''}`, attributes: {title: pageStatusText(page), 'aria-label': pageStatusText(page)}}),
+            ],
+        });
+        const menuItems = () => pageMenuItems(page, siblingIndex, siblingCount);
+        button.addEventListener('click', () => selectPage(page.id));
+        button.addEventListener('contextmenu', (event) => openContextMenuFromEvent(event, button, menuItems()));
+        if (structureEditable) enablePointerDrag(button, page);
+        const menuButton = element('button', {
+            className: 'page-tree-menu-button',
+            text: '⋮',
+            attributes: {type: 'button', title: `Aktionen für ${page.title}`, 'aria-label': `Aktionen für ${page.title}`, 'aria-haspopup': 'menu'},
+        });
+        menuButton.addEventListener('click', () => openContextMenuAtElement(menuButton, menuItems()));
+
+        return element('li', {children: [
+            element('div', {className: 'page-tree-entry', children: [button, menuButton]}),
+            ...renderLevel(page.children, page.id),
+        ]});
+    };
+    panel.addEventListener('contextmenu', (event) => {
+        const items = rootMenuItems();
+        if (items.length) openContextMenuFromEvent(event, panel, items);
     });
-    const tree = buildPageTree(pages.items);
-    list.append(tree.length
-        ? renderTreeLevel(tree, true)
-        : emptyState('Noch keine Seiten vorhanden.'));
-    workspace.replaceChildren(sectionHeading(
-        'Seitenstruktur',
-        'Seiten am ↕-Griff greifen und verschieben: am oberen oder unteren Rand einer Seite loslassen, um davor oder danach einzusortieren, in der Mitte, um als Unterseite abzulegen.',
-    ), list);
+    panel.append(
+        ...renderLevel(tree, null),
+        element('small', {text: structureEditable
+            ? 'Rechtsklick auf eine Seite für Aktionen, auf eine freie Fläche für eine neue Hauptseite. Seiten mit der Maus ziehen: oben/unten loslassen sortiert davor/danach ein, mittig als Unterseite.'
+            : 'Seite anklicken, um sie zu bearbeiten.'}),
+    );
+
+    const heading = sectionHeading('Seiten', 'Seitenstruktur verwalten und Inhalte bearbeiten');
+    if (structureEditable) {
+        const create = element('button', {className: 'button', text: '＋ Neue Hauptseite', attributes: {type: 'button'}});
+        create.addEventListener('click', () => createPage(null));
+        heading.append(create);
+    }
+    workspace.replaceChildren(
+        heading,
+        treeLayout(
+            panel,
+            element('section', {className: 'tree-content', attributes: {'aria-label': 'Seiteneditor'}, children: [editor]}),
+            {storageKey: 'waldbad.admin.tree-width.pages', defaultWidth: '395px', className: 'page-tree-layout'},
+        ),
+    );
 };
 
+const showPages = async (segments = []) => {
+    selectedPageId = segments[0] === 'seiten' ? segments[1] || null : null;
+    await renderPages();
+};
 
 export {showPages, richTextEditor, collectionItemMediaEditor};
