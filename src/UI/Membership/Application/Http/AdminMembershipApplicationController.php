@@ -2,8 +2,10 @@
 
 namespace App\UI\Membership\Application\Http;
 
+use App\Logic\Membership\Application\Query\GetMembershipApplicationMemberMatchQuery;
 use App\Logic\Membership\Application\Query\GetMembershipApplicationQuery;
 use App\Logic\Membership\Application\Query\ListMembershipApplicationsQuery;
+use App\Logic\Membership\Application\UseCase\MergeMembershipApplicationUseCase;
 use App\Logic\Membership\Application\UseCase\RejectMembershipApplicationUseCase;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
 use App\UI\IdentityAccess\Security\Permission;
@@ -22,11 +24,21 @@ class AdminMembershipApplicationController extends AbstractController
     }
 
     #[Route('', name: 'api_admin_membership_application_list', methods: ['GET'])]
-    public function list(ListMembershipApplicationsQuery $query): JsonResponse
+    public function list(ListMembershipApplicationsQuery $query, GetMembershipApplicationMemberMatchQuery $matchQuery): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembershipApplicationsView->value);
 
-        return new JsonResponse($this->responseFactory->collection($query->execute()));
+        $collection = $this->responseFactory->collection($applications = $query->execute());
+        // Der Hinweis „Bereits Mitglied“ zeigt Mitgliederdaten — nur mit Leserecht auf die Mitglieder.
+        if ($this->isGranted(Permission::MembersView->value)) {
+            foreach ($applications as $index => $application) {
+                $open = $application->releasedAt === null && $application->rejectedAt === null;
+                $match = $open ? $matchQuery->execute($application->id) : null;
+                $collection['items'][$index]['memberMatch'] = $match === null ? null : $this->responseFactory->memberMatch($match);
+            }
+        }
+
+        return new JsonResponse($collection);
     }
 
     #[Route('/{id}', name: 'api_admin_membership_application_get', methods: ['GET'])]
@@ -48,6 +60,20 @@ class AdminMembershipApplicationController extends AbstractController
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
 
         return new JsonResponse($this->responseFactory->application($useCase->execute($id)));
+    }
+
+    /**
+     * Übernimmt einen Antrag in die bestehende Mitgliedschaft der Personen, die schon Mitglied sind,
+     * statt neue Mitglieder anzulegen (siehe `MergeMembershipApplicationUseCase`).
+     */
+    #[Route('/{id}/merge', name: 'api_admin_membership_application_merge', methods: ['POST'])]
+    public function merge(string $id, Request $request, MergeMembershipApplicationUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembershipApplicationsEdit->value);
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        [$keepExisting, $keepExistingBank, $leaveMemberIds] = $this->requestMapper->mergeChoices($request);
+
+        return new JsonResponse($this->responseFactory->application($useCase->execute($id, $keepExisting, $keepExistingBank, $leaveMemberIds)));
     }
 
     /**

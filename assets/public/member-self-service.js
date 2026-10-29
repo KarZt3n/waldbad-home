@@ -12,6 +12,8 @@ import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SL
 // E-Mail-Einwilligung vorerst nicht anzeigen (Umschalter im Bearbeiten-Dialog und Zeile in den
 // Kontaktdaten). Code, API und Bestätigungsseite bleiben erhalten — zum Einblenden auf `true` setzen.
 const SHOW_EMAIL_CONSENT = false;
+// „Rolle in der Familie“ in den Stammdaten vorerst nicht anzeigen — zum Einblenden auf `true` setzen.
+const SHOW_FAMILY_ROLE = false;
 
 const memberDataRow = (label, value) => element('div', {className: 'member-data-row', children: [
     element('span', {className: 'member-data-label', text: label}),
@@ -265,7 +267,7 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
                 memberDataRow('Mitgliedsnummer', member.memberNumber),
                 memberDataRow('Anrede', SALUTATION_LABELS[member.salutation] || member.salutation),
                 memberDataRow('Geburtsdatum', formatDateDE(member.birthDate)),
-                memberDataRow('Rolle in der Familie', FAMILY_ROLE_LABELS[member.familyRole] || member.familyRole),
+                ...(SHOW_FAMILY_ROLE ? [memberDataRow('Rolle in der Familie', FAMILY_ROLE_LABELS[member.familyRole] || member.familyRole)] : []),
                 element('h4', {text: 'Kontaktdaten'}),
                 memberDataRow('Adresse', `${member.street}, ${member.postalCode} ${member.city}`),
                 memberDataRow('Telefon', member.phone),

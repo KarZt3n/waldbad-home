@@ -611,6 +611,142 @@ readonly class Member
         );
     }
 
+    public function withSalutation(Salutation $salutation): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    /**
+     * Bankverbindung ändern, z. B. aus einem Mitgliedsantrag mit neuer SEPA-Ermächtigung (siehe
+     * `MergeMembershipApplicationUseCase`). Ändert sich die IBAN, gilt das bisherige Mandat nicht mehr
+     * und wird entfernt; bis „Mandat erzeugen“ sperrt der Lastschrift-Export (siehe `PayerDirectDebitPlanner`).
+     */
+    public function withBankAccount(string $accountHolder, string $iban, ?string $bankName): self
+    {
+        $keepsMandate = $this->iban !== null && Iban::normalize($this->iban) === Iban::normalize($iban);
+
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $accountHolder,
+            iban: $iban,
+            bankName: $bankName,
+            mandateReference: $keepsMandate ? $this->mandateReference : null,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $keepsMandate ? $this->mandateValidFrom : null,
+            mandateValidUntil: $keepsMandate ? $this->mandateValidUntil : null,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    public function withLeftAt(\DateTimeImmutable $leftAt): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
     private function isValidIban(string $iban): bool
     {
         return Iban::isValid($iban);

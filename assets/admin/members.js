@@ -73,6 +73,157 @@ const showMemberMessages = async () => {
     );
 };
 
+const MEMBER_MATCH_STATUS_LABELS = {identical: 'Identisch', changed: 'Neu', kept: 'Bleibt', new: 'Neu'};
+
+const memberMatchValue = (field, value) => {
+    if (value === null || value === '') return '–';
+    if (field.key === 'salutation') return SALUTATION_LABELS[value] || value;
+    if (field.key === 'birthDate') return formatDateDE(value);
+    return value;
+};
+
+// Alle Tabellen des Abgleichs haben dieselben Spalten in derselben Breite (siehe `.member-match-table`),
+// auch für neue Personen ohne bisherigen Wert — so stehen die Werte aller Personen untereinander.
+const memberMatchTable = (fields, chosen) => {
+    const rows = fields.map((field) => {
+        const resultValue = element('span', {className: 'member-match-result-value'});
+        const resultCell = element('td', {className: 'member-match-result'});
+        const refresh = () => {
+            const value = field.status === 'kept' || (field.status === 'changed' && chosen.has(field.key))
+                ? field.memberValue
+                : field.applicationValue;
+            resultValue.textContent = memberMatchValue(field, value);
+        };
+        if (field.status === 'changed') {
+            const option = (label, keepExisting) => {
+                const button = element('button', {className: 'member-match-choice', text: label, attributes: {type: 'button', 'aria-pressed': String(chosen.has(field.key) === keepExisting)}});
+                button.addEventListener('click', () => {
+                    if (keepExisting) chosen.add(field.key); else chosen.delete(field.key);
+                    choice.querySelectorAll('button').forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+                    refresh();
+                });
+                return button;
+            };
+            const choice = element('div', {className: 'member-match-choices', attributes: {role: 'group', 'aria-label': `${field.label}: Wert übernehmen aus`}, children: [
+                option('Antrag', false),
+                option('Bisher', true),
+            ]});
+            resultCell.append(choice);
+        }
+        resultCell.append(resultValue);
+        refresh();
+
+        return element('tr', {className: `member-match-${field.status}`, children: [
+            element('th', {text: field.label, attributes: {scope: 'row'}}),
+            element('td', {text: memberMatchValue(field, field.applicationValue)}),
+            element('td', {text: memberMatchValue(field, field.memberValue)}),
+            element('td', {children: [element('span', {className: `member-match-status member-match-status-${field.status}`, text: MEMBER_MATCH_STATUS_LABELS[field.status] || field.status})]}),
+            resultCell,
+        ]});
+    });
+
+    return element('table', {className: 'data-table member-match-table', children: [
+        element('colgroup', {children: ['field', 'application', 'member', 'status', 'result'].map((name) => element('col', {className: `member-match-col-${name}`}))}),
+        element('thead', {children: [element('tr', {children: ['Feld', 'Antrag', 'Bisher', 'Status', 'Ergebnis'].map((label) => element('th', {text: label}))})]}),
+        element('tbody', {children: rows}),
+    ]});
+};
+
+const missingMemberRow = (member, leaveMemberIds) => {
+    const option = (label, leave) => {
+        const button = element('button', {className: 'member-match-choice', text: label, attributes: {type: 'button', 'aria-pressed': String(!leave)}});
+        button.disabled = Boolean(member.removalBlocker) && leave;
+        button.addEventListener('click', () => {
+            if (leave) leaveMemberIds.add(member.memberId); else leaveMemberIds.delete(member.memberId);
+            choice.querySelectorAll('button').forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        });
+        return button;
+    };
+    const choice = element('div', {className: 'member-match-choices', attributes: {role: 'group', 'aria-label': `${member.name}: behalten oder Austritt eintragen`}, children: [
+        option('Behalten', false),
+        option('Austritt eintragen', true),
+    ]});
+
+    return element('li', {children: [
+        element('div', {children: [
+            element('strong', {text: `${member.memberNumber} ${member.name}`}),
+            element('span', {text: ` · ${FAMILY_ROLE_LABELS[member.familyRole] || member.familyRole} · geb. ${new Date(`${member.birthDate}T00:00:00`).toLocaleDateString('de-DE')}`}),
+            ...(member.removalBlocker ? [element('small', {className: 'field-hint', text: `Austritt hier nicht möglich: ${member.removalBlocker}`})] : []),
+        ]}),
+        choice,
+    ]});
+};
+
+// Hinweis „Bereits Mitglied“: je Person, welche Angaben des Antrags mit dem bestehenden Datensatz
+// übereinstimmen und welche neu sind; bei abweichenden Werten wird gewählt, ob der Antrag oder der
+// bisherige Wert gilt. Die Spalte „Ergebnis“ zeigt, was die Übernahme speichert.
+const openMemberMatchDialog = (application, canMerge) => {
+    const match = application.memberMatch;
+    const keepExisting = new Map(match.applicants.map((applicant) => [applicant.position, new Set()]));
+    const keepExistingBank = new Set();
+    const leaveMemberIds = new Set();
+    const dialog = element('dialog', {className: 'confirm-dialog member-match-dialog'});
+    const close = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
+    close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    const sections = match.applicants.map((applicant) => element('section', {className: 'member-match-person', children: [
+        element('h3', {text: applicant.memberId
+            ? `${applicant.applicantName} → ${applicant.memberNumber} ${applicant.memberName}`
+            : `${applicant.applicantName} – neue Person, wird der Familie hinzugefügt`}),
+        memberMatchTable(applicant.fields, keepExisting.get(applicant.position)),
+    ]}));
+    if (match.bankAccountFields.length) {
+        sections.push(element('section', {className: 'member-match-person', children: [
+            element('h3', {text: `Bankverbindung (zahlendes Mitglied ${match.bankAccountMemberNumber})`}),
+            memberMatchTable(match.bankAccountFields, keepExistingBank),
+            element('p', {className: 'field-hint', text: 'Wird eine neue IBAN übernommen, entfällt das bisherige SEPA-Mandat; danach in der Mitgliederverwaltung „Mandat erzeugen“.'}),
+        ]}));
+    }
+    if (match.missingMembers?.length) {
+        sections.push(element('section', {className: 'member-match-person', children: [
+            element('h3', {text: 'Bisher in der Familie, im Antrag nicht enthalten'}),
+            element('ul', {className: 'member-match-missing', children: match.missingMembers.map((member) => missingMemberRow(member, leaveMemberIds))}),
+            element('p', {className: 'field-hint', text: '„Austritt eintragen“ setzt das Austrittsdatum auf heute; der Datensatz bleibt erhalten.'}),
+        ]}));
+    }
+    const actions = [close];
+    if (canMerge) {
+        const merge = element('button', {className: 'button', text: 'Antrag in bestehende Mitgliedschaft migrieren', attributes: {type: 'button'}});
+        merge.addEventListener('click', async () => {
+            if (!(await confirmAction(
+                'In bestehende Mitgliedschaft migrieren',
+                `Die Werte der Spalte „Ergebnis“ werden in die Mitgliedschaft ${match.primaryMemberNumber} übernommen, neue Personen der Familie hinzugefügt${leaveMemberIds.size ? `, für ${leaveMemberIds.size} ${leaveMemberIds.size === 1 ? 'Person' : 'Personen'} der Austritt eingetragen` : ''} und die Beiträge neu berechnet. Die antragstellende Person erhält eine Bestätigung per E-Mail. Das kann nicht rückgängig gemacht werden.`,
+                'Migrieren',
+            ))) return;
+            merge.disabled = true;
+            try {
+                await request(`/api/admin/v1/membership-applications/${application.id}/merge`, {method: 'POST', body: JSON.stringify({keep: {
+                    applicants: Object.fromEntries([...keepExisting].map(([position, fields]) => [position, [...fields]])),
+                    bank: [...keepExistingBank],
+                }, leave: [...leaveMemberIds]})});
+                toast(`Der Antrag wurde in ${match.primaryMemberNumber} übernommen.`);
+                dialog.close();
+                await showMembershipManagement();
+            } catch (error) {
+                toast(error.message, 'error');
+                merge.disabled = false;
+            }
+        });
+        actions.push(merge);
+    }
+    dialog.append(element('div', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Bereits Mitglied'}),
+        element('h2', {text: `Bestehende Mitgliedschaft ${match.primaryMemberNumber}`}),
+        ...(match.conflictingMemberNumbers.length
+            ? [element('p', {className: 'failure-message', text: `Weitere Personen gehören zu anderen Mitgliedschaften (${match.conflictingMemberNumbers.join(', ')}). Eine automatische Übernahme ist nicht möglich.`})]
+            : []),
+        ...sections,
+        element('div', {className: 'confirm-dialog-actions', children: actions}),
+    ]}));
+    document.body.append(dialog);
+    dialog.showModal();
+};
+
 const showMembership = async () => {
     const data = await request('/api/admin/v1/membership-applications');
 
@@ -88,17 +239,45 @@ const showMembership = async () => {
         // (Freigabe/Ablehnung) hinfällig — für abgeschlossene Anträge bleibt `actions` dadurch
         // automatisch leer, ohne das hier gesondert abfragen zu müssen.
         const open = !application.releasedAt && !application.rejectedAt;
+        const match = open ? application.memberMatch : null;
+        const canRelease = canEditModule('membership_applications') && canEditModule('members') && open;
+        const mergeAction = () => actionButton('Antrag in bestehende Mitgliedschaft migrieren', `/api/admin/v1/membership-applications/${application.id}/merge`, showMembershipManagement, 'button', {
+            confirm: {
+                title: 'In bestehende Mitgliedschaft migrieren',
+                description: `Die Angaben aus dem Antrag werden in die Mitgliedschaft ${match.primaryMemberNumber} übernommen, neue Personen der Familie hinzugefügt und die Beiträge neu berechnet. Die antragstellende Person erhält eine Bestätigung per E-Mail. Das kann nicht rückgängig gemacht werden.`,
+                label: 'Migrieren',
+            },
+            success: `Der Antrag wurde in ${match.primaryMemberNumber} übernommen.`,
+        });
+        const canMerge = canRelease && match && !match.conflictingMemberNumbers.length;
         const actions = [];
-        if (canEditModule('membership_applications') && canEditModule('members') && open) {
-            actions.push(actionButton('Als Mitglied anlegen', `/api/admin/v1/membership-applications/${application.id}/release`, showMembershipManagement, 'button', {
+        if (canMerge && match.missingMembers?.length) {
+            // Für fehlende Haushaltsmitglieder muss im Abgleich entschieden werden: behalten oder Austritt.
+            const openMerge = element('button', {className: 'button', text: 'Antrag in bestehende Mitgliedschaft migrieren …', attributes: {type: 'button'}});
+            openMerge.addEventListener('click', () => openMemberMatchDialog(application, true));
+            actions.push(openMerge);
+        } else if (canMerge) {
+            actions.push(mergeAction());
+        }
+        if (canRelease) {
+            actions.push(actionButton('Als Mitglied anlegen', `/api/admin/v1/membership-applications/${application.id}/release`, showMembershipManagement, match ? 'secondary-button' : 'button', {
                 confirm: {
                     title: 'Mitglied anlegen',
-                    description: 'Für jede Person dieses Antrags wird ein Mitglied in der Mitgliederverwaltung angelegt. Das kann nicht rückgängig gemacht werden.',
+                    description: match
+                        ? `Achtung: Personen dieses Antrags sind bereits Mitglied (${match.primaryMemberNumber}). „Als Mitglied anlegen“ legt sie zusätzlich als neue Mitglieder in einem eigenen Haushalt an. Das kann nicht rückgängig gemacht werden.`
+                        : 'Für jede Person dieses Antrags wird ein Mitglied in der Mitgliederverwaltung angelegt. Das kann nicht rückgängig gemacht werden.',
                     label: 'Mitglied anlegen',
                 },
                 success: 'Die Person(en) wurden als Mitglied angelegt.',
             }));
         }
+        const matchedPeople = match ? match.applicants.filter((applicant) => applicant.memberId) : [];
+        const matchHint = match ? element('button', {
+            className: 'member-match-hint',
+            text: `Bereits Mitglied: ${matchedPeople.map((applicant) => `${applicant.memberNumber} ${applicant.memberName}`).join(', ')} – Abgleich anzeigen`,
+            attributes: {type: 'button'},
+        }) : null;
+        matchHint?.addEventListener('click', () => openMemberMatchDialog(application, canMerge));
         if (canEditModule('membership_applications') && open) {
             actions.push(actionButton('Ablehnen', `/api/admin/v1/membership-applications/${application.id}/reject`, showMembershipManagement, 'secondary-button', {
                 confirm: {
@@ -117,7 +296,7 @@ const showMembership = async () => {
                 ]}),
                 element('div', {className: 'membership-admin-card-badges', children: [
                     ...(open ? [element('span', {className: 'status-badge status-pending', text: 'Offen'})] : []),
-                    ...(application.releasedAt ? [element('span', {className: 'status-badge status-released', text: 'Mitglied angelegt'})] : []),
+                    ...(application.releasedAt ? [element('span', {className: 'status-badge status-released', text: application.mergedIntoMemberNumber ? `In ${application.mergedIntoMemberNumber} übernommen` : 'Mitglied angelegt'})] : []),
                     ...(application.rejectedAt ? [element('span', {className: 'status-badge status-rejected', text: 'Abgelehnt'})] : []),
                 ]}),
             ]}),
@@ -129,6 +308,7 @@ const showMembership = async () => {
                 ...(application.releasedAt ? [element('div', {children: [element('dt', {text: 'Mitglied angelegt'}), element('dd', {text: new Date(application.releasedAt).toLocaleString('de-DE')})]})] : []),
                 ...(application.rejectedAt ? [element('div', {children: [element('dt', {text: 'Abgelehnt am'}), element('dd', {text: new Date(application.rejectedAt).toLocaleString('de-DE')})]})] : []),
             ]}),
+            ...(matchHint ? [matchHint] : []),
             element('details', {children: [
                 element('summary', {text: 'Personen und Kontaktdaten anzeigen'}),
                 element('ol', {className: 'membership-admin-people', children: people}),

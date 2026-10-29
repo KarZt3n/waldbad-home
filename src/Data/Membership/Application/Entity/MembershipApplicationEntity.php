@@ -56,6 +56,8 @@ class MembershipApplicationEntity
         /** @var list<string>|null */
         #[ORM\Column(type: Types::JSON, nullable: true)]
         private ?array $acceptedDeclarations = null,
+        #[ORM\Column(type: Types::STRING, length: 40, nullable: true)]
+        private ?string $mergedIntoMemberNumber = null,
     ) {
         $this->applicants = new ArrayCollection();
     }
@@ -90,9 +92,11 @@ class MembershipApplicationEntity
     public function getRejectionReason(): ?string { return $this->rejectionReason; }
     /** @return list<string>|null */
     public function getAcceptedDeclarations(): ?array { return $this->acceptedDeclarations; }
+    public function getMergedIntoMemberNumber(): ?string { return $this->mergedIntoMemberNumber; }
 
-    public function release(?\DateTimeImmutable $releasedAt, ?string $releasedMemberIds, \DateTimeImmutable $updatedAt): void
+    public function release(?\DateTimeImmutable $releasedAt, ?string $releasedMemberIds, \DateTimeImmutable $updatedAt, ?string $mergedIntoMemberNumber = null): void
     {
+        $this->mergedIntoMemberNumber = $mergedIntoMemberNumber;
         $this->releasedAt = $releasedAt;
         $this->releasedMemberIds = $releasedMemberIds;
         $this->updatedAt = $updatedAt;

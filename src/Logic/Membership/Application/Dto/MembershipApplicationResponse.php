@@ -31,6 +31,7 @@ readonly class MembershipApplicationResponse
         public ?string $rejectionReason,
         /** @var list<string> */
         public array $acceptedDeclarations,
+        public ?string $mergedIntoMemberNumber,
     ) {
     }
 
@@ -54,6 +55,7 @@ readonly class MembershipApplicationResponse
             rejectedAt: $application->rejectedAt,
             rejectionReason: $application->rejectionReason,
             acceptedDeclarations: $application->acceptedDeclarations,
+            mergedIntoMemberNumber: $application->mergedIntoMemberNumber,
         );
     }
 }

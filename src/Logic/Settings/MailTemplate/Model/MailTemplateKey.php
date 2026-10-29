@@ -19,6 +19,7 @@ enum MailTemplateKey: string
 {
     case MembershipApplicationSubmittedNotification = 'membership_application_submitted_notification';
     case MembershipApplicationApproved = 'membership_application_approved';
+    case MembershipApplicationMerged = 'membership_application_merged';
     case AdminLoginMagicLink = 'admin_login_magic_link';
     case MemberAccessMagicLink = 'member_access_magic_link';
     case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
@@ -37,6 +38,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Benachrichtigung: neuer Mitgliedsantrag',
             self::MembershipApplicationApproved => 'Bestätigung: Mitgliedsantrag angenommen',
+            self::MembershipApplicationMerged => 'Bestätigung: Antrag in bestehende Mitgliedschaft übernommen',
             self::AdminLoginMagicLink => 'Anmeldelink: Redaktion',
             self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
             self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
@@ -57,6 +59,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald jemand einen Mitgliedsantrag stellt.',
             self::MembershipApplicationApproved => 'Geht an die E-Mail-Adresse der ersten antragstellenden Person, sobald ihr Mitgliedsantrag als Mitglied angelegt (freigegeben) wird.',
+            self::MembershipApplicationMerged => 'Geht an die E-Mail-Adresse der ersten antragstellenden Person, sobald ihr Antrag in eine bestehende Mitgliedschaft übernommen wird; listet den Haushalt nach der Übernahme.',
             self::AdminLoginMagicLink => 'Geht an die E-Mail-Adresse eines Redaktions-Benutzers, sobald über die Anmeldeseite ein Anmeldelink angefordert wird.',
             self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
             self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
@@ -80,6 +83,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart'],
             self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'link', 'vereinsname'],
+            self::MembershipApplicationMerged => ['vorname', 'nachname', 'mitgliedsnummer', 'personen', 'link', 'vereinsname'],
             self::AdminLoginMagicLink => ['link', 'gueltig_minuten', 'vereinsname'],
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
             self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
@@ -100,6 +104,7 @@ enum MailTemplateKey: string
         return match ($this) {
             self::MembershipApplicationSubmittedNotification => 'Neuer Mitgliedsantrag eingegangen',
             self::MembershipApplicationApproved => 'Willkommen im {{vereinsname}} – deine Mitgliedschaft ist bestätigt',
+            self::MembershipApplicationMerged => 'Deine Mitgliedschaft im {{vereinsname}} wurde aktualisiert',
             self::AdminLoginMagicLink => 'Dein Anmeldelink für die Redaktion',
             self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
             self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
@@ -134,7 +139,23 @@ enum MailTemplateKey: string
                 {{personen}}
 
                 Deine Beiträge und weitere Angaben zu deiner Mitgliedschaft kannst du jederzeit unter „Meine Mitgliedschaft“ einsehen. Dort forderst du mit deiner E-Mail-Adresse und deinem Geburtsdatum einen Zugang an:
-                {{link}}
+                [[Meine Mitgliedschaft öffnen|{{link}}]]
+
+                Bei Fragen melde dich gerne bei uns.
+
+                Viele Grüße
+                Dein {{vereinsname}}
+                TEXT,
+            self::MembershipApplicationMerged => <<<'TEXT'
+                Hallo {{vorname}} {{nachname}},
+
+                vielen Dank für deinen Mitgliedsantrag! Da du bereits Mitglied im {{vereinsname}} bist, haben wir die Angaben aus dem Antrag in deine bestehende Mitgliedschaft (Mitgliedsnummer {{mitgliedsnummer}}) übernommen.
+
+                So sieht deine Mitgliedschaft jetzt aus:
+                {{personen}}
+
+                Deine Beiträge und weitere Angaben zu deiner Mitgliedschaft kannst du jederzeit unter „Meine Mitgliedschaft“ einsehen. Dort forderst du mit deiner E-Mail-Adresse und deinem Geburtsdatum einen Zugang an:
+                [[Meine Mitgliedschaft öffnen|{{link}}]]
 
                 Bei Fragen melde dich gerne bei uns.
 
@@ -317,6 +338,17 @@ enum MailTemplateKey: string
                 'personen' => <<<'TEXT'
                     - Erika Musterfrau (Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)
                     - Max Mustermann (Familienangehöriger), geb. 01.01.1983 (Beitragsalter 2026: 43)
+                    TEXT,
+                'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft',
+                'vereinsname' => AssociationName::CURRENT,
+            ],
+            self::MembershipApplicationMerged => [
+                'vorname' => 'Erika',
+                'nachname' => 'Musterfrau',
+                'mitgliedsnummer' => 'Bad-01234',
+                'personen' => <<<'TEXT'
+                    - Erika Musterfrau (Hauptmitglied), geb. 01.01.1985 (Beitragsalter 2026: 41)
+                    - Paul Musterfrau (Kind), geb. 01.04.2016 (Beitragsalter 2026: 10)
                     TEXT,
                 'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft',
                 'vereinsname' => AssociationName::CURRENT,

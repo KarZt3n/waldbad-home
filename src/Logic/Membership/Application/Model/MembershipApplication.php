@@ -35,6 +35,8 @@ readonly class MembershipApplication
          * @var list<string>
          */
         public array $acceptedDeclarations = [],
+        /** Hauptnummer der bestehenden Mitgliedschaft, in die der Antrag übernommen wurde (statt neue Mitglieder anzulegen). */
+        public ?string $mergedIntoMemberNumber = null,
     ) {
         $count = count($this->applicants);
         if ($count < 1 || $count > 8) {
@@ -95,6 +97,39 @@ readonly class MembershipApplication
             rejectedAt: $this->rejectedAt,
             rejectionReason: $this->rejectionReason,
             acceptedDeclarations: $this->acceptedDeclarations,
+            mergedIntoMemberNumber: $this->mergedIntoMemberNumber,
+        );
+    }
+
+    /**
+     * Markiert den Antrag als in eine bestehende Mitgliedschaft übernommen (siehe
+     * `MergeMembershipApplicationUseCase`) — wie eine Freigabe, nur ohne neuen Haushalt.
+     *
+     * @param list<string> $memberIds aktualisierte und neu hinzugefügte Mitglieder
+     */
+    public function mergeInto(string $primaryMemberNumber, array $memberIds, \DateTimeImmutable $at): self
+    {
+        $released = $this->release($memberIds, $at);
+
+        return new self(
+            id: $released->id,
+            membershipType: $released->membershipType,
+            applicants: $released->applicants,
+            accountHolder: $released->accountHolder,
+            iban: $released->iban,
+            bankName: $released->bankName,
+            signerName: $released->signerName,
+            emailConsent: $released->emailConsent,
+            declarationVersion: $released->declarationVersion,
+            version: $released->version,
+            submittedAt: $released->submittedAt,
+            updatedAt: $released->updatedAt,
+            releasedAt: $released->releasedAt,
+            releasedMemberIds: $released->releasedMemberIds,
+            rejectedAt: $released->rejectedAt,
+            rejectionReason: $released->rejectionReason,
+            acceptedDeclarations: $released->acceptedDeclarations,
+            mergedIntoMemberNumber: $primaryMemberNumber,
         );
     }
 
@@ -128,6 +163,7 @@ readonly class MembershipApplication
             rejectedAt: $at,
             rejectionReason: $reason !== null && trim($reason) !== '' ? trim($reason) : null,
             acceptedDeclarations: $this->acceptedDeclarations,
+            mergedIntoMemberNumber: $this->mergedIntoMemberNumber,
         );
     }
 

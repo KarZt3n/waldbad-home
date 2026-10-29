@@ -424,6 +424,138 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * Füllt ein Mitglied erneut einen Antrag aus (neue Anschrift, neue Bankverbindung, ein Kind dazu),
+     * zeigt die Antragsliste den Abgleich je Feld; die Übernahme aktualisiert das Mitglied und fügt
+     * das Kind dem Haushalt hinzu, statt einen zweiten Haushalt anzulegen.
+     */
+    public function testApplicationOfAnExistingMemberCanBeMergedIntoTheirMembership(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', ['mandateReference' => 'BAD-ALT-1'] + $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $existing = $this->responseData();
+        $memberNumber = $this->string($existing, 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'salutation' => 'mr', 'firstName' => 'Max', 'birthDate' => '1988-02-02', 'familyRole' => 'partner', 'email' => null,
+            'primaryMemberNumber' => $memberNumber, 'payerType' => 'other_member', 'payerMemberId' => $existing['id'],
+            'accountHolder' => null, 'iban' => null,
+        ]), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(201);
+        $partnerId = $this->string($this->responseData(), 'id');
+
+        $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', [
+            'applicants' => [
+                [
+                    'salutation' => 'ms', 'firstName' => 'Erika', 'lastName' => 'Musterfrau', 'birthDate' => '1990-06-15',
+                    'street' => 'Waldweg', 'houseNumber' => '3', 'postalCode' => '14822', 'city' => 'Borkheide',
+                    'phone' => null, 'email' => 'erika@example.test',
+                ],
+                [
+                    'salutation' => 'mr', 'firstName' => 'Paul', 'lastName' => 'Musterfrau', 'birthDate' => '2016-04-01',
+                    'street' => 'Waldweg', 'houseNumber' => '3', 'postalCode' => '14822', 'city' => 'Borkheide',
+                    'phone' => null, 'email' => null,
+                ],
+            ],
+            'accountHolder' => 'Erika Musterfrau',
+            'iban' => 'DE02 1203 0000 0000 2020 51',
+            'bankName' => null,
+            'signerName' => 'Erika Musterfrau',
+            'termsAccepted' => true,
+            'privacyAccepted' => true,
+            'sepaAccepted' => true,
+            'emailConsent' => false,
+            'declarationVersion' => (new PageExtensionTexts(PageExtension::MembershipApplication))->consentVersion(),
+        ]);
+        self::assertResponseStatusCodeSame(202);
+        $applicationId = $this->string($this->responseData(), 'id');
+
+        $this->client->request('GET', '/api/admin/v1/membership-applications', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $application = $this->arrayList($this->responseData(), 'items')[0];
+        self::assertIsArray($application);
+        $match = $this->arrayData($application, 'memberMatch');
+        self::assertSame($memberNumber, $match['primaryMemberNumber']);
+        self::assertSame([], $match['conflictingMemberNumbers']);
+        [$erika, $paul] = $this->arrayList($match, 'applicants');
+        self::assertIsArray($erika);
+        self::assertIsArray($paul);
+        self::assertSame($memberNumber, $erika['memberNumber']);
+        $statuses = array_column($this->arrayList($erika, 'fields'), 'status', 'key');
+        self::assertSame('identical', $statuses['birthDate']);
+        self::assertSame('identical', $statuses['lastName']);
+        self::assertSame('changed', $statuses['street']);
+        self::assertSame('kept', $statuses['phone']);
+        self::assertNull($paul['memberId']);
+        foreach ($this->arrayList($paul, 'fields') as $field) {
+            self::assertIsArray($field);
+            self::assertSame('new', $field['status']);
+        }
+        self::assertSame($memberNumber, $match['bankAccountMemberNumber']);
+        $bankStatuses = array_column($this->arrayList($match, 'bankAccountFields'), 'status', 'key');
+        self::assertSame(['accountHolder' => 'identical', 'iban' => 'changed', 'bankName' => 'kept'], $bankStatuses);
+        $missing = $this->arrayList($match, 'missingMembers');
+        self::assertCount(1, $missing);
+        self::assertIsArray($missing[0]);
+        self::assertSame($partnerId, $missing[0]['memberId']);
+        self::assertNull($missing[0]['removalBlocker']);
+
+        // Austritt nur für im Antrag fehlende Haushaltsmitglieder, nicht für gefundene Personen.
+        $this->client->jsonRequest('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/merge', [
+            'leave' => [$existing['id']],
+        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/merge', [
+            'keep' => ['applicants' => ['0' => ['unknownField']], 'bank' => []],
+        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+
+        // Für die Postleitzahl-/Ort-Felder gilt der Antrag, für die Straße bleibt der bisherige Wert.
+        $this->client->jsonRequest('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/merge', [
+            'keep' => ['applicants' => ['0' => ['street']], 'bank' => []],
+            'leave' => [$partnerId],
+        ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        self::assertQueuedEmailCount(1);
+        $confirmation = self::getMailerMessage();
+        self::assertNotNull($confirmation);
+        self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
+        self::assertEmailTextBodyContains($confirmation, 'Mitgliedsnummer '.$memberNumber);
+        self::assertEmailTextBodyContains($confirmation, '- Erika Musterfrau (Hauptmitglied)');
+        self::assertEmailTextBodyContains($confirmation, '- Paul Musterfrau (Kind)');
+        self::assertEmailTextBodyNotContains($confirmation, 'Max Musterfrau');
+        $merged = $this->responseData();
+        self::assertSame($memberNumber, $merged['mergedIntoMemberNumber']);
+        self::assertNotNull($merged['releasedAt']);
+        $memberIds = $this->arrayList($merged, 'releasedMemberIds');
+        self::assertCount(2, $memberIds);
+        self::assertSame($existing['id'], $memberIds[0]);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$this->string($existing, 'id'), server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $updated = $this->responseData();
+        self::assertSame('Kirchanger 14', $updated['street']);
+        self::assertSame('DE02120300000000202051', $updated['iban']);
+        self::assertSame('Testbank', $updated['bankName']);
+        self::assertNull($updated['mandateReference']);
+        self::assertSame('head', $updated['familyRole']);
+
+        self::assertIsString($memberIds[1]);
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberIds[1], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $child = $this->responseData();
+        self::assertSame('Paul', $child['firstName']);
+        self::assertSame($memberNumber, $child['primaryMemberNumber']);
+        self::assertSame('child', $child['familyRole']);
+        self::assertSame('other_member', $child['payerType']);
+        self::assertSame($existing['id'], $child['payerMemberId']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$partnerId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertSame((new \DateTimeImmutable('today'))->format('Y-m-d'), $this->responseData()['leftAt']);
+
+        $this->client->request('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/merge', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
+    }
+
     public function testOnlyTheFamilyHeadIsChargedTheFamilyJoiningFee(): void
     {
         $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', [
@@ -940,7 +1072,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param array<array-key, mixed> $data
      * @return list<mixed>
      */
     private function arrayList(array $data, string $key): array

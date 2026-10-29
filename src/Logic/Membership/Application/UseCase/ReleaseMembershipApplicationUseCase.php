@@ -7,6 +7,7 @@ use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
 use App\Logic\Membership\Application\Model\MembershipType;
+use App\Logic\Membership\Application\Service\HouseholdMemberListFormatter;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\FamilyRole;
@@ -60,6 +61,7 @@ readonly class ReleaseMembershipApplicationUseCase
         private MemberManagerInterface $memberManager,
         private MemberAccessLinkBuilderInterface $memberAccessLinkBuilder,
         private LoggerInterface $logger,
+        private HouseholdMemberListFormatter $memberListFormatter,
     ) {
     }
 
@@ -173,7 +175,7 @@ readonly class ReleaseMembershipApplicationUseCase
                     'nachname' => $head->lastName,
                     'mitgliedsnummer' => $head->memberNumber,
                     'beitrittsdatum' => $joinedAt->format('d.m.Y'),
-                    'personen' => $this->formatMembers($members, (int) $joinedAt->format('Y')),
+                    'personen' => $this->memberListFormatter->format($members, (int) $joinedAt->format('Y')),
                     'link' => $this->memberAccessLinkBuilder->buildEntry(),
                     'vereinsname' => AssociationName::CURRENT,
                 ],
@@ -186,33 +188,5 @@ readonly class ReleaseMembershipApplicationUseCase
                 'message' => $exception->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * Je Person zusätzlich das Beitragsalter (Stichtag 31.12., siehe `Member::contributionAge()`),
-     * damit nachvollziehbar ist, warum z. B. ein erst im Dezember 21-Jähriger schon den
-     * Erwachsenenbeitrag zahlt.
-     *
-     * @param list<Member> $members
-     */
-    private function formatMembers(array $members, int $contributionYear): string
-    {
-        return implode("\n", array_map(
-            static fn (Member $member): string => sprintf(
-                '- %s %s (%s), geb. %s (Beitragsalter %d: %d)',
-                $member->firstName,
-                $member->lastName,
-                match ($member->familyRole) {
-                    FamilyRole::None => 'Einzelperson',
-                    FamilyRole::Head => 'Hauptmitglied',
-                    FamilyRole::Partner => 'Familienangehöriger',
-                    FamilyRole::Child => 'Kind',
-                },
-                $member->birthDate->format('d.m.Y'),
-                $contributionYear,
-                $member->contributionAge($contributionYear),
-            ),
-            $members,
-        ));
     }
 }

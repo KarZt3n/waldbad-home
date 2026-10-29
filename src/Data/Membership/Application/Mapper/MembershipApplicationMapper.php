@@ -47,6 +47,7 @@ readonly class MembershipApplicationMapper
             rejectedAt: $entity->getRejectedAt(),
             rejectionReason: $entity->getRejectionReason(),
             acceptedDeclarations: $entity->getAcceptedDeclarations() ?? [],
+            mergedIntoMemberNumber: $entity->getMergedIntoMemberNumber(),
         );
     }
 
@@ -68,6 +69,7 @@ readonly class MembershipApplicationMapper
             rejectedAt: $application->rejectedAt,
             rejectionReason: $application->rejectionReason,
             acceptedDeclarations: $application->acceptedDeclarations,
+            mergedIntoMemberNumber: $application->mergedIntoMemberNumber,
         );
         foreach ($application->applicants as $applicant) {
             $entity->addApplicant(new MembershipApplicantEntity(
@@ -96,6 +98,7 @@ readonly class MembershipApplicationMapper
             releasedAt: $application->releasedAt,
             releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
             updatedAt: $application->updatedAt,
+            mergedIntoMemberNumber: $application->mergedIntoMemberNumber,
         );
         $entity->reject(
             rejectedAt: $application->rejectedAt,

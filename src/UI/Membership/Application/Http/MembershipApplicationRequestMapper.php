@@ -58,6 +58,63 @@ readonly class MembershipApplicationRequestMapper
         );
     }
 
+    /**
+     * Auswahl aus dem Abgleich „Bereits Mitglied“: `{"keep": {"applicants": {"0": ["street"]}, "bank": ["iban"]}}`
+     * nennt die Felder, für die der bisherige Wert bleibt. Ohne Rumpf gilt überall der Antrag.
+     * `{"leave": ["<memberId>"]}` nennt im Antrag fehlende Haushaltsmitglieder, deren Austritt eingetragen wird.
+     *
+     * @return array{0: array<int, list<string>>, 1: list<string>, 2: list<string>}
+     */
+    public function mergeChoices(Request $request): array
+    {
+        if ($request->getContent() === '') {
+            return [[], [], []];
+        }
+        $keep = $request->getPayload()->all('keep');
+        $applicants = [];
+        foreach ($this->arrayValue($keep, 'applicants') as $position => $fields) {
+            if (!is_int($position) && !ctype_digit($position)) {
+                throw new BadRequestHttpException('Die Personenposition ist ungültig.');
+            }
+            $applicants[(int) $position] = $this->stringList($fields);
+        }
+
+        return [$applicants, $this->stringList($keep['bank'] ?? []), $this->stringList($request->getPayload()->all('leave'))];
+    }
+
+    /**
+     * @param array<mixed> $data
+     * @return array<mixed>
+     */
+    private function arrayValue(array $data, string $key): array
+    {
+        $value = $data[$key] ?? [];
+        if (!is_array($value)) {
+            throw new BadRequestHttpException(sprintf('"%s" muss ein Objekt sein.', $key));
+        }
+
+        return $value;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value)) {
+            throw new BadRequestHttpException('Die Auswahl muss als Liste übermittelt werden.');
+        }
+        $fields = [];
+        foreach ($value as $field) {
+            if (!is_string($field)) {
+                throw new BadRequestHttpException('Die Auswahl muss aus Texten bestehen.');
+            }
+            $fields[] = $field;
+        }
+
+        return $fields;
+    }
+
     public function reject(Request $request): ?string
     {
         return $this->nullableString($request->getPayload(), 'reason', 500);

@@ -8,6 +8,7 @@ use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterfa
 use App\Logic\Membership\Application\Model\Applicant;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
+use App\Logic\Membership\Application\Service\HouseholdMemberListFormatter;
 use App\Logic\Membership\Application\UseCase\ReleaseMembershipApplicationUseCase;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
@@ -83,6 +84,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $memberManager,
             $this->memberAccessLinkBuilder(),
             $logger,
+            new HouseholdMemberListFormatter(),
         ))->execute('application-1');
 
         self::assertNotNull($response->releasedAt);
@@ -144,6 +146,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->createStub(MemberManagerInterface::class),
             $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
+            new HouseholdMemberListFormatter(),
         ))->execute('application-1');
 
         [$head, $partner] = array_column($createdMembers, 'request');
@@ -217,6 +220,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $memberManager,
             $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
+            new HouseholdMemberListFormatter(),
         ))->execute('application-1');
 
         self::assertNotNull($capturedEmail);
@@ -256,6 +260,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->createStub(MemberManagerInterface::class),
             $this->memberAccessLinkBuilder(),
             $this->createStub(LoggerInterface::class),
+            new HouseholdMemberListFormatter(),
         ))->execute('application-1');
     }
 
@@ -302,6 +307,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
             $this->createStub(MemberManagerInterface::class),
             $this->memberAccessLinkBuilder(),
             $logger,
+            new HouseholdMemberListFormatter(),
         ))->execute('application-1');
 
         self::assertNotNull($response->releasedAt);
