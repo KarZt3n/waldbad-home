@@ -37,6 +37,8 @@ const canPublishPages = (pageId = null) => canViewPages() && (
     || (isPageAccessRestricted() ? pageRole(pageId) === 'publisher' : moduleRole('pages') === 'publisher')
 );
 const canManagePageStructure = () => canEditPages() && !isPageAccessRestricted();
+// Texte von Seitenerweiterungen gelten auf allen Seiten und sind sofort online (siehe `PageAuthorizationService::canEditExtensionTexts`).
+const canEditExtensionTexts = () => canViewPages() && (isGlobalAdministrator() || (!isPageAccessRestricted() && moduleRole('pages') === 'publisher'));
 
 export {
     setSessionState,
@@ -51,4 +53,5 @@ export {
     canEditPages,
     canPublishPages,
     canManagePageStructure,
+    canEditExtensionTexts,
 };

@@ -3,6 +3,7 @@
 namespace App\Logic\Content\Page\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Content\Extension\Model\PageExtension;
 
 readonly class ContentBlock
 {
@@ -141,17 +142,7 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Ein Call-to-Action benötigt Link und Beschriftung.');
         }
 
-        if ($this->type === ContentBlockType::Extension && !in_array($this->extensionKey, [
-            'membership_application',
-            'events_current_year',
-            'events_from_current_year',
-            'work_assignments_current_year',
-            'next_event',
-            'next_work_assignment',
-            'next_event_or_work_assignment',
-            'sauna',
-            'photo_albums',
-        ], true)) {
+        if ($this->type === ContentBlockType::Extension && ($this->extensionKey === null || PageExtension::tryFrom($this->extensionKey) === null)) {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
         }
 

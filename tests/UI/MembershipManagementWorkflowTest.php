@@ -4,6 +4,8 @@ namespace App\Tests\UI;
 
 use App\Data\Membership\ContributionRate\Entity\ContributionRateEntity;
 use App\Data\Membership\Member\Entity\MemberNumberSequenceEntity;
+use App\Logic\Content\Extension\Model\PageExtension;
+use App\Logic\Content\Extension\Model\PageExtensionTexts;
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
@@ -389,6 +391,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             'privacyAccepted' => true,
             'sepaAccepted' => true,
             'emailConsent' => true,
+            'declarationVersion' => (new PageExtensionTexts(PageExtension::MembershipApplication))->consentVersion(),
         ]);
         self::assertResponseStatusCodeSame(202);
         $applicationId = $this->string($this->responseData(), 'id');
@@ -445,6 +448,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             'privacyAccepted' => true,
             'sepaAccepted' => true,
             'emailConsent' => true,
+            'declarationVersion' => (new PageExtensionTexts(PageExtension::MembershipApplication))->consentVersion(),
         ]);
         self::assertResponseStatusCodeSame(202);
         $applicationId = $this->string($this->responseData(), 'id');

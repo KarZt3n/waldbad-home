@@ -133,6 +133,11 @@ const showMembership = async () => {
                 element('summary', {text: 'Personen und Kontaktdaten anzeigen'}),
                 element('ol', {className: 'membership-admin-people', children: people}),
             ]}),
+            ...(application.acceptedDeclarations?.length ? [element('details', {children: [
+                element('summary', {text: 'Bestätigte Erklärungen anzeigen'}),
+                element('ul', {className: 'membership-admin-declarations', children: application.acceptedDeclarations.map((text) => element('li', {text}))}),
+                element('p', {className: 'field-hint', text: `Fassung ${application.declarationVersion}`}),
+            ]})] : []),
             ...(application.rejectionReason ? [element('p', {className: 'failure-message', text: application.rejectionReason})] : []),
             ...(actions.length ? [element('div', {className: 'card-actions', children: actions})] : []),
         ]});

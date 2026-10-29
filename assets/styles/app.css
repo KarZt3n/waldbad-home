@@ -483,6 +483,16 @@ a { color: var(--forest-700); }
 .event-help-form header p:last-child { color: #33463b; line-height: 1.6; }
 .event-help-close { position: absolute; z-index: 2; top: .75rem; right: .75rem; width: 2.5rem; height: 2.5rem; border: 0; border-radius: 50%; color: var(--forest-900); background: var(--white); font-size: 1.8rem; cursor: pointer; }
 .membership-extension { margin: 2rem 0; }
+/* Redaktionell gepflegte Texte (Seiten → Erweiterungen) dürfen Zeilenumbrüche enthalten. */
+.membership-text { white-space: pre-line; }
+.membership-admin-declarations { margin: .5rem 0; padding-left: 1.2rem; white-space: pre-line; }
+.membership-admin-declarations li + li { margin-top: .35rem; }
+.page-extension-card > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem 1rem; }
+.page-extension-card > header > div { display: grid; gap: .2rem; }
+.page-extension-card details { margin-top: .75rem; }
+.page-extension-editor { display: grid; gap: 1rem; margin-top: 1rem; }
+.page-extension-default { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; white-space: pre-line; }
+.page-extension-consent { margin-left: .5rem; font-size: .75rem; vertical-align: middle; }
 .membership-form {
     display: grid;
     gap: 1.5rem;

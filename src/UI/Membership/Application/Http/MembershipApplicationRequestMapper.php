@@ -12,8 +12,6 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 readonly class MembershipApplicationRequestMapper
 {
-    private const string DECLARATION_VERSION = '2026-01';
-
     public function submit(Request $request): SubmitMembershipApplicationRequest
     {
         $data = $request->getPayload();
@@ -56,7 +54,7 @@ readonly class MembershipApplicationRequestMapper
             bankName: $this->nullableString($data, 'bankName', 180),
             signerName: $this->requiredString($data, 'signerName', 180),
             emailConsent: $data->getBoolean('emailConsent'),
-            declarationVersion: self::DECLARATION_VERSION,
+            declarationVersion: $this->requiredString($data, 'declarationVersion', 40),
         );
     }
 

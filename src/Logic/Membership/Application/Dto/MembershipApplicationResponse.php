@@ -29,6 +29,8 @@ readonly class MembershipApplicationResponse
         public ?array $releasedMemberIds,
         public ?\DateTimeImmutable $rejectedAt,
         public ?string $rejectionReason,
+        /** @var list<string> */
+        public array $acceptedDeclarations,
     ) {
     }
 
@@ -51,6 +53,7 @@ readonly class MembershipApplicationResponse
             releasedMemberIds: $application->releasedMemberIds,
             rejectedAt: $application->rejectedAt,
             rejectionReason: $application->rejectionReason,
+            acceptedDeclarations: $application->acceptedDeclarations,
         );
     }
 }

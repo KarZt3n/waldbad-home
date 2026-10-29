@@ -9,6 +9,8 @@ use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Membership\Application\Dto\ApplicantInput;
 use App\Logic\Membership\Application\Dto\SubmitMembershipApplicationRequest;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
+use App\Logic\Membership\Application\MembershipDeclarationProviderInterface;
+use App\Logic\Membership\Application\Model\MembershipDeclaration;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
 use App\Logic\Membership\Member\Model\Salutation;
@@ -70,10 +72,39 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
         $this->execute($request, $checker, $manager);
     }
 
+    /** Der gespeicherte Antrag hält fest, welchem Wortlaut zugestimmt wurde — die freiwillige E-Mail-Einwilligung nur, wenn erteilt. */
+    public function testStoresTheVersionAndWordingOfTheAcceptedDeclarations(): void
+    {
+        $checker = $this->createStub(EmailDeliverabilityCheckerInterface::class);
+        $checker->method('isDeliverable')->willReturn(true);
+        $manager = $this->createMock(MembershipApplicationManagerInterface::class);
+        $manager->expects(self::once())->method('save')->with(self::callback(
+            static fn (MembershipApplication $application): bool => $application->declarationVersion === 'v-current'
+                && $application->acceptedDeclarations === ['Satzung', 'Datenschutz', 'SEPA'],
+        ))->willReturnArgument(0);
+
+        $this->execute($this->request([$this->applicant(email: 'erika@example.test')], emailConsent: false), $checker, $manager);
+    }
+
+    public function testRefusesWhenTheDeclarationsChangedWhileTheFormWasOpen(): void
+    {
+        $manager = $this->createMock(MembershipApplicationManagerInterface::class);
+        $manager->expects(self::never())->method('save');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('zwischenzeitlich geändert');
+
+        $this->execute(
+            $this->request([$this->applicant(email: 'erika@example.test')], declarationVersion: 'v-old'),
+            $this->createStub(EmailDeliverabilityCheckerInterface::class),
+            $manager,
+        );
+    }
+
     /**
      * @param list<ApplicantInput> $applicants
      */
-    private function request(array $applicants): SubmitMembershipApplicationRequest
+    private function request(array $applicants, bool $emailConsent = true, string $declarationVersion = 'v-current'): SubmitMembershipApplicationRequest
     {
         return new SubmitMembershipApplicationRequest(
             membershipType: count($applicants) > 1 ? MembershipType::Family : MembershipType::Individual,
@@ -82,8 +113,8 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
             iban: 'DE89370400440532013000',
             bankName: null,
             signerName: 'Erika Musterfrau',
-            emailConsent: true,
-            declarationVersion: '2026-01-01',
+            emailConsent: $emailConsent,
+            declarationVersion: $declarationVersion,
         );
     }
 
@@ -138,7 +169,10 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
             'Verein',
         );
 
-        (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker))
+        $declarations = $this->createStub(MembershipDeclarationProviderInterface::class);
+        $declarations->method('current')->willReturn(new MembershipDeclaration('v-current', 'Satzung', 'Datenschutz', 'SEPA', 'E-Mail'));
+
+        (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker, $declarations))
             ->execute($request);
     }
 }

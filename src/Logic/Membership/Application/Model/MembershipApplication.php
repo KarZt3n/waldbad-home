@@ -28,6 +28,13 @@ readonly class MembershipApplication
         public ?array $releasedMemberIds = null,
         public ?\DateTimeImmutable $rejectedAt = null,
         public ?string $rejectionReason = null,
+        /**
+         * Wortlaut der Bestätigungen, denen beim Absenden zugestimmt wurde (siehe
+         * `MembershipDeclaration`); leer bei Anträgen von vor der Einführung redaktioneller Texte.
+         *
+         * @var list<string>
+         */
+        public array $acceptedDeclarations = [],
     ) {
         $count = count($this->applicants);
         if ($count < 1 || $count > 8) {
@@ -87,6 +94,7 @@ readonly class MembershipApplication
             releasedMemberIds: $memberIds,
             rejectedAt: $this->rejectedAt,
             rejectionReason: $this->rejectionReason,
+            acceptedDeclarations: $this->acceptedDeclarations,
         );
     }
 
@@ -119,6 +127,7 @@ readonly class MembershipApplication
             releasedMemberIds: $this->releasedMemberIds,
             rejectedAt: $at,
             rejectionReason: $reason !== null && trim($reason) !== '' ? trim($reason) : null,
+            acceptedDeclarations: $this->acceptedDeclarations,
         );
     }
 

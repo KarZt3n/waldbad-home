@@ -4,9 +4,10 @@
 
 import {buildPageTree, confirmAction, element, field, fieldRow, flattenPageTree, pageHref, request, toast} from '../core.js';
 import {emptyState, openContextMenuAtElement, openContextMenuFromEvent, sectionHeading, treeLayout, whileNavigating} from './ui.js';
-import {canEditPages, canManagePageStructure, canPublishPages} from './session.js';
+import {canEditPages, canManagePageStructure, canPublishPages, isPageAccessRestricted} from './session.js';
 import {renderContentCard} from '../content-rendering.js';
-import {setAdminPath, workspace} from './shell.js';
+import {adminPath, setAdminPath, workspace} from './shell.js';
+import {renderPageExtensions} from './page-extensions.js';
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
@@ -1747,17 +1748,56 @@ const renderPages = async (creating = null) => {
         create.addEventListener('click', () => createPage(null));
         heading.append(create);
     }
-    workspace.replaceChildren(
+    mountPagesTab('pages', [
         heading,
         treeLayout(
             panel,
             element('section', {className: 'tree-content', attributes: {'aria-label': 'Seiteneditor'}, children: [editor]}),
             {storageKey: 'waldbad.admin.tree-width.pages', defaultWidth: '395px', className: 'page-tree-layout'},
         ),
-    );
+    ]);
+};
+
+// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen gelten seitenübergreifend.
+const pagesTabs = () => [
+    ['pages', 'Seiten', ['seiten'], () => renderPages()],
+    ...(isPageAccessRestricted() ? [] : [['extensions', 'Erweiterungen', ['seiten', 'erweiterungen'], () => showPageExtensions()]]),
+];
+
+const mountPagesTab = (activeKey, content) => {
+    const tabs = pagesTabs();
+    if (tabs.length < 2) {
+        workspace.replaceChildren(...content);
+        return;
+    }
+    const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Seiten'}, children: tabs.map(([key, label, segments, show]) => {
+        const link = element('a', {
+            className: `sub-tab${key === activeKey ? ' active' : ''}`,
+            text: label,
+            attributes: {href: adminPath(...segments)},
+        });
+        link.addEventListener('click', async (event) => {
+            event.preventDefault();
+            if (key === activeKey) return;
+            setAdminPath(segments);
+            await whileNavigating(show);
+        });
+
+        return link;
+    })});
+    workspace.replaceChildren(tabStrip, element('div', {className: 'sub-tab-panel', children: content}));
+};
+
+const showPageExtensions = async (selectedKey = null) => {
+    if (!selectedKey) setAdminPath(['seiten', 'erweiterungen'], true);
+    mountPagesTab('extensions', await renderPageExtensions(selectedKey, showPageExtensions));
 };
 
 const showPages = async (segments = []) => {
+    if (segments[0] === 'seiten' && segments[1] === 'erweiterungen' && !isPageAccessRestricted()) {
+        await showPageExtensions(segments[2] || null);
+        return;
+    }
     selectedPageId = segments[0] === 'seiten' ? segments[1] || null : null;
     await renderPages();
 };

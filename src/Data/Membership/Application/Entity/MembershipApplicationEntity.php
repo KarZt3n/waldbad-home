@@ -53,6 +53,9 @@ class MembershipApplicationEntity
         private ?\DateTimeImmutable $rejectedAt = null,
         #[ORM\Column(type: Types::STRING, length: 500, nullable: true)]
         private ?string $rejectionReason = null,
+        /** @var list<string>|null */
+        #[ORM\Column(type: Types::JSON, nullable: true)]
+        private ?array $acceptedDeclarations = null,
     ) {
         $this->applicants = new ArrayCollection();
     }
@@ -85,6 +88,8 @@ class MembershipApplicationEntity
     public function getReleasedMemberIds(): ?string { return $this->releasedMemberIds; }
     public function getRejectedAt(): ?\DateTimeImmutable { return $this->rejectedAt; }
     public function getRejectionReason(): ?string { return $this->rejectionReason; }
+    /** @return list<string>|null */
+    public function getAcceptedDeclarations(): ?array { return $this->acceptedDeclarations; }
 
     public function release(?\DateTimeImmutable $releasedAt, ?string $releasedMemberIds, \DateTimeImmutable $updatedAt): void
     {

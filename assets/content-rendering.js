@@ -7,7 +7,21 @@ import {confirmAction, element, field, formMessage, pageHref, request, SALUTATIO
 import {renderSaunaExtension} from './public/sauna.js';
 import {renderPhotoAlbumsExtension} from './public/photo-albums.js';
 
+// Die Texte des Formulars pflegen Redakteure unter „Seiten“ → „Erweiterungen“ (siehe `PageExtension`
+// im Backend); `consentVersion` geht mit dem Antrag zurück, damit nachweisbar bleibt, welchem Wortlaut
+// der Bestätigungen zugestimmt wurde.
 const renderMembershipApplicationForm = (preview = false) => {
+    const container = element('section', {className: 'membership-extension', attributes: {'aria-busy': 'true'}, children: [
+        element('p', {className: 'empty-copy', text: 'Der Mitgliedsantrag wird geladen …'}),
+    ]});
+    request('/api/public/v1/page-extensions/membership_application/texts')
+        .then(({texts, consentVersion}) => container.replaceChildren(buildMembershipApplicationForm(texts, consentVersion, preview)))
+        .catch((error) => container.replaceChildren(element('p', {className: 'failure-message', text: `Der Mitgliedsantrag konnte nicht geladen werden: ${error.message}`})))
+        .finally(() => container.removeAttribute('aria-busy'));
+
+    return container;
+};
+const buildMembershipApplicationForm = (texts, consentVersion, preview) => {
     const instanceId = `membership-${Math.random().toString(36).slice(2)}`;
     const message = formMessage();
     const applicants = element('div', {className: 'membership-applicants'});
@@ -48,7 +62,7 @@ const renderMembershipApplicationForm = (preview = false) => {
         const remove = element('button', {className: 'text-button danger membership-remove-person', text: 'Person entfernen', attributes: {type: 'button'}});
         const emailField = applicantField('E-Mail-Adresse (optional)', 'email', 'email', false);
         if (!isFirstPerson) {
-            emailField.append(element('small', {className: 'field-hint', text: 'Wenn auch diese Person künftig über Neuigkeiten und Informationen rund um den Verein auf dem Laufenden bleiben möchte, trag hier gerne die E-Mail-Adresse ein.'}));
+            emailField.append(element('small', {className: 'field-hint membership-text', text: texts.additionalPersonEmailHint}));
         }
         const streetField = applicantField('Straße', 'street');
         const houseNumberField = applicantField('Hausnummer', 'houseNumber');
@@ -104,34 +118,34 @@ const renderMembershipApplicationForm = (preview = false) => {
 
     const consent = (name, text, required = true) => {
         const input = element('input', {attributes: {name, type: 'checkbox', ...(required ? {required: 'required'} : {})}});
-        return element('label', {className: 'check-field', children: [input, element('span', {text})]});
+        return element('label', {className: 'check-field', children: [input, element('span', {className: 'membership-text', text})]});
     };
     const form = element('form', {className: 'public-form membership-form', children: [
         element('header', {className: 'membership-intro', children: [
-            element('p', {className: 'eyebrow', text: 'Naturbad Borkheide e.V.'}),
-            element('h2', {text: 'Beitrittserklärung'}),
-            element('p', {text: 'Fülle den Antrag für dich oder deine Familie aus. Weitere Familienmitglieder können direkt ergänzt werden.'}),
+            element('p', {className: 'eyebrow', text: texts.eyebrow}),
+            element('h2', {text: texts.title}),
+            element('p', {className: 'membership-text', text: texts.intro}),
         ]}),
         applicants,
         addPerson,
         element('section', {className: 'membership-section', children: [
-            element('h3', {text: 'SEPA-Einzugsermächtigung'}),
+            element('h3', {text: texts.sepaTitle}),
             element('div', {className: 'form-grid', children: [
                 field('Kontoinhaber', 'accountHolder'),
                 field('IBAN', 'iban'),
             ]}),
         ]}),
         element('section', {className: 'membership-section membership-consents', children: [
-            element('h3', {text: 'Bestätigungen'}),
-            consent('termsAccepted', 'Ich erkenne die Vereinssatzung und die Beitragsordnung an.'),
-            consent('privacyAccepted', 'Ich stimme der Verarbeitung meiner Angaben zur Mitgliederverwaltung gemäß Datenschutzerklärung zu.'),
-            consent('sepaAccepted', 'Ich ermächtige den Naturbad Borkheide e.V. widerruflich, die Mitgliedsbeiträge per Lastschrift einzuziehen.'),
-            consent('emailConsent', 'Ich möchte Informationen des Vereins per E-Mail erhalten.', false),
+            element('h3', {text: texts.consentsTitle}),
+            consent('termsAccepted', texts.consentTerms),
+            consent('privacyAccepted', texts.consentPrivacy),
+            consent('sepaAccepted', texts.consentSepa),
+            consent('emailConsent', texts.consentEmail, false),
             field('Name der unterzeichnenden Person', 'signerName'),
-            element('small', {text: 'Mit dem Absenden bestätigst du die Richtigkeit deiner Angaben. Bei Minderjährigen ist der Name der gesetzlichen Vertretung einzutragen.'}),
+            element('small', {className: 'membership-text', text: texts.signerHint}),
         ]}),
         message,
-        element('button', {className: 'button membership-submit', text: preview ? 'In der Vorschau nicht absendbar' : 'Mitgliedsantrag verbindlich absenden', attributes: {type: 'submit', ...(preview ? {disabled: 'disabled'} : {})}}),
+        element('button', {className: 'button membership-submit', text: preview ? 'In der Vorschau nicht absendbar' : texts.submitLabel, attributes: {type: 'submit', ...(preview ? {disabled: 'disabled'} : {})}}),
     ]});
     form.querySelector('[name="accountHolder"]').required = true;
     form.querySelector('[name="iban"]').required = true;
@@ -159,15 +173,16 @@ const renderMembershipApplicationForm = (preview = false) => {
                 privacyAccepted: data.get('privacyAccepted') === 'on',
                 sepaAccepted: data.get('sepaAccepted') === 'on',
                 emailConsent: data.get('emailConsent') === 'on',
+                declarationVersion: consentVersion,
             })});
             const success = element('section', {className: 'membership-success', attributes: {role: 'status'}, children: [
                 element('p', {className: 'eyebrow', text: 'Antrag eingegangen'}),
-                element('h2', {text: 'Vielen Dank für deinen Beitrittswunsch'}),
-                element('p', {text: response.message}),
+                element('h2', {text: texts.successTitle}),
+                element('p', {className: 'membership-text', text: texts.successMessage}),
                 element('small', {text: `Vorgangsnummer: ${response.id}`}),
             ]});
             form.replaceWith(success);
-            toast(response.message);
+            toast(texts.successMessage);
         } catch (error) {
             message.textContent = error.message;
             toast(error.message, 'error');
@@ -175,7 +190,7 @@ const renderMembershipApplicationForm = (preview = false) => {
         }
     });
 
-    return element('section', {className: 'membership-extension', children: [form]});
+    return form;
 };
 const openEventHelpDialog = async (block) => {
     const availability = await request(`/api/public/v1/event-activities/${encodeURIComponent(block.eventIdentifier)}`);

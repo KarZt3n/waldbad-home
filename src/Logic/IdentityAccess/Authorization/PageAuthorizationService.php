@@ -78,6 +78,26 @@ readonly class PageAuthorizationService
             && in_array($this->moduleRole($context), [ModuleRole::Editor, ModuleRole::Publisher, ModuleRole::Moderator], true);
     }
 
+    /**
+     * Texte von Seitenerweiterungen gelten auf allen Seiten und sind ohne Freigabe sofort online —
+     * daher nur für uneingeschränkte Seitenzugänge mit Veröffentlichungsrecht.
+     */
+    public function canEditExtensionTexts(PageAuthorizationContext $context): bool
+    {
+        if ($this->isAdministrator($context)) {
+            return true;
+        }
+
+        return $context->pageAccess === null && $this->moduleRole($context) === ModuleRole::Publisher;
+    }
+
+    public function assertCanEditExtensionTexts(PageAuthorizationContext $context): void
+    {
+        if (!$this->canEditExtensionTexts($context)) {
+            throw new AccessDeniedException('Texte von Seitenerweiterungen dürfen nur Redakteure mit Veröffentlichungsrecht für alle Seiten ändern.');
+        }
+    }
+
     private function pageRole(PageAuthorizationContext $context, string $pageId): ?PageAccessRole
     {
         foreach ($context->pageAccess ?? [] as $access) {

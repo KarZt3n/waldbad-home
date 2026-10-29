@@ -41,6 +41,7 @@ readonly class MembershipApplicationResponseFactory
             'releasedMemberIds' => $application->releasedMemberIds,
             'rejectedAt' => $application->rejectedAt?->format(\DateTimeInterface::ATOM),
             'rejectionReason' => $application->rejectionReason,
+            'acceptedDeclarations' => $application->acceptedDeclarations,
         ];
     }
 

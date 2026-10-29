@@ -9,6 +9,7 @@ use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Membership\Application\Dto\MembershipApplicationResponse;
 use App\Logic\Membership\Application\Dto\SubmitMembershipApplicationRequest;
 use App\Logic\Membership\Application\Manager\MembershipApplicationManagerInterface;
+use App\Logic\Membership\Application\MembershipDeclarationProviderInterface;
 use App\Logic\Membership\Application\Model\Applicant;
 use App\Logic\Membership\Application\Model\MembershipApplication;
 use App\Logic\Membership\Application\Model\MembershipType;
@@ -24,11 +25,18 @@ readonly class SubmitMembershipApplicationUseCase
         private ClockInterface $clock,
         private NotificationMailer $notificationMailer,
         private EmailDeliverabilityCheckerInterface $emailDeliverabilityChecker,
+        private MembershipDeclarationProviderInterface $declarations,
     ) {
     }
 
     public function execute(SubmitMembershipApplicationRequest $request): MembershipApplicationResponse
     {
+        // Wurde der Wortlaut der Bestätigungen geändert, während das Formular offen war, hat die
+        // Person den neuen Text nicht gesehen — dann nicht stillschweigend den neuen speichern.
+        $declaration = $this->declarations->current();
+        if (trim($request->declarationVersion) !== $declaration->version) {
+            throw new BusinessRuleViolationException('Die Bestätigungstexte wurden zwischenzeitlich geändert. Bitte lade die Seite neu und prüfe die Bestätigungen erneut.');
+        }
         $now = $this->clock->now();
         $applicants = [];
         foreach ($request->applicants as $position => $applicant) {
@@ -57,10 +65,11 @@ readonly class SubmitMembershipApplicationUseCase
             bankName: $request->bankName === null ? null : trim($request->bankName),
             signerName: trim($request->signerName),
             emailConsent: $request->emailConsent,
-            declarationVersion: trim($request->declarationVersion),
+            declarationVersion: $declaration->version,
             version: 0,
             submittedAt: $now,
             updatedAt: $now,
+            acceptedDeclarations: $declaration->accepted($request->emailConsent),
         );
 
         $saved = $this->manager->save($application);

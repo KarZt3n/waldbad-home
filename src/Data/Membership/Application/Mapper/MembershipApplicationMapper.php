@@ -46,6 +46,7 @@ readonly class MembershipApplicationMapper
             releasedMemberIds: $this->decodeMemberIds($entity->getReleasedMemberIds()),
             rejectedAt: $entity->getRejectedAt(),
             rejectionReason: $entity->getRejectionReason(),
+            acceptedDeclarations: $entity->getAcceptedDeclarations() ?? [],
         );
     }
 
@@ -66,6 +67,7 @@ readonly class MembershipApplicationMapper
             releasedMemberIds: $this->encodeMemberIds($application->releasedMemberIds),
             rejectedAt: $application->rejectedAt,
             rejectionReason: $application->rejectionReason,
+            acceptedDeclarations: $application->acceptedDeclarations,
         );
         foreach ($application->applicants as $applicant) {
             $entity->addApplicant(new MembershipApplicantEntity(
