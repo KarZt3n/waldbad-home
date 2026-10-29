@@ -78,6 +78,41 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
     }
 
     /**
+     * Ausgetretene Haushaltsmitglieder (Austrittsdatum erreicht) fehlen; eines, das erst künftig
+     * austritt, ist noch aktiv und bleibt sichtbar.
+     */
+    public function testOnlyReturnsActiveHouseholdMembers(): void
+    {
+        $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
+        $tokens->method('findByHash')->willReturn($this->token(new \DateTimeImmutable('2026-06-01T10:05:00+02:00')));
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByPrimaryMemberNumber')->willReturn([
+            $this->member('active', null),
+            $this->member('left', null, new \DateTimeImmutable('2025-12-31')),
+            $this->member('leaving', null, new \DateTimeImmutable('2026-12-31')),
+        ]);
+
+        $settings = $this->createStub(ContributionRateSettingsManagerInterface::class);
+        $settings->method('get')->willReturn(new ContributionRateSettings(null));
+
+        $session = $this->useCase($tokens, $members, null, $settings)->execute('raw-token', self::PASSWORD);
+
+        self::assertSame(['active', 'leaving'], array_map(static fn ($member): string => $member->id, $session->members));
+    }
+
+    public function testThrowsWhenEveryHouseholdMemberHasLeft(): void
+    {
+        $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
+        $tokens->method('findByHash')->willReturn($this->token(new \DateTimeImmutable('2026-06-01T10:05:00+02:00')));
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByPrimaryMemberNumber')->willReturn([$this->member('left', null, new \DateTimeImmutable('2026-05-31'))]);
+
+        $this->expectException(InvalidMemberAccessTokenException::class);
+
+        $this->useCase($tokens, $members)->execute('raw-token', self::PASSWORD);
+    }
+
+    /**
      * Der Token wird über den SHA-256-Hash des übergebenen Klartext-Tokens nachgeschlagen, der
      * Beitragssatz wird für die Anzeige über die Kategorie des Mitglieds aufgelöst, und das
      * gemeinsame „gültig ab" (`ContributionRateSettings`) landet als `contributionRatesValidFrom`
@@ -170,7 +205,7 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
         );
     }
 
-    private function member(string $id, ?ContributionCategory $category): Member
+    private function member(string $id, ?ContributionCategory $category, ?\DateTimeImmutable $leftAt = null): Member
     {
         return new Member(
             id: $id,
@@ -187,7 +222,7 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
             phone: null,
             familyRole: FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
-            leftAt: null,
+            leftAt: $leftAt,
             function: MemberFunction::Member,
             accountHolder: null,
             iban: null,

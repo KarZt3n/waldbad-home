@@ -9,6 +9,10 @@ import {
 } from '../core.js';
 import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './site-chrome.js';
 
+// E-Mail-Einwilligung vorerst nicht anzeigen (Umschalter im Bearbeiten-Dialog und Zeile in den
+// Kontaktdaten). Code, API und Bestätigungsseite bleiben erhalten — zum Einblenden auf `true` setzen.
+const SHOW_EMAIL_CONSENT = false;
+
 const memberDataRow = (label, value) => element('div', {className: 'member-data-row', children: [
     element('span', {className: 'member-data-label', text: label}),
     element('span', {className: 'member-data-value', text: value === null || value === undefined || value === '' ? '–' : value}),
@@ -191,7 +195,7 @@ const openMemberSelfServiceEditDialog = (token, password, member, householdSize,
         ...(applyToHouseholdField ? [applyToHouseholdField] : []),
         phone,
         email,
-        emailConsentSection,
+        ...(SHOW_EMAIL_CONSENT ? [emailConsentSection] : []),
         message,
         element('div', {className: 'confirm-dialog-actions member-self-service-edit-actions', children: [cancel, save]}),
     ]});
@@ -266,7 +270,7 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
                 memberDataRow('Adresse', `${member.street}, ${member.postalCode} ${member.city}`),
                 memberDataRow('Telefon', member.phone),
                 memberDataRow('E-Mail', member.email),
-                memberDataRow('E-Mail-Einwilligung', member.emailConsent ? 'Ja' : 'Nein'),
+                ...(SHOW_EMAIL_CONSENT ? [memberDataRow('E-Mail-Einwilligung', member.emailConsent ? 'Ja' : 'Nein')] : []),
                 element('h4', {text: 'Vereinsdaten'}),
                 memberDataRow('Funktion', MEMBER_FUNCTION_LABELS[member.function] || member.function),
                 memberDataRow('Status', member.active ? 'Aktives Mitglied' : 'Nicht mehr aktiv'),

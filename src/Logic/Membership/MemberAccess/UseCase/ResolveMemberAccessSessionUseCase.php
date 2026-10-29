@@ -22,6 +22,11 @@ use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
  * siehe `MemberAccessToken`) wird deshalb ebenfalls bei jedem Aufruf erneut mitgeschickt und
  * geprüft, statt nur einmalig — die Erfolgsprüfung liefert bei falschem Token wie bei falschem
  * Passwort denselben Fehler, um nicht zu verraten, welcher der beiden Faktoren nicht passt.
+ *
+ * Nur aktive Mitglieder des Haushalts sind erreichbar: Ausgetretene erscheinen weder in der Anzeige
+ * noch lassen sie sich über die darauf aufbauenden Use Cases (Kontaktdaten, Einwilligung, Nachricht)
+ * ansprechen. Ist niemand mehr aktiv — z. B. Austritt nach dem Versand des Links —, gilt der Zugang
+ * als ungültig.
  */
 readonly class ResolveMemberAccessSessionUseCase
 {
@@ -46,7 +51,11 @@ readonly class ResolveMemberAccessSessionUseCase
             throw new InvalidMemberAccessTokenException();
         }
 
-        $members = $this->members->findByPrimaryMemberNumber($token->primaryMemberNumber);
+        $now = $this->clock->now();
+        $members = array_values(array_filter(
+            $this->members->findByPrimaryMemberNumber($token->primaryMemberNumber),
+            static fn (Member $member): bool => $member->isActive($now),
+        ));
         if ($members === []) {
             throw new InvalidMemberAccessTokenException();
         }
@@ -54,7 +63,7 @@ readonly class ResolveMemberAccessSessionUseCase
         return new MemberAccessSessionResponse(
             email: $token->email,
             members: array_map(
-                fn (Member $member): MemberSelfServiceResponse => MemberSelfServiceResponse::fromMember($member, $this->contributionCategoryLabel($member), $this->clock->now()),
+                fn (Member $member): MemberSelfServiceResponse => MemberSelfServiceResponse::fromMember($member, $this->contributionCategoryLabel($member), $now),
                 $members,
             ),
             contributionRatesValidFrom: $this->contributionRateSettings->get()->validFrom?->format('Y-m-d'),

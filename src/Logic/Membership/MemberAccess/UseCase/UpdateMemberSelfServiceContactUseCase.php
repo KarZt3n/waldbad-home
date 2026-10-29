@@ -14,7 +14,8 @@ use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenExceptio
  *
  * `$applyAddressToHousehold`: überträgt Straße/PLZ/Ort zusätzlich auf jedes andere Mitglied
  * desselben Haushalts (`Member::withAddress()`, ohne deren Name/Kontaktdaten anzufassen) — für den
- * häufigen Fall eines gemeinsamen Umzugs der ganzen Familie.
+ * häufigen Fall eines gemeinsamen Umzugs der ganzen Familie — nur auf die über den Zugang
+ * erreichbaren, also aktiven Mitglieder.
  */
 readonly class UpdateMemberSelfServiceContactUseCase
 {
@@ -61,11 +62,11 @@ readonly class UpdateMemberSelfServiceContactUseCase
         ));
 
         if ($applyAddressToHousehold) {
-            foreach ($this->members->findByPrimaryMemberNumber($member->primaryMemberNumber) as $householdMember) {
+            foreach ($session->members as $householdMember) {
                 if ($householdMember->id === $member->id) {
                     continue;
                 }
-                $this->members->save($householdMember->withAddress(trim($street), trim($postalCode), trim($city)));
+                $this->members->save($this->members->get($householdMember->id)->withAddress(trim($street), trim($postalCode), trim($city)));
             }
         }
 
