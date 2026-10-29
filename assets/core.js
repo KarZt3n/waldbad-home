@@ -115,8 +115,8 @@ const PERSON_GROUP_LABELS = {individual: 'Einzelperson', family: 'Familie'};
 const PAYMENT_DAY_LABELS = {first: 'zum 01.', fifteenth: 'zum 15.'};
 const PAYER_TYPE_LABELS = {self_payer: 'Selbstzahler', other_member: 'Anderes Mitglied'};
 const CONTRIBUTION_CATEGORY_LABELS = {
-    individual_junior: 'Einzelperson Kind',
-    individual_senior: 'Einzelperson Erwachsen',
+    individual_junior: 'Einzelperson: Kind',
+    individual_senior: 'Einzelperson: Erwachsen',
     family_adult: 'Familie: Elternteil',
     family_child_paying: 'Familie: Kind (zahlend)',
     family_child_exempt: 'Familie: Kind (beitragsfrei)',
