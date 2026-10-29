@@ -260,7 +260,6 @@ a { color: var(--forest-700); }
        in die Zeile passen; noch längere werden notfalls getrennt statt abgeschnitten. */
     font-size: clamp(2rem, 8vw, 6.5rem);
     line-height: .95;
-    /*hyphens: auto;*/
     overflow-wrap: break-word;
 }
 
@@ -295,11 +294,22 @@ a { color: var(--forest-700); }
     color: var(--forest-900);
     font-family: Georgia, "Times New Roman", serif;
     font-size: clamp(1.8rem, 4vw, 2.8rem);
-    /*hyphens: auto;*/
     overflow-wrap: break-word;
 }
 
 /*.content-card h2:first-child { margin-top: 0; }*/
+/* Kurze Wörter rutschen ganz in die nächste Zeile („gemeinsam“), nur lange Wörter, die sonst nicht in
+   die Zeile passen („Einwilligungserklärung“), werden mit Trennstrich getrennt — ab 16 Zeichen und mit
+   mindestens 8 Zeichen je Teil. Safari kennt `hyphenate-limit-chars` nicht, daher die -webkit-Varianten. */
+.page-hero h1,
+.content-card h2,
+.content-card .event-copy h2 {
+    -webkit-hyphens: auto;
+    hyphens: auto;
+    hyphenate-limit-chars: 16 8 8;
+    -webkit-hyphenate-limit-before: 8;
+    -webkit-hyphenate-limit-after: 8;
+}
 .embedded-page {
     /*margin-top: 0.5rem;*/
     margin-bottom: 1.5rem;
@@ -372,7 +382,6 @@ a { color: var(--forest-700); }
     font-size: clamp(1.7rem, 3vw, 2.8rem);
     line-height: 1.08;
     overflow-wrap: break-word;
-    /*hyphens: auto;*/
     text-wrap: balance;
 }
 .page-teaser-copy .rich-html, .page-teaser-copy .rich-html > :last-child { margin-bottom: 0; }
