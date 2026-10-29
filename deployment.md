@@ -152,7 +152,9 @@ Der kurzlebige Registrierungstoken darf nicht in das Repository, in ein Skript o
 ## Prod auf dem Telekom-Webspace
 
 Prod läuft auf einem Telekom-Webspace (Shared Hosting, PHP 8.4, MariaDB, kein Docker, kein Cron),
-erreichbar per SSH als `admin@w26zxq3b2.hier-im-netz.de` auf `hosting.telekom.de`.
+erreichbar per SSH auf `hosting.telekom.de`. Host und Benutzer stehen nicht im Repository, sondern als
+Variablen `PROD_SSH_HOST` und `PROD_SSH_USER` in der GitHub-Umgebung `production`; der Benutzer ist der
+SSH-Benutzer des Webspace aus dem Telekom-Kundencenter.
 
 Jeder neu gepushte Git-Tag startet `.github/workflows/deploy-prod.yaml`. Der Workflow läuft auf einem
 GitHub-hosted Runner, weil der Webspace öffentlich erreichbar ist:
@@ -222,6 +224,8 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    Webspace eintragen und in GitHub unter `Settings` → `Environments` die Umgebung `production` anlegen mit:
    - Secret `PROD_SSH_PRIVATE_KEY`: privater Deploy-Schlüssel
    - Secret `PROD_SSH_KNOWN_HOSTS`: Ausgabe von `ssh-keyscan -t ed25519 hosting.telekom.de`
+   - Variable `PROD_SSH_HOST`: `hosting.telekom.de`
+   - Variable `PROD_SSH_USER`: SSH-Benutzer des Webspace
    - optional Variable `PROD_BASE_URL` (z. B. `https://waldbad-borkheide.de`) für den Healthcheck
 
    Über `Required reviewers` an der Umgebung kann jedes Prod-Deployment zusätzlich freigegeben werden.
@@ -236,7 +240,7 @@ git push origin v1.0.0
 Die Startseiten werden auf Prod nicht automatisch angelegt. Bei einer leeren Instanz einmalig:
 
 ```bash
-ssh 'admin@w26zxq3b2.hier-im-netz.de@hosting.telekom.de' 'cd ~/waldbad-home/current && php8.4 bin/console app:site:initialize --no-interaction'
+ssh "$PROD_SSH_USER@hosting.telekom.de" 'cd ~/waldbad-home/current && php8.4 bin/console app:site:initialize --no-interaction'
 ```
 
 Ein Rollback erfolgt, indem der Workflow für einen älteren Tag erneut ausgeführt wird (`Actions` →
