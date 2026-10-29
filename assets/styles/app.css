@@ -260,7 +260,7 @@ a { color: var(--forest-700); }
        in die Zeile passen; noch längere werden notfalls getrennt statt abgeschnitten. */
     font-size: clamp(2rem, 8vw, 6.5rem);
     line-height: .95;
-    hyphens: auto;
+    /*hyphens: auto;*/
     overflow-wrap: break-word;
 }
 
@@ -295,7 +295,7 @@ a { color: var(--forest-700); }
     color: var(--forest-900);
     font-family: Georgia, "Times New Roman", serif;
     font-size: clamp(1.8rem, 4vw, 2.8rem);
-    hyphens: auto;
+    /*hyphens: auto;*/
     overflow-wrap: break-word;
 }
 
@@ -372,7 +372,7 @@ a { color: var(--forest-700); }
     font-size: clamp(1.7rem, 3vw, 2.8rem);
     line-height: 1.08;
     overflow-wrap: break-word;
-    hyphens: auto;
+    /*hyphens: auto;*/
     text-wrap: balance;
 }
 .page-teaser-copy .rich-html, .page-teaser-copy .rich-html > :last-child { margin-bottom: 0; }
@@ -524,7 +524,7 @@ a { color: var(--forest-700); }
     line-height: 1.7;
 }
 .rich-html {
-    max-width: 68ch;
+    /*max-width: 68ch;*/
     font-size: 1.1rem;
     margin: 0 0 2rem 0;
 }
@@ -1600,6 +1600,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .preview-frame.mobile .event-block.has-image { grid-template-columns: 1fr; }
 .preview-frame.mobile .event-block > .event-media { width: 100%; min-height: 14rem; max-height: none; order: initial; }
 .preview-frame.mobile .feature-collection-grid { grid-template-columns: 1fr; }
+.preview-frame.mobile .image-text.text-right .image-text-copy, .preview-frame.mobile .event-block.text-right .event-copy { text-align: left; }
+.preview-frame.mobile .page-teaser.text-right .page-teaser-copy { justify-items: start; }
 
 @media (max-width: 760px) {
     .site-header { position: static; flex-wrap: wrap; }
@@ -1652,6 +1654,9 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .image-text.image-right .image-text-media { order: initial; }
     .event-block.has-image { grid-template-columns: 1fr; }
     .event-block > .event-media { width: 100%; min-height: 14rem; max-height: none; order: initial; }
+    /* Gestapelt unter dem Bild liest sich rechtsbündiger Text schlecht. */
+    .image-text.text-right .image-text-copy, .event-block.text-right .event-copy { text-align: left; }
+    .page-teaser.text-right .page-teaser-copy { justify-items: start; }
     .feature-collection-grid { grid-template-columns: 1fr; }
     .media-input-row { grid-template-columns: 1fr; }
     .layout-options { grid-template-columns: 1fr; }
