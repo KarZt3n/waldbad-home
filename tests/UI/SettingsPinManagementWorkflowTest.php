@@ -33,7 +33,7 @@ final class SettingsPinManagementWorkflowTest extends WebTestCase
         $schemaTool->dropSchema($metadata);
         $schemaTool->createSchema($metadata);
         $entityManager->persist(new ContributionRateEntity(
-            id: 'rate-individual-senior', category: 'individual_senior', label: 'Einzelperson über 21 Jahre',
+            id: 'rate-individual-senior', category: 'individual_senior', label: 'Einzelperson Erwachsen',
             amountCents: 5000, period: 'yearly', personGroup: 'individual', minAge: 21, maxAge: null,
             pendingLabel: null,
             pendingAmountCents: null,

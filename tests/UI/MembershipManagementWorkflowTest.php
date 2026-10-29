@@ -45,8 +45,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
     private function seedContributionRates(EntityManagerInterface $entityManager): void
     {
         $rates = [
-            ['individual_junior', 'Einzelperson bis 21 Jahre', 3000, 'yearly', 'individual', null, 20],
-            ['individual_senior', 'Einzelperson über 21 Jahre', 5000, 'yearly', 'individual', 21, null],
+            ['individual_junior', 'Einzelperson Kind', 3000, 'yearly', 'individual', null, 20],
+            ['individual_senior', 'Einzelperson Erwachsen', 5000, 'yearly', 'individual', 21, null],
             ['family_adult', 'Familie: Elternteil', 4000, 'yearly', 'family', null, null],
             ['family_child_paying', 'Familie: Kind (zahlend)', 3000, 'yearly', 'family', 4, 20],
             ['family_child_exempt', 'Familie: Kind (beitragsfrei)', 0, 'yearly', 'family', null, 3],
@@ -607,8 +607,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame(0, $dashboard['minors']);
         self::assertIsArray($dashboard['contributionRateCounts']);
         $countsByLabel = array_column($dashboard['contributionRateCounts'], 'count', 'label');
-        self::assertSame(3, $countsByLabel['Einzelperson über 21 Jahre']);
-        self::assertSame(0, $countsByLabel['Einzelperson bis 21 Jahre']);
+        self::assertSame(3, $countsByLabel['Einzelperson Erwachsen']);
+        self::assertSame(0, $countsByLabel['Einzelperson Kind']);
         self::assertSame(3, $countsByLabel['Arbeitseinsatz']);
         self::assertArrayNotHasKey('Beitrittsgebühr Einzelperson', $countsByLabel);
     }

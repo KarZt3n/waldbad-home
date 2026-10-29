@@ -32,9 +32,9 @@ final class MembershipInformationDefinition
             new ContentBlock(
                 ContentBlockType::RichText,
                 '<table><thead><tr><th scope="col">Personenkreis</th><th scope="col">Jahresmitgliedsbeitrag</th><th scope="col">Bemerkungen</th></tr></thead><tbody>'
-                .'<tr><td>Einzelperson bis 21 Jahre</td><td>30,00 €</td><td></td></tr>'
-                .'<tr><td>Einzelperson über 21 Jahre</td><td>50,00 €</td><td></td></tr>'
-                .'<tr><td>Familie</td><td>20 % Rabatt auf den Mitgliedsbeitrag der Einzelpersonen</td><td>- gilt für Mutter und/oder Vater, wenn mindestens ein eigenes leibliches/adoptiertes Kind unter 21 Jahre ist, Mutter und/oder Vater Vereinsmitglieder sind und nur für diesen Personenkreis, Kinder &lt; 4 Jahre sind vom Beitrag befreit<br><br>- das dritte und jedes weitere Kind dieser Familie bis 21 Jahre, ist vom Mitgliedsbeitrag befreit</td></tr>'
+                .'<tr><td>Einzelperson unter 21 Jahre</td><td>30,00 €</td><td></td></tr>'
+                .'<tr><td>Einzelperson ab 21 Jahre</td><td>50,00 €</td><td></td></tr>'
+                .'<tr><td>Familie</td><td>20 % Rabatt auf den Mitgliedsbeitrag der Einzelpersonen</td><td>- gilt für Mutter und/oder Vater, wenn mindestens ein eigenes leibliches/adoptiertes Kind unter 21 Jahre ist, Mutter und/oder Vater Vereinsmitglieder sind und nur für diesen Personenkreis, Kinder &lt; 4 Jahre sind vom Beitrag befreit<br><br>- das dritte und jedes weitere Kind dieser Familie unter 21 Jahre, ist vom Mitgliedsbeitrag befreit</td></tr>'
                 .'<tr><td>alle neuen Mitglieder,<br>einmalige Beitrittsgebühr</td><td>Familien 20,00 €<br>Einzelpersonen 10,00 €</td><td></td></tr>'
                 .'</tbody></table>'
                 .'<p><strong>Alle Vereinsmitglieder im Alter von 8 bis 65 Jahren zahlen zzgl. zum Mitgliedsbeitrag 15,00 Euro pro Jahr, die nach Ableistung von 5 Stunden gemeinnütziger Arbeit im Verein unmittelbar wieder ausgezahlt werden!</strong></p>'

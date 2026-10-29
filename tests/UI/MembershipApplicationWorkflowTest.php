@@ -37,7 +37,7 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $entityManager->persist(new ContributionRateEntity(
             id: 'rate-individual-senior',
             category: 'individual_senior',
-            label: 'Einzelperson über 21 Jahre',
+            label: 'Einzelperson Erwachsen',
             amountCents: 5000,
             period: 'yearly',
             personGroup: 'individual',

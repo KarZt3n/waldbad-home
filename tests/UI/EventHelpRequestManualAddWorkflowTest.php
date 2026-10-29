@@ -47,7 +47,7 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
         $entityManager->persist(new ContributionRateEntity(
             id: 'rate-1',
             category: 'individual_senior',
-            label: 'Einzelperson über 21 Jahre',
+            label: 'Einzelperson Erwachsen',
             amountCents: 5000,
             period: 'yearly',
             personGroup: 'individual',

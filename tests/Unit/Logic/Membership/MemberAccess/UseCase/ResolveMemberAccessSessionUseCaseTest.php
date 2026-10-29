@@ -132,7 +132,7 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
         $members->method('findByPrimaryMemberNumber')->willReturn([$this->member('member-1', ContributionCategory::IndividualSenior)]);
 
         $rates = $this->createStub(ContributionRateManagerInterface::class);
-        $rates->method('findByCategory')->willReturn(new ContributionRate('rate-1', ContributionCategory::IndividualSenior, 'Einzelperson über 21 Jahre', 5000, PaymentInterval::Yearly));
+        $rates->method('findByCategory')->willReturn(new ContributionRate('rate-1', ContributionCategory::IndividualSenior, 'Einzelperson Erwachsen', 5000, PaymentInterval::Yearly));
 
         $settings = $this->createStub(ContributionRateSettingsManagerInterface::class);
         $settings->method('get')->willReturn(new ContributionRateSettings(new \DateTimeImmutable('2026-01-01')));
@@ -144,7 +144,7 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
 
         self::assertSame('erika@example.test', $session->email);
         self::assertCount(1, $session->members);
-        self::assertSame('Einzelperson über 21 Jahre', $session->members[0]->contributionCategoryLabel);
+        self::assertSame('Einzelperson Erwachsen', $session->members[0]->contributionCategoryLabel);
         self::assertSame('2026-01-01', $session->contributionRatesValidFrom);
         self::assertSame(0, $session->workAssignmentCredit->creditCents);
     }

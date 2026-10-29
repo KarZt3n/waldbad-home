@@ -197,11 +197,11 @@ final class ContributionRateManagerTest extends TestCase
         return new ContributionRate(
             id: 'rate-1',
             category: ContributionCategory::IndividualSenior,
-            label: 'Einzelperson über 21 Jahre',
+            label: 'Einzelperson Erwachsen',
             amountCents: 5000,
             period: PaymentInterval::Yearly,
             pending: $pendingValidFrom === null ? null : new PendingContributionRateChange(
-                label: 'Einzelperson über 21 Jahre',
+                label: 'Einzelperson Erwachsen',
                 amountCents: 6000,
                 period: PaymentInterval::Yearly,
                 personGroup: null,
