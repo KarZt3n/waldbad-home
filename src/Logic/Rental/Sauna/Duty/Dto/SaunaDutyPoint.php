@@ -13,6 +13,8 @@ readonly class SaunaDutyPoint
      * @param list<SaunaDutyBookingResponse> $endingBookings   Buchungen, die zu diesem Zeitpunkt enden
      * @param list<SaunaDutyBookingResponse> $runningBookings  früher begonnene Buchungen, die noch laufen
      * @param list<SaunaDutyResponse>        $duties
+     * @param string|null                    $waiverId   eigener Vermerk „kein Dienst nötig“ für diesen Zeitpunkt
+     * @param bool                           $dutyWaived kein Dienst nötig — durch eigenen Vermerk oder den des ganzen Tages
      */
     public function __construct(
         public string $time,
@@ -22,6 +24,8 @@ readonly class SaunaDutyPoint
         public array $endingBookings,
         public array $runningBookings,
         public array $duties,
+        public ?string $waiverId = null,
+        public bool $dutyWaived = false,
     ) {
     }
 }

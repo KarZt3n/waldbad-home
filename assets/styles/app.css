@@ -2177,6 +2177,10 @@ dialog:modal {
 .sauna-duty-remove:hover { color: var(--white); background: var(--danger); }
 .sauna-duty-assign { font-size: .85rem; }
 .sauna-duty-assign-day { margin-left: auto; }
+.sauna-duty-waive { color: var(--muted); font-size: .85rem; }
+.sauna-duty-waived-badge { color: var(--forest-700); background: #eef2f7; }
+.sauna-duty-point.is-waived, .sauna-duty-legend-item.is-waived { border-left-color: #8fa3b8; background: #f3f6f9; }
+.sauna-duty-point.is-waived .sauna-duty-state { color: #4f6478; }
 .sauna-duty-point.is-free, .sauna-duty-legend-item.is-free { border-left-color: var(--line); }
 .sauna-duty-point.is-running, .sauna-duty-legend-item.is-running { border-left-color: #b8c4bd; background: repeating-linear-gradient(135deg, #f4f6f5 0 .5rem, var(--white) .5rem 1rem); }
 .sauna-duty-point.is-unscheduled { border-style: dashed; }

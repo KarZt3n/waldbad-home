@@ -7,6 +7,7 @@ use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Rental\Sauna\Booking\Manager\SaunaBookingManagerInterface;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyResponse;
 use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyManagerInterface;
+use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyWaiverManagerInterface;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDuty;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyCandidate;
 use App\Logic\Rental\Sauna\Duty\SaunaDutyMemberDirectoryInterface;
@@ -93,6 +94,6 @@ final class AssignSaunaDutyForDayUseCaseTest extends TestCase
         $identifiers = $this->createStub(IdentifierGeneratorInterface::class);
         $identifiers->method('generate')->willReturn('duty-new');
 
-        return new AssignSaunaDutyForDayUseCase(new SaunaDutyRoster($seasons, $bookings, $duties), $duties, $directory, $identifiers);
+        return new AssignSaunaDutyForDayUseCase(new SaunaDutyRoster($seasons, $bookings, $duties, $this->createStub(SaunaDutyWaiverManagerInterface::class)), $duties, $directory, $identifiers);
     }
 }

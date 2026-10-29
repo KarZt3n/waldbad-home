@@ -6,6 +6,7 @@ use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyBookingResponse;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyPoint;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyResponse;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyRosterDay;
+use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyWaiverResponse;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyCandidate;
 
 readonly class SaunaDutyResponseFactory
@@ -13,7 +14,7 @@ readonly class SaunaDutyResponseFactory
     /**
      * @param list<SaunaDutyRosterDay> $days
      *
-     * @return array{days: list<array{date: string, closed: bool, closedReason: string, points: list<array{time: string, state: string, kind: string, startingBookings: list<array<string, string|int>>, endingBookings: list<array<string, string|int>>, runningBookings: list<array<string, string|int>>, duties: list<array<string, string>>}>}>}
+     * @return array{days: list<array{date: string, closed: bool, closedReason: string, waiverId: string|null, points: list<array{time: string, state: string, kind: string, startingBookings: list<array<string, string|int>>, endingBookings: list<array<string, string|int>>, runningBookings: list<array<string, string|int>>, duties: list<array<string, string>>, waiverId: string|null, dutyWaived: bool}>}>}
      */
     public function roster(array $days): array
     {
@@ -21,6 +22,7 @@ readonly class SaunaDutyResponseFactory
             'date' => $day->date->format('Y-m-d'),
             'closed' => $day->closed,
             'closedReason' => $day->closedReason,
+            'waiverId' => $day->waiverId,
             'points' => array_map(fn (SaunaDutyPoint $point): array => [
                 'time' => $point->time,
                 'state' => $point->state->value,
@@ -29,6 +31,8 @@ readonly class SaunaDutyResponseFactory
                 'endingBookings' => array_map(self::booking(...), $point->endingBookings),
                 'runningBookings' => array_map(self::booking(...), $point->runningBookings),
                 'duties' => array_map(self::duty(...), $point->duties),
+                'waiverId' => $point->waiverId,
+                'dutyWaived' => $point->dutyWaived,
             ], $day->points),
         ], $days)];
     }
@@ -45,6 +49,12 @@ readonly class SaunaDutyResponseFactory
             'firstName' => $duty->firstName,
             'lastName' => $duty->lastName,
         ];
+    }
+
+    /** @return array{id: string, date: string, time: string|null} */
+    public static function waiver(SaunaDutyWaiverResponse $waiver): array
+    {
+        return ['id' => $waiver->id, 'date' => $waiver->date->format('Y-m-d'), 'time' => $waiver->time];
     }
 
     /**

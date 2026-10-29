@@ -7,6 +7,8 @@ use App\Logic\Rental\Sauna\Duty\Query\SearchSaunaDutyCandidatesQuery;
 use App\Logic\Rental\Sauna\Duty\UseCase\AssignSaunaDutyForDayUseCase;
 use App\Logic\Rental\Sauna\Duty\UseCase\AssignSaunaDutyUseCase;
 use App\Logic\Rental\Sauna\Duty\UseCase\RemoveSaunaDutyUseCase;
+use App\Logic\Rental\Sauna\Duty\UseCase\RemoveSaunaDutyWaiverUseCase;
+use App\Logic\Rental\Sauna\Duty\UseCase\WaiveSaunaDutyUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -75,6 +77,29 @@ final class AdminSaunaDutyController extends AbstractController
             ['items' => array_map(SaunaDutyResponseFactory::duty(...), $useCase->execute($this->date($data->getString('date')), $memberId))],
             JsonResponse::HTTP_CREATED,
         );
+    }
+
+    /** „Kein Dienst nötig“ für einen Zeitpunkt (`time`) oder ohne `time` für den ganzen Tag. */
+    #[Route('/waivers', name: 'api_admin_sauna_duty_waive', methods: ['POST'])]
+    public function waive(Request $request, WaiveSaunaDutyUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
+        $data = $request->getPayload();
+        $time = trim($data->getString('time'));
+
+        return new JsonResponse(
+            SaunaDutyResponseFactory::waiver($useCase->execute($this->date($data->getString('date')), $time === '' ? null : $time)),
+            JsonResponse::HTTP_CREATED,
+        );
+    }
+
+    #[Route('/waivers/{id}', name: 'api_admin_sauna_duty_waiver_remove', methods: ['DELETE'])]
+    public function removeWaiver(string $id, RemoveSaunaDutyWaiverUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
+        $useCase->execute($id);
+
+        return new JsonResponse(null, JsonResponse::HTTP_NO_CONTENT);
     }
 
     #[Route('/{id}', name: 'api_admin_sauna_duty_remove', methods: ['DELETE'])]

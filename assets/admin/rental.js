@@ -650,10 +650,16 @@ const isoDate = (date) => [date.getFullYear(), String(date.getMonth() + 1).padSt
 
 const DUTY_KIND_LABELS = {entry: 'Einlass', transition: 'Übergang', closing: 'Abschließen'};
 
-/** Art und Status eines Dienstzeitpunkts; bei Buchungen zusätzlich, ob der Dienst schon besetzt ist. */
+/**
+ * Art und Status eines Dienstzeitpunkts; bei Buchungen zusätzlich, ob der Dienst schon besetzt ist.
+ * „Kein Dienst nötig“ (Gäste kommen allein) überdeckt den Status, solange niemand eingetragen ist.
+ */
 const dutyPointStatus = (point) => {
     const staffed = point.duties.length > 0;
     const kind = DUTY_KIND_LABELS[point.kind];
+    if (point.dutyWaived && !staffed) {
+        return {className: 'is-waived', label: `${kind ? `${kind} · ` : ''}kein Dienst nötig`};
+    }
     switch (point.state) {
         case 'required':
             return {className: staffed ? 'is-required is-staffed' : 'is-required is-missing', label: `${kind} · ${staffed ? 'Dienst besetzt' : 'Dienst fehlt'}`};
@@ -792,7 +798,7 @@ const showSaunaDuties = async () => {
                 try {
                     await request(`/api/admin/v1/sauna-duties/${duty.id}`, {method: 'DELETE'});
                     toast('Der Dienst wurde ausgetragen.', 'info');
-                    await load();
+                    await refresh();
                 } catch (error) {
                     toast(error.message, 'error');
                 }
@@ -811,7 +817,14 @@ const showSaunaDuties = async () => {
         const assign = editable && point.state !== 'unscheduled'
             ? element('button', {className: 'text-button sauna-duty-assign', text: '＋ Eintragen', attributes: {type: 'button'}})
             : null;
-        assign?.addEventListener('click', () => openSaunaDutyAssignDialog(day, point, load));
+        assign?.addEventListener('click', () => openSaunaDutyAssignDialog(day, point, refresh));
+        // Bei „ganzer Tag ohne Dienst“ wird nur der Tagesvermerk zurückgenommen, nicht je Zeitpunkt.
+        let waive = null;
+        if (editable && point.state !== 'unscheduled' && !day.waiverId) {
+            waive = point.waiverId
+                ? waiverButton('Dienst wieder nötig', () => setWaiver(day, point, false))
+                : waiverButton('Kein Dienst nötig', () => setWaiver(day, point, true));
+        }
 
         return element('article', {className: `sauna-duty-point ${status.className}`, children: [
             element('header', {children: [
@@ -823,8 +836,34 @@ const showSaunaDuties = async () => {
             element('div', {className: 'sauna-duty-people', children: [
                 ...point.duties.map((duty) => dutyChip(duty, editable)),
                 ...(assign ? [assign] : []),
+                ...(waive ? [waive] : []),
             ]}),
         ]});
+    };
+    const setWaiver = async (day, point, waived) => {
+        const where = point ? `${point.time} Uhr` : 'den ganzen Tag';
+        try {
+            if (waived) {
+                await request('/api/admin/v1/sauna-duties/waivers', {method: 'POST', body: JSON.stringify({date: day.date, time: point ? point.time : ''})});
+                toast(`Für ${where} am ${formatDateDE(day.date)} ist kein Dienst nötig.`);
+            } else {
+                await request(`/api/admin/v1/sauna-duties/waivers/${point ? point.waiverId : day.waiverId}`, {method: 'DELETE'});
+                toast(`Für ${where} am ${formatDateDE(day.date)} ist wieder Dienst nötig.`, 'info');
+            }
+            await refresh();
+        } catch (error) {
+            toast(error.message, 'error');
+        }
+    };
+    const waiverButton = (label, onClick) => {
+        const button = element('button', {className: 'text-button sauna-duty-waive', text: label, attributes: {type: 'button'}});
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            await onClick();
+            button.disabled = false;
+        });
+
+        return button;
     };
     const isBooked = (point) => point.state === 'required' || point.state === 'requested';
     // Vergangene Tage sind abgeschlossen: nur noch zum Nachlesen, ohne Ein- oder Austragen.
@@ -833,7 +872,12 @@ const showSaunaDuties = async () => {
         const assignDay = canEdit && !past && !day.closed && (day.allPoints || day.points).some((point) => point.state !== 'unscheduled')
             ? element('button', {className: 'text-button sauna-duty-assign sauna-duty-assign-day', text: '＋ Eintragen für ganzen Tag', attributes: {type: 'button'}})
             : null;
-        assignDay?.addEventListener('click', () => openSaunaDutyAssignDialog(day, null, load));
+        assignDay?.addEventListener('click', () => openSaunaDutyAssignDialog(day, null, refresh));
+        const waiveDay = assignDay
+            ? (day.waiverId
+                ? waiverButton('Tag wieder mit Dienst', () => setWaiver(day, null, false))
+                : waiverButton('Ganzer Tag ohne Dienst', () => setWaiver(day, null, true)))
+            : null;
 
         return element('section', {
             className: `sauna-duty-day${past ? ' is-past' : ''}${day.date === todayIso ? ' is-today' : ''}`,
@@ -841,7 +885,9 @@ const showSaunaDuties = async () => {
                 element('h4', {children: [
                     element('span', {text: DUTY_DAY_LABEL.format(new Date(`${day.date}T00:00:00`))}),
                     ...(past ? [element('span', {className: 'status-badge status-inactive', text: 'Abgeschlossen'})] : []),
+                    ...(day.waiverId ? [element('span', {className: 'status-badge sauna-duty-waived-badge', text: 'Kein Dienst nötig'})] : []),
                     ...(assignDay ? [assignDay] : []),
+                    ...(waiveDay ? [waiveDay] : []),
                 ]}),
                 ...(day.closed
                     ? [element('p', {className: 'sauna-duty-closed', text: `Geschlossen${day.closedReason ? ` (${day.closedReason})` : ''}`})]
@@ -857,11 +903,16 @@ const showSaunaDuties = async () => {
         element('div', {className: 'sauna-duty-days sauna-duty-archive-list', children: days.map((day) => renderDay(day, todayIso))}),
     ]});
 
-    const load = async () => {
+    // `keepPosition`: Aktualisieren nach Ein-/Austragen bzw. „kein Dienst nötig“ — ohne Lade-Platzhalter
+    // (der die Liste kurz zusammenfallen ließe) und mit gleicher Scrollposition und aufgeklapptem Archiv.
+    const load = async ({keepPosition = false} = {}) => {
         previous.disabled = month <= currentMonth;
         heading.textContent = DUTY_MONTH_LABEL.format(month);
         const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-        list.replaceChildren(emptyState('Dienstplan wird geladen …'));
+        const scrollTop = workspace.scrollTop;
+        const windowScrollY = window.scrollY;
+        const archiveOpen = keepPosition && Boolean(list.querySelector('.sauna-duty-archive')?.open);
+        if (!keepPosition) list.replaceChildren(emptyState('Dienstplan wird geladen …'));
         try {
             const roster = await request(`/api/admin/v1/sauna-duties?from=${isoDate(month)}&days=${daysInMonth}`);
             const days = roster.days
@@ -871,7 +922,7 @@ const showSaunaDuties = async () => {
             const missing = roster.days
                 .filter((day) => day.date >= todayIso)
                 .flatMap((day) => day.points)
-                .filter((point) => point.state === 'required' && !point.duties.length).length;
+                .filter((point) => point.state === 'required' && !point.duties.length && !point.dutyWaived).length;
             summary.textContent = missing
                 ? `${missing} ${missing === 1 ? 'Dienst' : 'Dienste'} zu gebuchten Zeiten in diesem Monat noch unbesetzt.`
                 : 'Alle Dienste zu gebuchten Zeiten in diesem Monat sind besetzt.';
@@ -888,10 +939,21 @@ const showSaunaDuties = async () => {
                     ? upcomingDays.map((day) => renderDay(day, todayIso))
                     : [emptyState(bookedOnly ? 'In diesem Monat gibt es keine weiteren gebuchten Saunazeiten.' : 'In diesem Monat sind keine weiteren Saunazeiten geplant.')]),
             );
+            if (keepPosition) {
+                const archive = list.querySelector('.sauna-duty-archive');
+                if (archive) archive.open = archiveOpen;
+                workspace.scrollTop = scrollTop;
+                window.scrollTo({top: windowScrollY});
+            }
         } catch (error) {
+            if (keepPosition) {
+                toast(`Der Dienstplan konnte nicht aktualisiert werden: ${error.message}`, 'error');
+                return;
+            }
             list.replaceChildren(emptyState(`Der Dienstplan konnte nicht geladen werden: ${error.message}`));
         }
     };
+    const refresh = () => load({keepPosition: true});
     const showMonth = (offset) => {
         month = offset === 0 ? currentMonth : new Date(month.getFullYear(), month.getMonth() + offset, 1);
         load();
@@ -908,6 +970,7 @@ const showSaunaDuties = async () => {
         element('span', {className: 'sauna-duty-legend-item is-required is-missing', text: 'Gebucht – Dienst fehlt'}),
         element('span', {className: 'sauna-duty-legend-item is-required is-staffed', text: 'Gebucht – Dienst besetzt'}),
         element('span', {className: 'sauna-duty-legend-item is-requested', text: 'Angefragt'}),
+        element('span', {className: 'sauna-duty-legend-item is-waived', text: 'Kein Dienst nötig (Gäste kommen allein)'}),
         element('span', {className: 'sauna-duty-legend-item is-running', text: 'Buchung läuft, kein Wechsel'}),
         element('span', {className: 'sauna-duty-legend-item is-free', text: 'Nicht gebucht'}),
     ]});

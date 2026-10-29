@@ -24,6 +24,7 @@ final class SaunaDutyTaskSourceTest extends TestCase
                 $this->point('15:00', SaunaDutyPointState::Required),
                 $this->point('19:00', SaunaDutyPointState::Required),
                 $this->point('21:00', SaunaDutyPointState::Required, assigned: true),
+                $this->point('22:00', SaunaDutyPointState::Required, waived: true),
                 $this->point('23:00', SaunaDutyPointState::Requested),
             ]),
             new SaunaDutyRosterDay($tomorrow, [
@@ -42,7 +43,7 @@ final class SaunaDutyTaskSourceTest extends TestCase
         );
     }
 
-    private function point(string $time, SaunaDutyPointState $state, bool $assigned = false): SaunaDutyPoint
+    private function point(string $time, SaunaDutyPointState $state, bool $assigned = false, bool $waived = false): SaunaDutyPoint
     {
         return new SaunaDutyPoint(
             time: $time,
@@ -52,6 +53,7 @@ final class SaunaDutyTaskSourceTest extends TestCase
             endingBookings: [],
             runningBookings: [],
             duties: $assigned ? [new SaunaDutyResponse('duty-1', new \DateTimeImmutable('2026-10-28'), $time, 'member-1', '1001', 'Max', 'Muster')] : [],
+            dutyWaived: $waived,
         );
     }
 }

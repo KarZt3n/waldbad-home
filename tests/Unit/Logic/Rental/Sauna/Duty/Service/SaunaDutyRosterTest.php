@@ -7,7 +7,9 @@ use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingStatus;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyPoint;
 use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyManagerInterface;
+use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyWaiverManagerInterface;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDuty;
+use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyWaiver;
 use App\Logic\Rental\Sauna\Duty\Service\SaunaDutyRoster;
 use App\Logic\Rental\Sauna\Season\Manager\SaunaSeasonManagerInterface;
 use App\Logic\Rental\Sauna\Season\Model\SaunaClosure;
@@ -61,6 +63,42 @@ final class SaunaDutyRosterTest extends TestCase
         );
     }
 
+    public function testWaiverForASingleTimeMarksOnlyThatPointAndKeepsItsState(): void
+    {
+        $roster = $this->roster(
+            [$this->booking('long', '15:00', '17:00', SaunaBookingStatus::Accepted)],
+            [],
+            [new SaunaDutyWaiver('waiver-1', new \DateTimeImmutable(self::SATURDAY), '15:00')],
+        );
+
+        $day = $roster->days(new \DateTimeImmutable(self::SATURDAY), 1)[0];
+
+        self::assertNull($day->waiverId);
+        self::assertSame('15:00 required entry', self::describe($day->points[0]));
+        self::assertSame('waiver-1', $day->points[0]->waiverId);
+        self::assertTrue($day->points[0]->dutyWaived);
+        self::assertFalse($day->points[1]->dutyWaived);
+    }
+
+    public function testWholeDayWaiverMarksEveryScheduledPointButNotOrphanedDuties(): void
+    {
+        $roster = $this->roster(
+            [$this->booking('long', '15:00', '17:00', SaunaBookingStatus::Accepted)],
+            [$this->duty('orphan', '12:00')],
+            [new SaunaDutyWaiver('day-waiver', new \DateTimeImmutable(self::SATURDAY), null)],
+        );
+
+        $day = $roster->days(new \DateTimeImmutable(self::SATURDAY), 1)[0];
+
+        self::assertSame('day-waiver', $day->waiverId);
+        self::assertFalse($day->points[0]->dutyWaived, 'Der verwaiste Dienst um 12:00 ist kein Dienstzeitpunkt.');
+        self::assertSame([true], array_values(array_unique(array_map(
+            static fn (SaunaDutyPoint $point): bool => $point->dutyWaived,
+            array_slice($day->points, 1),
+        ))));
+        self::assertNull($day->points[1]->waiverId);
+    }
+
     public function testClosureDaysHaveNoEntryPoints(): void
     {
         $days = $this->roster([], [])->days(new \DateTimeImmutable('2026-10-17'), 1);
@@ -72,9 +110,10 @@ final class SaunaDutyRosterTest extends TestCase
 
     /**
      * @param list<SaunaBooking> $bookings
-     * @param list<SaunaDuty>    $duties
+     * @param list<SaunaDuty>       $duties
+     * @param list<SaunaDutyWaiver> $waivers
      */
-    private function roster(array $bookings, array $duties): SaunaDutyRoster
+    private function roster(array $bookings, array $duties, array $waivers = []): SaunaDutyRoster
     {
         $now = new \DateTimeImmutable('2026-09-01T00:00:00');
         $seasons = $this->createStub(SaunaSeasonManagerInterface::class);
@@ -93,7 +132,10 @@ final class SaunaDutyRosterTest extends TestCase
         $dutyManager = $this->createStub(SaunaDutyManagerInterface::class);
         $dutyManager->method('findBetween')->willReturn($duties);
 
-        return new SaunaDutyRoster($seasons, $bookingManager, $dutyManager);
+        $waiverManager = $this->createStub(SaunaDutyWaiverManagerInterface::class);
+        $waiverManager->method('findBetween')->willReturn($waivers);
+
+        return new SaunaDutyRoster($seasons, $bookingManager, $dutyManager, $waiverManager);
     }
 
     private static function describe(SaunaDutyPoint $point): string

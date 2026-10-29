@@ -139,6 +139,45 @@ final class SaunaDutyWorkflowTest extends WebTestCase
         self::assertSame([], $this->points($tomorrow)[0]['duties']);
     }
 
+    public function testDutyCanBeWaivedPerTimeAndForTheWholeDay(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $tomorrow = (new \DateTimeImmutable('tomorrow'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
+            'startsOn' => $tomorrow,
+            'endsOn' => null,
+            'slotDurationMinutes' => 120,
+            'openingHours' => array_map(
+                static fn (int $weekday): array => ['weekday' => $weekday, 'startTime' => '15:00', 'endTime' => '19:00'],
+                range(1, 7),
+            ),
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-duties/waivers', ['date' => $tomorrow, 'time' => '17:00'], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $pointWaiverId = $this->responseData()['id'];
+        self::assertIsString($pointWaiverId);
+        self::assertSame([false, true, false], array_column($this->points($tomorrow), 'dutyWaived'));
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-duties/waivers', ['date' => $tomorrow, 'time' => '17:00'], $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-duties/waivers', ['date' => $tomorrow], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $dayWaiverId = $this->responseData()['id'];
+        self::assertIsString($dayWaiverId);
+        self::assertSame($dayWaiverId, $this->day($tomorrow)['waiverId']);
+        self::assertSame([true, true, true], array_column($this->points($tomorrow), 'dutyWaived'));
+        self::assertSame([null, null, null], array_column($this->points($tomorrow), 'waiverId'), 'Der Tagesvermerk ersetzt den Einzelvermerk.');
+
+        $this->client->request('DELETE', '/api/admin/v1/sauna-duties/waivers/'.$dayWaiverId, server: $headers);
+        self::assertResponseStatusCodeSame(204);
+        self::assertNull($this->day($tomorrow)['waiverId']);
+        self::assertSame([false, false, false], array_column($this->points($tomorrow), 'dutyWaived'));
+        $this->client->request('DELETE', '/api/admin/v1/sauna-duties/waivers/'.$pointWaiverId, server: $headers);
+        self::assertResponseStatusCodeSame(404);
+    }
+
     public function testRosterRequiresAuthentication(): void
     {
         $this->client->request('GET', '/api/admin/v1/sauna-duties?from=2026-10-01&days=1');
@@ -158,15 +197,22 @@ final class SaunaDutyWorkflowTest extends WebTestCase
         }, $this->points($date));
     }
 
-    /** @return list<array<array-key, mixed>> */
-    private function points(string $date): array
+    /** @return array<array-key, mixed> */
+    private function day(string $date): array
     {
         $this->client->request('GET', '/api/admin/v1/sauna-duties?from='.$date.'&days=1');
         self::assertResponseIsSuccessful();
         $days = $this->responseData()['days'];
         self::assertIsArray($days);
         self::assertIsArray($days[0]);
-        $points = $days[0]['points'];
+
+        return $days[0];
+    }
+
+    /** @return list<array<array-key, mixed>> */
+    private function points(string $date): array
+    {
+        $points = $this->day($date)['points'];
         self::assertIsArray($points);
         $result = [];
         foreach ($points as $point) {

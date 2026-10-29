@@ -708,6 +708,8 @@ Beim Absenden wird die Person wie bei der Helferanmeldung automatisch einem Mitg
 
 Der „Dienstplan“ legt fest, wer wann Dienst hat. Ein Dienst gilt einem Zeitpunkt, nicht einem Zeitraum: Einlass zu Beginn einer Buchung (Gäste hereinlassen, abkassieren), Übergang, wenn eine Buchung endet und direkt die nächste beginnt, und Abschließen, wenn eine Buchung ohne direkte Folgebuchung endet. Als Zeitpunkte erscheinen alle Grenzen der Buchungseinheiten laut Saison (bei 2-Stunden-Einheiten von 15 bis 23 Uhr also 15:00, 17:00, …, 23:00) sowie davon abweichende Beginne und Enden von Buchungen. Beginnt oder endet zu einem Zeitpunkt eine angenommene Buchung, muss zwingend jemand Dienst haben: Der Zeitpunkt ist rot hervorgehoben, solange niemand eingetragen ist, danach grün. Betrifft er nur offene Anfragen, erscheint er gelb als „angefragt“. Liegt ein Zeitpunkt mitten in einer Buchung (z. B. 17:00 bei 15–19 Uhr), findet kein Wechsel statt („läuft“). Nicht gebuchte Zeiten bleiben neutral. Ein Filter zeigt nur gebuchte Zeiten.
 
+Für Sauna-Gäste, die allein hereinkommen und wieder gehen, lässt sich „kein Dienst nötig“ vermerken — je Dienstzeitpunkt oder für den ganzen Tag (Tabelle `sauna_duty_waiver`, Uhrzeit leer = ganzer Tag). Solche Zeitpunkte erscheinen blaugrau statt rot, zählen nicht als unbesetzt (weder in der Monatszusammenfassung noch in der Übersicht) und lassen sich jederzeit zurücknehmen. Der Vermerk für den ganzen Tag ersetzt die Einzelvermerke dieses Tages. Bereits eingetragene Dienste bleiben bestehen; wer trotzdem kommt, steht weiter im Plan.
+
 Eingetragen wird ausschließlich über die Mitgliedersuche; Vorstandsmitglieder (Funktion Vorstand oder Kassenwart) stehen dabei vorn. Mehrere Personen je Einlass sind möglich, dieselbe Person nur einmal. Name und Mitgliedsnummer werden als Momentaufnahme gespeichert. Die Suche nutzt die BusinessQuery `SearchActiveMembersQuery` der Mitgliederverwaltung über das Adapter-Interface `SaunaDutyMemberDirectoryInterface`; ausgetretene Mitglieder werden nicht angeboten. Eintragen und Austragen erfordert Bearbeitungsrechte für `rental_sauna`.
 
 ## 23. Fachliche Erweiterung: Fotos
@@ -749,7 +751,7 @@ Nach der Anmeldung öffnet sich unter `/admin/uebersicht` die „Übersicht“ (
 | Kontaktanfragen | `contact_requests` | nicht erledigt |
 | Gästebucheinträge | `guestbook` | noch nicht moderiert |
 | Sauna-Anmeldungen | `rental_sauna` | weder angenommen, abgelehnt noch storniert |
-| Offene Saunadienste | `rental_sauna` | Dienstzeitpunkt der nächsten vier Wochen, an dem eine angenommene Buchung beginnt oder endet und noch niemand Dienst hat (im Dienstplan rot) |
+| Offene Saunadienste | `rental_sauna` | Dienstzeitpunkt der nächsten vier Wochen, an dem eine angenommene Buchung beginnt oder endet und noch niemand Dienst hat (im Dienstplan rot); ohne Zeitpunkte mit „kein Dienst nötig“ |
 | Helferanmeldungen | `event_helpers` | neu eingegangen |
 | Seiten zur Prüfung | `pages` | zur Prüfung eingereicht |
 | Unveröffentlichte Änderungen | `pages` | veröffentlichte Seite mit seitdem geändertem Entwurf |

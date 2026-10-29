@@ -10,9 +10,11 @@ use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyPoint;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyResponse;
 use App\Logic\Rental\Sauna\Duty\Dto\SaunaDutyRosterDay;
 use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyManagerInterface;
+use App\Logic\Rental\Sauna\Duty\Manager\SaunaDutyWaiverManagerInterface;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDuty;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyPointKind;
 use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyPointState;
+use App\Logic\Rental\Sauna\Duty\Model\SaunaDutyWaiver;
 use App\Logic\Rental\Sauna\Season\Manager\SaunaSeasonManagerInterface;
 use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
@@ -23,7 +25,8 @@ use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
  * Abschließen, wenn eine Buchung ohne direkte Folgebuchung endet. Als Zeitpunkte erscheinen alle
  * Grenzen der Buchungseinheiten laut Saison (z. B. 15:00, 17:00, …, 23:00) sowie Beginn und Ende
  * jeder offenen oder angenommenen Buchung. Liegt ein Zeitpunkt mitten in einer Buchung
- * (z. B. 17:00 bei 15:00–19:00), findet kein Wechsel statt — er gilt als „läuft“.
+ * (z. B. 17:00 bei 15:00–19:00), findet kein Wechsel statt — er gilt als „läuft“. Vermerke „kein
+ * Dienst nötig“ (je Zeitpunkt oder ganzer Tag) ändern Status und Art nicht, nur `dutyWaived`.
  */
 readonly class SaunaDutyRoster
 {
@@ -31,6 +34,7 @@ readonly class SaunaDutyRoster
         private SaunaSeasonManagerInterface $seasons,
         private SaunaBookingManagerInterface $bookings,
         private SaunaDutyManagerInterface $duties,
+        private SaunaDutyWaiverManagerInterface $waivers,
     ) {
     }
 
@@ -42,17 +46,22 @@ readonly class SaunaDutyRoster
         $seasons = $this->seasons->all();
         $bookings = $this->bookings->findBetween($firstDay, $lastDay);
         $duties = $this->duties->findBetween($firstDay, $lastDay);
+        $waivers = $this->waivers->findBetween($firstDay, $lastDay);
 
         $days = [];
         for ($offset = 0; $offset < $count; ++$offset) {
             $day = $firstDay->modify(sprintf('+%d days', $offset));
             $season = $this->seasonFor($seasons, $day);
             $closure = $season?->closureOn($day);
+            $isoDay = $day->format('Y-m-d');
+            $dayWaivers = array_values(array_filter($waivers, static fn (SaunaDutyWaiver $waiver): bool => $waiver->date->format('Y-m-d') === $isoDay));
+            $wholeDayWaiver = array_find($dayWaivers, static fn (SaunaDutyWaiver $waiver): bool => $waiver->coversWholeDay());
             $days[] = new SaunaDutyRosterDay(
                 $day,
-                $this->points($season, $day, $bookings, $duties),
+                $this->points($season, $day, $bookings, $duties, $dayWaivers, $wholeDayWaiver !== null),
                 $closure !== null,
                 $closure->reason ?? '',
+                $wholeDayWaiver?->id,
             );
         }
 
@@ -67,11 +76,12 @@ readonly class SaunaDutyRoster
 
     /**
      * @param list<SaunaBooking> $bookings
-     * @param list<SaunaDuty>    $duties
+     * @param list<SaunaDuty>       $duties
+     * @param list<SaunaDutyWaiver> $dayWaivers Vermerke dieses Tages
      *
      * @return list<SaunaDutyPoint>
      */
-    private function points(?SaunaSeason $season, \DateTimeImmutable $day, array $bookings, array $duties): array
+    private function points(?SaunaSeason $season, \DateTimeImmutable $day, array $bookings, array $duties, array $dayWaivers, bool $wholeDayWaived): array
     {
         $isoDay = $day->format('Y-m-d');
         $dayBookings = array_values(array_filter(
@@ -117,6 +127,9 @@ readonly class SaunaDutyRoster
                 $ending !== [] => SaunaDutyPointKind::Closing,
                 default => SaunaDutyPointKind::None,
             };
+            $waiver = $state === SaunaDutyPointState::Unscheduled
+                ? null
+                : array_find($dayWaivers, static fn (SaunaDutyWaiver $candidate): bool => $candidate->time === $time);
             $points[] = new SaunaDutyPoint(
                 $time,
                 $state,
@@ -128,6 +141,8 @@ readonly class SaunaDutyRoster
                     SaunaDutyResponse::fromDuty(...),
                     array_filter($dayDuties, static fn (SaunaDuty $duty): bool => $duty->time === $time),
                 )),
+                $waiver?->id,
+                $state !== SaunaDutyPointState::Unscheduled && ($wholeDayWaived || $waiver !== null),
             );
         }
 

@@ -11,7 +11,7 @@ use App\Logic\Rental\Sauna\Season\Model\SaunaOpeningHours;
 
 /**
  * Dienstzeitpunkte der nächsten vier Wochen, an denen eine angenommene Buchung beginnt oder endet,
- * aber noch niemand Dienst hat (im Dienstplan rot).
+ * aber noch niemand Dienst hat (im Dienstplan rot). Zeitpunkte mit „kein Dienst nötig“ zählen nicht.
  */
 readonly class SaunaDutyTaskSource implements OverviewTaskSourceInterface
 {
@@ -34,7 +34,7 @@ readonly class SaunaDutyTaskSource implements OverviewTaskSourceInterface
         $dates = [];
         foreach ($this->roster->execute($now->setTime(0, 0), self::DAYS_AHEAD) as $day) {
             foreach ($day->points as $point) {
-                if ($point->state !== SaunaDutyPointState::Required || $point->duties !== []) {
+                if ($point->state !== SaunaDutyPointState::Required || $point->duties !== [] || $point->dutyWaived) {
                     continue;
                 }
                 $at = $day->date->setTime(0, SaunaOpeningHours::toMinutes($point->time));
