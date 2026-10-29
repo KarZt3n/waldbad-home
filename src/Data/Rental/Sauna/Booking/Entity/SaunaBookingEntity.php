@@ -58,6 +58,8 @@ class SaunaBookingEntity
         private bool $individual = false,
         #[ORM\Column(type: Types::STRING, length: 36, nullable: true)]
         private ?string $requestId = null,
+        #[ORM\Column(type: Types::BOOLEAN, options: ['default' => true])]
+        private bool $dutyRequired = true,
     ) {
         $this->participants = new ArrayCollection();
     }
@@ -93,10 +95,16 @@ class SaunaBookingEntity
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
     public function isIndividual(): bool { return $this->individual; }
     public function getRequestId(): ?string { return $this->requestId; }
+    public function isDutyRequired(): bool { return $this->dutyRequired; }
 
     public function changeStatus(string $status, \DateTimeImmutable $updatedAt): void
     {
         $this->status = $status;
         $this->updatedAt = $updatedAt;
+    }
+
+    public function changeDutyRequired(bool $dutyRequired): void
+    {
+        $this->dutyRequired = $dutyRequired;
     }
 }

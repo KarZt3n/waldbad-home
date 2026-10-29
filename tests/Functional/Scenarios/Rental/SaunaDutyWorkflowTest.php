@@ -104,9 +104,16 @@ final class SaunaDutyWorkflowTest extends WebTestCase
         self::assertIsString($bookingId);
         self::assertSame(['15:00 requested entry', '17:00 running none', '19:00 requested closing', '21:00 free none', '23:00 free none'], $this->pointStates($tomorrow));
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/accept', [], $headers);
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/accept', ['dutyRequired' => false], $headers);
         self::assertResponseIsSuccessful();
+        self::assertFalse($this->responseData()['dutyRequired']);
         self::assertSame(['15:00 required entry', '17:00 running none', '19:00 required closing', '21:00 free none', '23:00 free none'], $this->pointStates($tomorrow));
+        self::assertSame([true, false, true, false, false], array_column($this->points($tomorrow), 'dutyWaived'));
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-bookings/'.$bookingId.'/duty', ['dutyRequired' => true], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->responseData()['dutyRequired']);
+        self::assertSame([false, false, false, false, false], array_column($this->points($tomorrow), 'dutyWaived'));
 
         $this->client->request('GET', '/api/admin/v1/sauna-duties/candidates?search=Dienstbereit');
         self::assertResponseIsSuccessful();

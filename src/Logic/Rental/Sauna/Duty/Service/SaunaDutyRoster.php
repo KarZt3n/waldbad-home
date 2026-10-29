@@ -25,8 +25,9 @@ use App\Logic\Rental\Sauna\Season\Model\SaunaSeason;
  * Abschließen, wenn eine Buchung ohne direkte Folgebuchung endet. Als Zeitpunkte erscheinen alle
  * Grenzen der Buchungseinheiten laut Saison (z. B. 15:00, 17:00, …, 23:00) sowie Beginn und Ende
  * jeder offenen oder angenommenen Buchung. Liegt ein Zeitpunkt mitten in einer Buchung
- * (z. B. 17:00 bei 15:00–19:00), findet kein Wechsel statt — er gilt als „läuft“. Vermerke „kein
- * Dienst nötig“ (je Zeitpunkt oder ganzer Tag) ändern Status und Art nicht, nur `dutyWaived`.
+ * (z. B. 17:00 bei 15:00–19:00), findet kein Wechsel statt — er gilt als „läuft“. „Kein Dienst nötig“
+ * ändert Status und Art nicht, nur `dutyWaived`: per Vermerk (je Zeitpunkt oder ganzer Tag) oder weil
+ * keine der dort beginnenden/endenden Buchungen Dienst braucht (`SaunaBooking::$dutyRequired`).
  */
 readonly class SaunaDutyRoster
 {
@@ -142,7 +143,11 @@ readonly class SaunaDutyRoster
                     array_filter($dayDuties, static fn (SaunaDuty $duty): bool => $duty->time === $time),
                 )),
                 $waiver?->id,
-                $state !== SaunaDutyPointState::Unscheduled && ($wholeDayWaived || $waiver !== null),
+                $state !== SaunaDutyPointState::Unscheduled && (
+                    $wholeDayWaived
+                    || $waiver !== null
+                    || ($involved !== [] && !array_any($involved, static fn (SaunaBooking $booking): bool => $booking->dutyRequired))
+                ),
             );
         }
 

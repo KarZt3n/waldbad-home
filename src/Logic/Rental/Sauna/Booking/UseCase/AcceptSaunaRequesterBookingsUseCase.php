@@ -25,7 +25,7 @@ readonly class AcceptSaunaRequesterBookingsUseCase
     /**
      * @return list<SaunaBookingResponse>
      */
-    public function execute(string $requesterKey): array
+    public function execute(string $requesterKey, bool $dutyRequired = true): array
     {
         $open = array_values(array_filter(
             $this->manager->all(),
@@ -35,6 +35,6 @@ readonly class AcceptSaunaRequesterBookingsUseCase
             throw new BusinessRuleViolationException('Für diese Person gibt es keine offenen Sauna-Anmeldungen mehr.');
         }
 
-        return array_map(SaunaBookingResponse::fromBooking(...), $this->acceptance->accept($open));
+        return array_map(SaunaBookingResponse::fromBooking(...), $this->acceptance->accept($open, $dutyRequired));
     }
 }

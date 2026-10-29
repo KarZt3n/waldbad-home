@@ -41,6 +41,11 @@ readonly class SaunaBooking
          */
         public ?string $requestId = null,
         public array $participants = [],
+        /**
+         * Ob zu Beginn und Ende dieser Buchung jemand vom Verein Dienst haben muss (Standard) — `false`,
+         * wenn die Gäste allein hereinkommen und wieder gehen (beim Annehmen festgelegt).
+         */
+        public bool $dutyRequired = true,
     ) {
         if ($this->participants !== [] && count($this->participants) !== $this->personCount) {
             throw new BusinessRuleViolationException('Für jede Person der Gruppe sind Vorname und Nachname anzugeben.');
@@ -68,13 +73,23 @@ readonly class SaunaBooking
         }
     }
 
-    public function accept(\DateTimeImmutable $updatedAt): self
+    public function accept(\DateTimeImmutable $updatedAt, bool $dutyRequired = true): self
     {
         if ($this->status === SaunaBookingStatus::Accepted) {
             throw new BusinessRuleViolationException('Die Sauna-Anmeldung wurde bereits angenommen.');
         }
 
-        return $this->withStatus(SaunaBookingStatus::Accepted, $updatedAt);
+        return $this->copy(SaunaBookingStatus::Accepted, $updatedAt, $dutyRequired);
+    }
+
+    /** Nachträglich ändern, ob für diese Buchung Sauna-Dienst nötig ist. */
+    public function withDutyRequired(bool $dutyRequired, \DateTimeImmutable $updatedAt): self
+    {
+        if (!$this->blocksTime()) {
+            throw new BusinessRuleViolationException('Für abgelehnte oder stornierte Sauna-Anmeldungen ist kein Dienst geplant.');
+        }
+
+        return $this->copy($this->status, $updatedAt, $dutyRequired);
     }
 
     public function reject(\DateTimeImmutable $updatedAt): self
@@ -83,7 +98,7 @@ readonly class SaunaBooking
             throw new BusinessRuleViolationException('Die Sauna-Anmeldung wurde bereits abgelehnt.');
         }
 
-        return $this->withStatus(SaunaBookingStatus::Rejected, $updatedAt);
+        return $this->copy(SaunaBookingStatus::Rejected, $updatedAt, $this->dutyRequired);
     }
 
     /** Storno eines angenommenen Termins, z. B. wenn die anfragende Person einen Tag absagt. */
@@ -93,7 +108,7 @@ readonly class SaunaBooking
             throw new BusinessRuleViolationException('Nur angenommene Sauna-Anmeldungen können storniert werden.');
         }
 
-        return $this->withStatus(SaunaBookingStatus::Cancelled, $updatedAt);
+        return $this->copy(SaunaBookingStatus::Cancelled, $updatedAt, $this->dutyRequired);
     }
 
     /** Offene Anfragen reservieren den Zeitraum bereits, damit er nicht doppelt angefragt wird. */
@@ -129,7 +144,7 @@ readonly class SaunaBooking
             && SaunaOpeningHours::toMinutes($startTime) < SaunaOpeningHours::toMinutes($this->endTime);
     }
 
-    private function withStatus(SaunaBookingStatus $status, \DateTimeImmutable $updatedAt): self
+    private function copy(SaunaBookingStatus $status, \DateTimeImmutable $updatedAt, bool $dutyRequired): self
     {
         return new self(
             id: $this->id,
@@ -151,6 +166,7 @@ readonly class SaunaBooking
             individual: $this->individual,
             requestId: $this->requestId,
             participants: $this->participants,
+            dutyRequired: $dutyRequired,
         );
     }
 }

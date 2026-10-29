@@ -5,6 +5,7 @@ namespace App\Data\Rental\Sauna\Booking\Adapter;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBooking;
 use App\Logic\Rental\Sauna\Booking\Model\SaunaBookingParticipant;
 use App\Logic\Rental\Sauna\Booking\SaunaBookingNotifierInterface;
+use App\Logic\Rental\Sauna\Booking\Service\SaunaBookingApprovalLinkIssuer;
 use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\Email\Service\NotificationMailer;
@@ -18,8 +19,10 @@ use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
  */
 readonly class SettingsSaunaBookingNotifier implements SaunaBookingNotifierInterface
 {
-    public function __construct(private NotificationMailer $mailer)
-    {
+    public function __construct(
+        private NotificationMailer $mailer,
+        private SaunaBookingApprovalLinkIssuer $approvalLinks,
+    ) {
     }
 
     public function bookingSubmitted(SaunaBooking $booking): void
@@ -83,12 +86,16 @@ readonly class SettingsSaunaBookingNotifier implements SaunaBookingNotifierInter
     }
 
     /**
+     * `link`/`ablehnen_link` nehmen alle offenen Termine der Anfrage ohne Anmeldung an bzw. lehnen sie ab
+     * (siehe `SaunaBookingApprovalToken`); `uebersicht_link` führt zur Liste in der Redaktion.
+     *
      * @param non-empty-list<SaunaBooking> $bookings
      */
     private function notify(array $bookings, string $requestType): void
     {
         $booking = $bookings[0];
         $personCounts = array_unique(array_map(static fn (SaunaBooking $day): int => $day->personCount, $bookings));
+        $links = $this->approvalLinks->issue($bookings);
         $this->mailer->notify(NotificationEvent::SaunaBookingSubmitted, MailTemplateKey::SaunaBookingSubmittedNotification, [
             'vorname' => $booking->firstName,
             'nachname' => $booking->lastName,
@@ -101,6 +108,9 @@ readonly class SettingsSaunaBookingNotifier implements SaunaBookingNotifierInter
             'email' => $booking->email ?? '–',
             'mitglied' => $booking->memberNumber ?? 'nicht zugeordnet',
             'nachricht' => trim($booking->message) === '' ? 'keine' : $booking->message,
+            'link' => $links->approval,
+            'ablehnen_link' => $links->rejection,
+            'uebersicht_link' => $links->overview,
         ]);
     }
 

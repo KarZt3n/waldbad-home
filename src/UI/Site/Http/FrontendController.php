@@ -44,6 +44,16 @@ class FrontendController extends AbstractController
         return $this->render('site/public.html.twig', ['slug' => 'e-mail-einwilligung']);
     }
 
+    /**
+     * „Sauna-Anfrage annehmen/ablehnen“ aus der Benachrichtigungsmail (siehe `PublicSaunaBookingApprovalController`,
+     * `SaunaBookingApprovalLinkBuilder`) — ohne Anmeldung, nur mit dem Token aus dem Link.
+     */
+    #[Route('/sauna-anfrage', name: 'public_sauna_booking_approval', methods: ['GET'])]
+    public function saunaBookingApproval(): Response
+    {
+        return $this->render('site/public.html.twig', ['slug' => 'sauna-anfrage']);
+    }
+
     #[Route('/admin/{path}', name: 'admin_app', requirements: ['path' => '.*'], defaults: ['path' => ''], methods: ['GET'])]
     public function admin(): Response
     {

@@ -16,6 +16,13 @@ services:
         autowire: true
     App\Logic\Common\SecureTokenGeneratorInterface: '@App\Tests\Support\FixedSecureTokenGenerator'
 
+    # Freigabe-Links der Sauna-Benachrichtigung brauchen je Mail einen eigenen Token (eindeutiger Hash);
+    # Funktionstests lesen ihn aus der Mail statt ihn vorherzusagen.
+    App\Logic\Rental\Sauna\Booking\Service\SaunaBookingApprovalLinkIssuer:
+        autowire: true
+        arguments:
+            $tokenGenerator: '@App\Data\Common\RandomSecureTokenGenerator'
+
     # Ersetzt den echten, zufälligen Passwort-Generator (zweiter Faktor neben dem Token, siehe
     # MemberAccessToken): Funktionstests können das erzeugte Passwort so vorhersagen.
     App\Tests\Support\FixedAccessPasswordGenerator:

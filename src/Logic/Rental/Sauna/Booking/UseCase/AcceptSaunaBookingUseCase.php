@@ -15,8 +15,8 @@ readonly class AcceptSaunaBookingUseCase
     ) {
     }
 
-    public function execute(string $id): SaunaBookingResponse
+    public function execute(string $id, bool $dutyRequired = true): SaunaBookingResponse
     {
-        return SaunaBookingResponse::fromBooking($this->acceptance->accept([$this->manager->get($id)])[0]);
+        return SaunaBookingResponse::fromBooking($this->acceptance->accept([$this->manager->get($id)], $dutyRequired)[0]);
     }
 }

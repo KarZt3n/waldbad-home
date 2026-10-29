@@ -16,6 +16,7 @@ readonly class SaunaDutyBookingResponse
         public string $firstName,
         public string $lastName,
         public SaunaBookingStatus $status,
+        public bool $dutyRequired = true,
     ) {
     }
 
@@ -29,6 +30,7 @@ readonly class SaunaDutyBookingResponse
             $booking->firstName,
             $booking->lastName,
             $booking->status,
+            $booking->dutyRequired,
         );
     }
 }

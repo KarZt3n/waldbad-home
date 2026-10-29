@@ -2178,6 +2178,12 @@ dialog:modal {
 .sauna-duty-assign { font-size: .85rem; }
 .sauna-duty-assign-day { margin-left: auto; }
 .sauna-duty-waive { color: var(--muted); font-size: .85rem; }
+.sauna-duty-choices { display: grid; gap: .6rem; margin: 0; padding: 0; border: 0; }
+.sauna-duty-choices legend { margin-bottom: .4rem; font-weight: 750; }
+.sauna-duty-choice { align-items: flex-start; margin: 0; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: .75rem; cursor: pointer; }
+.sauna-duty-choice:has(input:checked) { border-color: var(--forest-700); background: var(--forest-100); }
+.sauna-duty-choice span { display: grid; gap: .15rem; }
+.sauna-duty-choice small { color: var(--muted); }
 .sauna-duty-waived-badge { color: var(--forest-700); background: #eef2f7; }
 .sauna-duty-point.is-waived, .sauna-duty-legend-item.is-waived { border-left-color: #8fa3b8; background: #f3f6f9; }
 .sauna-duty-point.is-waived .sauna-duty-state { color: #4f6478; }
@@ -2189,3 +2195,18 @@ dialog:modal {
 .sauna-duty-point.is-required.is-missing .sauna-duty-state { color: var(--danger); }
 .sauna-duty-point.is-required.is-staffed, .sauna-duty-legend-item.is-required.is-staffed { border-color: var(--forest-700); background: #e3f2e8; }
 .sauna-duty-point.is-required.is-staffed .sauna-duty-state { color: var(--forest-700); }
+
+/* Öffentliche Seite „Sauna-Anfrage annehmen“ (Link aus der Benachrichtigungsmail). */
+.sauna-approval { display: grid; gap: 1rem; }
+.sauna-approval-bookings { display: grid; gap: .5rem; margin: 0; padding: 0; list-style: none; }
+.sauna-approval-booking { display: grid; gap: .15rem; padding: .7rem .9rem; border: 1px solid var(--line); border-left-width: .35rem; border-left-color: var(--sun-400); border-radius: .75rem; }
+.sauna-approval-booking:not(.status-open) { border-left-color: var(--line); color: var(--muted); }
+.sauna-approval-booking span { font-size: .9rem; }
+.sauna-approval-message { margin: 0; font-style: italic; }
+.sauna-approval-choices { display: grid; gap: .6rem; margin: 0; padding: 0; border: 0; }
+.sauna-approval-choices legend { margin-bottom: .4rem; font-weight: 750; }
+.sauna-approval-choice { align-items: flex-start; margin: 0; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: .75rem; cursor: pointer; }
+.sauna-approval-choice:has(input:checked) { border-color: var(--forest-700); background: var(--forest-100); }
+.sauna-approval-choice span { display: grid; gap: .15rem; }
+.sauna-approval-choice small { color: var(--muted); }
+.sauna-approval-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; }

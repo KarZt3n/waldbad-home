@@ -14,6 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Mime\Email;
 
 final class SaunaBookingWorkflowTest extends WebTestCase
 {
@@ -355,6 +356,91 @@ final class SaunaBookingWorkflowTest extends WebTestCase
         self::assertIsString($id);
 
         return $id;
+    }
+
+    /**
+     * Der Link aus der Benachrichtigung nimmt die Anfrage ohne Anmeldung an: Die Vorschau ändert nichts,
+     * erst das Annehmen (mit „kein Dienst nötig“) — danach ist der Link verbraucht.
+     */
+    public function testNotificationLinkAcceptsTheRequestWithoutLogin(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $day = (new \DateTimeImmutable('+2 days'))->format('Y-m-d');
+        $this->client->jsonRequest('POST', '/api/admin/v1/sauna-seasons', [
+            'startsOn' => $day,
+            'endsOn' => null,
+            'slotDurationMinutes' => 60,
+            'openingHours' => array_map(
+                static fn (int $weekday): array => ['weekday' => $weekday, 'startTime' => '10:00', 'endTime' => '14:00'],
+                range(1, 7),
+            ),
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $this->client->jsonRequest('PUT', '/api/admin/v1/email-settings/notifications/sauna_booking_submitted', [
+            'recipients' => ['sauna-team@example.test'],
+        ], $headers);
+        self::assertResponseIsSuccessful();
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna/bookings', [
+            'date' => $day,
+            'startTime' => '10:00',
+            'endTime' => '12:00',
+            'personCount' => 2,
+            'participants' => self::names(2),
+            'firstName' => 'Erika',
+            'lastName' => 'Musterfrau',
+            'email' => 'erika@example.test',
+            'privacyAccepted' => true,
+        ]);
+        self::assertResponseStatusCodeSame(202);
+        $bookingId = $this->responseData()['id'];
+        self::assertIsString($bookingId);
+        $notification = self::getMailerMessage();
+        self::assertNotNull($notification);
+        self::assertEmailTextBodyNotContains($notification, 'annehmen oder ablehnen');
+        $body = $notification instanceof Email ? (string) $notification->getTextBody() : '';
+        self::assertStringContainsString('Alle Anfragen ansehen: http://localhost/admin/vermietung/sauna/anmeldungen', $body);
+        self::assertEmailHtmlBodyContains($notification, '>Sauna-Anfrage annehmen</a>');
+        if (preg_match('~Sauna-Anfrage annehmen: https?://\S+/sauna-anfrage\?token=([^\s&]+)~', $body, $match) !== 1) {
+            self::fail('Die Benachrichtigung enthält keinen Link zum Annehmen.');
+        }
+        $token = urldecode($match[1]);
+
+        $adminCookies = $this->client->getCookieJar()->all();
+        $this->client->getCookieJar()->clear();
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals/preview', ['token' => $token]);
+        self::assertResponseIsSuccessful();
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+        self::assertIsArray($items[0]);
+        self::assertSame(['open', 'Musterfrau'], [$items[0]['status'], $items[0]['lastName']]);
+        self::assertArrayNotHasKey('email', $items[0]);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals', ['token' => 'falsch', 'dutyRequired' => false]);
+        self::assertResponseStatusCodeSame(401);
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals', ['token' => $token, 'dutyRequired' => false]);
+        self::assertResponseIsSuccessful();
+        self::assertSame('Die Sauna-Anfrage wurde angenommen.', $this->responseData()['message']);
+        self::assertQueuedEmailCount(1);
+        $confirmation = self::getMailerMessage();
+        self::assertNotNull($confirmation);
+        self::assertEmailAddressContains($confirmation, 'To', 'erika@example.test');
+
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals', ['token' => $token, 'dutyRequired' => true]);
+        self::assertResponseStatusCodeSame(401);
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals/rejections', ['token' => $token]);
+        self::assertResponseStatusCodeSame(401, 'Nach dem Annehmen ist auch Ablehnen mit demselben Link verbraucht.');
+        $this->client->jsonRequest('POST', '/api/public/v1/sauna-booking-approvals/preview', ['token' => $token]);
+        self::assertResponseStatusCodeSame(401);
+
+        foreach ($adminCookies as $cookie) {
+            $this->client->getCookieJar()->set($cookie);
+        }
+        $this->client->request('GET', '/api/admin/v1/sauna-bookings');
+        $bookings = $this->responseData()['items'];
+        self::assertIsArray($bookings);
+        self::assertIsArray($bookings[0]);
+        self::assertSame([$bookingId, 'accepted', false], [$bookings[0]['id'], $bookings[0]['status'], $bookings[0]['dutyRequired']]);
     }
 
     /**

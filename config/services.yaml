@@ -28,6 +28,7 @@ services:
             $memberAccessSessionLimiter: '@limiter.member_access_session'
             $memberMessageLimiter: '@limiter.member_message'
             $emailConsentConfirmLimiter: '@limiter.email_consent_confirm'
+            $saunaBookingApprovalLimiter: '@limiter.sauna_booking_approval'
             $memberSelfServiceUpdateLimiter: '@limiter.member_self_service_update'
             $saunaBookingLimiter: '@limiter.sauna_booking'
             $mediaUploadDirectory: '%media_upload_directory%'

@@ -57,6 +57,10 @@ framework:
             policy: fixed_window
             limit: 20
             interval: '15 minutes'
+        sauna_booking_approval:
+            policy: fixed_window
+            limit: 20
+            interval: '15 minutes'
         member_self_service_update:
             policy: fixed_window
             limit: 20
@@ -96,6 +100,8 @@ when@test:
             member_message:
                 policy: no_limit
             email_consent_confirm:
+                policy: no_limit
+            sauna_booking_approval:
                 policy: no_limit
             member_self_service_update:
                 policy: no_limit

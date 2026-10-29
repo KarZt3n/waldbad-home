@@ -64,12 +64,12 @@ readonly class MailTemplateRenderer
     public function renderText(string $subject, string $body, array $placeholders, ?string $signatureId = null): array
     {
         $renderedSubject = $this->substitute($subject, $placeholders);
-        $renderedBody = $this->substitute($body, $placeholders);
+        $renderedBody = $this->substitute($this->contentRenderer->toPlainText($body), $placeholders);
         $html = $this->buildHtmlFragment($body, $placeholders);
 
         $signature = $signatureId !== null ? $this->signatures->find($signatureId) : null;
         if ($signature !== null) {
-            $renderedBody = rtrim($renderedBody)."\n\n".$this->substitute($signature->body, $placeholders);
+            $renderedBody = rtrim($renderedBody)."\n\n".$this->substitute($this->contentRenderer->toPlainText($signature->body), $placeholders);
             $html .= $this->buildHtmlFragment($signature->body, $placeholders);
         }
 
@@ -95,6 +95,15 @@ readonly class MailTemplateRenderer
      */
     private function buildHtmlFragment(string $text, array $placeholders): string
     {
-        return $this->contentRenderer->toHtmlFragment($this->substitute($text, $placeholders));
+        [$template, $buttons] = $this->contentRenderer->prepareTemplate($text);
+        $values = array_map($this->contentRenderer->neutralize(...), $placeholders);
+
+        return $this->contentRenderer->toHtmlFragment(
+            $this->substitute($template, $values),
+            array_map(fn (array $button): array => [
+                'label' => $this->substitute($button['label'], $values),
+                'url' => $this->substitute($button['url'], $values),
+            ], $buttons),
+        );
     }
 }

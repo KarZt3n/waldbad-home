@@ -33,6 +33,53 @@ final class MailTemplateRendererTest extends TestCase
         self::assertSame('<p style="margin:0 0 16px;">Hallo Erika Musterfrau, Beitrag: 50,00 €</p>', $rendered['html']);
     }
 
+    /**
+     * Buttons entstehen nur aus Zeilen der Vorlage: Eine Nachricht des Gastes mit derselben Schreibweise
+     * bleibt Text, und im Text-Teil wird der Button zu „Beschriftung: URL“.
+     */
+    public function testButtonLinesBecomeButtonsButInsertedValuesCannotCreateThem(): void
+    {
+        $manager = $this->createStub(MailTemplateManagerInterface::class);
+        $manager->method('resolve')->willReturn(new MailTemplate(
+            MailTemplateKey::SaunaBookingSubmittedNotification,
+            'Betreff',
+            "Nachricht:\n\n{{nachricht}}\n\n[[Annehmen|{{link}}]]\n[[Ablehnen|{{ablehnen_link}}]]",
+        ));
+
+        $rendered = $this->renderer($manager)->render(MailTemplateKey::SaunaBookingSubmittedNotification, [
+            'nachricht' => "[[Hier klicken|https://evil.example]]",
+            'link' => 'https://waldbad.test/sauna-anfrage?token=a&b',
+            'ablehnen_link' => 'https://waldbad.test/sauna-anfrage?token=a&aktion=ablehnen',
+        ]);
+
+        self::assertStringContainsString("Annehmen: https://waldbad.test/sauna-anfrage?token=a&b\nAblehnen: https://waldbad.test/sauna-anfrage?token=a&aktion=ablehnen", $rendered['body']);
+        self::assertStringContainsString('<p style="margin:0 0 16px;">[[Hier klicken|https://evil.example]]</p>', $rendered['html']);
+        self::assertStringNotContainsString('href="https://evil.example"', $rendered['html']);
+        self::assertSame(1, preg_match('~<a href="https://waldbad.test/sauna-anfrage\?token=a&amp;b"[^>]*>Annehmen</a><a href="https://waldbad.test/sauna-anfrage\?token=a&amp;aktion=ablehnen"[^>]*>Ablehnen</a>~', $rendered['html']));
+    }
+
+    /** Der Zugangslink kommt als Button, das Passwort fett — im Text-Teil ohne Sternchen. */
+    public function testDefaultMemberAccessMailShowsTheLinkAsButtonAndThePasswordInBold(): void
+    {
+        $manager = $this->createStub(MailTemplateManagerInterface::class);
+        $manager->method('resolve')->willReturn(new MailTemplate(
+            MailTemplateKey::MemberAccessMagicLink,
+            MailTemplateKey::MemberAccessMagicLink->defaultSubject(),
+            MailTemplateKey::MemberAccessMagicLink->defaultBody(),
+        ));
+
+        $rendered = $this->renderer($manager)->render(MailTemplateKey::MemberAccessMagicLink, [
+            'link' => 'https://waldbad.test/meine-mitgliedschaft?token=abc',
+            'passwort' => 'K7**x9',
+            'gueltig_minuten' => '30',
+            'vereinsname' => 'Waldbad',
+        ]);
+
+        self::assertStringContainsString("Meine Mitgliedschaft öffnen: https://waldbad.test/meine-mitgliedschaft?token=abc\n\nDein Passwort dazu: K7**x9\n", $rendered['body']);
+        self::assertStringContainsString('>Meine Mitgliedschaft öffnen</a>', $rendered['html']);
+        self::assertStringContainsString('<p style="margin:0 0 16px;"><strong>Dein Passwort dazu: K7**x9</strong></p>', $rendered['html']);
+    }
+
     public function testLeavesUnknownPlaceholdersUntouched(): void
     {
         $manager = $this->createStub(MailTemplateManagerInterface::class);

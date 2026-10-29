@@ -39,6 +39,7 @@ readonly class SaunaBookingMapper
                 ),
                 $entity->getParticipants(),
             ),
+            dutyRequired: $entity->isDutyRequired(),
         );
     }
 
@@ -63,6 +64,7 @@ readonly class SaunaBookingMapper
             updatedAt: $booking->updatedAt,
             individual: $booking->individual,
             requestId: $booking->requestId,
+            dutyRequired: $booking->dutyRequired,
         );
         foreach ($booking->participants as $position => $participant) {
             $entity->addParticipant(new SaunaBookingParticipantEntity(
@@ -77,9 +79,10 @@ readonly class SaunaBookingMapper
         return $entity;
     }
 
-    /** Nach dem Absenden ändert sich an einer Anmeldung fachlich nur noch der Status. */
+    /** Nach dem Absenden ändern sich an einer Anmeldung fachlich nur noch Status und Dienstbedarf. */
     public function updateEntity(SaunaBooking $booking, SaunaBookingEntity $entity): void
     {
         $entity->changeStatus($booking->status->value, $booking->updatedAt);
+        $entity->changeDutyRequired($booking->dutyRequired);
     }
 }

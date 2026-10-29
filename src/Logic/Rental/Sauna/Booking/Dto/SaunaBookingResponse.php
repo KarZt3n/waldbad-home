@@ -36,6 +36,7 @@ readonly class SaunaBookingResponse
         public array $participants = [],
         /** Siehe `SaunaBooking::requesterKey()`. */
         public string $requesterKey = '',
+        public bool $dutyRequired = true,
     ) {
     }
 
@@ -63,6 +64,7 @@ readonly class SaunaBookingResponse
             requestId: $booking->requestId,
             participants: $booking->participants,
             requesterKey: $booking->requesterKey(),
+            dutyRequired: $booking->dutyRequired,
         );
     }
 }

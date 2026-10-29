@@ -38,6 +38,7 @@ readonly class SaunaBookingResponseFactory
             'individual' => $booking->individual,
             'requestId' => $booking->requestId,
             'requesterKey' => $booking->requesterKey,
+            'dutyRequired' => $booking->dutyRequired,
             'participants' => array_map(static fn (SaunaBookingParticipant $participant): array => [
                 'firstName' => $participant->firstName,
                 'lastName' => $participant->lastName,

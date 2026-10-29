@@ -309,6 +309,7 @@ const showMailTemplates = async () => {
             element('h3', {text: template.label}),
             element('p', {className: 'field-hint', text: template.description}),
             element('p', {className: 'field-hint', text: `Verfügbare Platzhalter: ${template.placeholders.map((name) => `{{${name}}}`).join(', ')}`}),
+            element('p', {className: 'field-hint', text: 'Eine eigene Zeile [[Beschriftung|{{link}}]] erscheint in der Mail als Button, **Text** wird fett.'}),
             subject,
             body,
             signatureSelect,

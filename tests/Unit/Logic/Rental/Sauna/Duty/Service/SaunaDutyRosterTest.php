@@ -99,6 +99,25 @@ final class SaunaDutyRosterTest extends TestCase
         self::assertNull($day->points[1]->waiverId);
     }
 
+    /**
+     * 15–17 Uhr ohne Dienst, 17–19 Uhr mit Dienst: Einlass um 15:00 entfällt, der Übergang um 17:00
+     * bleibt nötig, weil die zweite Gruppe hereingelassen werden muss.
+     */
+    public function testBookingsWithoutDutyOnlyWaivePointsNoOtherBookingNeeds(): void
+    {
+        $roster = $this->roster([
+            $this->booking('alone', '15:00', '17:00', SaunaBookingStatus::Accepted, dutyRequired: false),
+            $this->booking('staffed', '17:00', '19:00', SaunaBookingStatus::Accepted),
+        ], []);
+
+        $points = $roster->pointsOn(new \DateTimeImmutable(self::SATURDAY));
+
+        self::assertSame(['15:00 required entry', '17:00 required transition', '19:00 required closing'], array_map(self::describe(...), array_slice($points, 0, 3)));
+        self::assertSame([true, false, false], array_map(static fn (SaunaDutyPoint $point): bool => $point->dutyWaived, array_slice($points, 0, 3)));
+        self::assertNull($points[0]->waiverId);
+        self::assertFalse($points[0]->startingBookings[0]->dutyRequired);
+    }
+
     public function testClosureDaysHaveNoEntryPoints(): void
     {
         $days = $this->roster([], [])->days(new \DateTimeImmutable('2026-10-17'), 1);
@@ -148,7 +167,7 @@ final class SaunaDutyRosterTest extends TestCase
         return new SaunaDuty($id, new \DateTimeImmutable(self::SATURDAY), $time, 'member-1', '1001', 'Vera', 'Vorstand');
     }
 
-    private function booking(string $id, string $startTime, string $endTime, SaunaBookingStatus $status): SaunaBooking
+    private function booking(string $id, string $startTime, string $endTime, SaunaBookingStatus $status, bool $dutyRequired = true): SaunaBooking
     {
         $submittedAt = new \DateTimeImmutable('2026-09-20T10:00:00');
 
@@ -169,6 +188,7 @@ final class SaunaDutyRosterTest extends TestCase
             memberNumber: null,
             submittedAt: $submittedAt,
             updatedAt: $submittedAt,
+            dutyRequired: $dutyRequired,
         );
     }
 }

@@ -80,6 +80,86 @@ const cancelButton = (booking, refresh) => {
 };
 
 /**
+ * Rückfrage beim Annehmen, ob Sauna-Dienst nötig ist — Standard „ja“; „nein“, wenn die Gäste allein
+ * hereinkommen und wieder gehen. Liefert `true`/`false` oder `null` bei Abbruch.
+ */
+const askDutyRequired = (title) => new Promise((resolve) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const option = (value, label, hint) => element('label', {className: 'check-field sauna-duty-choice', children: [
+        element('input', {attributes: {type: 'radio', name: 'sauna-duty-required', value, ...(value === 'yes' ? {checked: 'checked'} : {})}}),
+        element('span', {children: [element('strong', {text: label}), element('small', {text: hint})]}),
+    ]});
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const confirm = element('button', {className: 'button', text: 'Annehmen', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Sauna-Anmeldung annehmen'}),
+        element('h2', {text: title}),
+        element('fieldset', {className: 'sauna-duty-choices', children: [
+            element('legend', {text: 'Wird ein Sauna-Dienst benötigt?'}),
+            option('yes', 'Ja, Dienst wird benötigt', 'Jemand vom Verein lässt die Gäste herein, kassiert ab und schließt ab.'),
+            option('no', 'Nein, kein Dienst nötig', 'Die Gäste kommen allein herein und gehen wieder.'),
+        ]}),
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, confirm]}),
+    ]});
+    let result = null;
+    cancel.addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        result = form.querySelector('input[name="sauna-duty-required"]:checked')?.value !== 'no';
+        dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+        dialog.remove();
+        resolve(result);
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+    confirm.focus();
+});
+
+const acceptButton = (label, url, refresh, title, success) => {
+    const button = element('button', {className: 'button', text: label, attributes: {type: 'button'}});
+    button.addEventListener('click', async () => {
+        const dutyRequired = await askDutyRequired(title);
+        if (dutyRequired === null) return;
+        button.disabled = true;
+        try {
+            await request(url, {method: 'POST', body: JSON.stringify({dutyRequired})});
+            toast(dutyRequired ? success : `${success} Kein Sauna-Dienst nötig.`);
+            await refresh();
+        } catch (error) {
+            toast(error.message, 'error');
+            button.disabled = false;
+        }
+    });
+
+    return button;
+};
+
+/** Nachträglich umschalten, ob für einen angenommenen Termin Sauna-Dienst nötig ist. */
+const dutyToggleButton = (booking, refresh) => {
+    const button = element('button', {
+        className: 'text-button',
+        text: booking.dutyRequired ? 'Kein Sauna-Dienst nötig' : 'Sauna-Dienst doch nötig',
+        attributes: {type: 'button'},
+    });
+    button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+            await request(`/api/admin/v1/sauna-bookings/${booking.id}/duty`, {method: 'POST', body: JSON.stringify({dutyRequired: !booking.dutyRequired})});
+            toast(booking.dutyRequired ? 'Für diesen Termin ist kein Sauna-Dienst nötig.' : 'Für diesen Termin ist wieder Sauna-Dienst nötig.');
+            await refresh();
+        } catch (error) {
+            toast(error.message, 'error');
+            button.disabled = false;
+        }
+    });
+
+    return button;
+};
+
+/**
  * Karte einer Sauna-Anmeldung, aufgebaut wie die Teilnehmerzeilen der Helferanfragen: links die
  * Person und der Termin, rechts Kennzeichen/Status oben und die Aktionen unten. Innerhalb der
  * Gruppe einer anfragenden Person (`inRequest`) ohne Person und Nachricht — die stehen dann im Kopf
@@ -88,11 +168,16 @@ const cancelButton = (booking, refresh) => {
 const bookingCard = (booking, refresh, {inRequest = false} = {}) => {
     const weekday = new Date(`${booking.date}T00:00:00`).toLocaleDateString('de-DE', {weekday: 'short'});
     const actions = canEditModule('rental_sauna') ? [
-        ...(booking.status !== 'accepted' ? [actionButton('Annehmen', `/api/admin/v1/sauna-bookings/${booking.id}/accept`, refresh, 'button', {
-            success: 'Sauna-Anmeldung wurde angenommen.',
-        })] : []),
+        ...(booking.status !== 'accepted' ? [acceptButton(
+            'Annehmen',
+            `/api/admin/v1/sauna-bookings/${booking.id}/accept`,
+            refresh,
+            `${weekday}, ${formatDateDE(booking.date)} · ${booking.startTime}–${booking.endTime} Uhr`,
+            'Sauna-Anmeldung wurde angenommen.',
+        )] : []),
         // Angenommene Termine werden storniert statt abgelehnt (z. B. wenn jemand einen Tag absagt).
         ...(booking.status === 'accepted' ? [cancelButton(booking, refresh)] : []),
+        ...(booking.status === 'accepted' && booking.date >= todayIso() ? [dutyToggleButton(booking, refresh)] : []),
         ...(booking.status === 'open' ? [actionButton('Ablehnen', `/api/admin/v1/sauna-bookings/${booking.id}/reject`, refresh, 'secondary-button', {
             success: 'Sauna-Anmeldung wurde abgelehnt.',
             confirm: {
@@ -117,6 +202,7 @@ const bookingCard = (booking, refresh, {inRequest = false} = {}) => {
         element('div', {className: 'sauna-booking-side', children: [
             element('div', {className: 'sauna-booking-badges', children: [
                 ...(booking.individual ? [element('span', {className: 'status-badge sauna-individual-badge', text: 'Individuelle Anfrage'})] : []),
+                ...(booking.status === 'accepted' && !booking.dutyRequired ? [element('span', {className: 'status-badge sauna-duty-waived-badge', text: 'Ohne Sauna-Dienst'})] : []),
                 element('span', {className: `status-badge ${BOOKING_STATUS_BADGES[booking.status] || ''}`, text: BOOKING_STATUS_LABELS[booking.status] || booking.status}),
             ]}),
             ...(actions.length ? [element('div', {className: 'card-actions sauna-booking-actions', children: actions})] : []),
@@ -152,9 +238,13 @@ const requestGroup = (items, refresh) => {
     const requestCount = new Set(items.map((item) => item.requestId || item.id)).size;
     const messages = [...new Set(items.map((item) => item.message.trim()).filter(Boolean))];
     const acceptAll = canEditModule('rental_sauna') && openCount > 1
-        ? [actionButton(`Alle annehmen (${openCount})`, `/api/admin/v1/sauna-bookings/requesters/${newest.requesterKey}/accept`, refresh, 'button', {
-            success: `${openCount} Sauna-Termine wurden angenommen.`,
-        })]
+        ? [acceptButton(
+            `Alle annehmen (${openCount})`,
+            `/api/admin/v1/sauna-bookings/requesters/${newest.requesterKey}/accept`,
+            refresh,
+            `${openCount} Termine von ${newest.firstName} ${newest.lastName}`,
+            `${openCount} Sauna-Termine wurden angenommen.`,
+        )]
         : [];
     const identity = bookingIdentity(newest, {withName: false});
 
@@ -810,7 +900,7 @@ const showSaunaDuties = async () => {
     };
     const bookingLine = (direction) => (booking) => element('small', {
         className: 'sauna-duty-booking',
-        text: `${direction}: ${booking.firstName} ${booking.lastName} · ${booking.personCount} ${booking.personCount === 1 ? 'Person' : 'Personen'} · ${booking.startTime}–${booking.endTime} Uhr${booking.status === 'open' ? ' · offen' : ''}`,
+        text: `${direction}: ${booking.firstName} ${booking.lastName} · ${booking.personCount} ${booking.personCount === 1 ? 'Person' : 'Personen'} · ${booking.startTime}–${booking.endTime} Uhr${booking.status === 'open' ? ' · offen' : ''}${booking.dutyRequired ? '' : ' · ohne Dienst'}`,
     });
     const renderPoint = (day, point, editable) => {
         const status = dutyPointStatus(point);
@@ -820,10 +910,10 @@ const showSaunaDuties = async () => {
         assign?.addEventListener('click', () => openSaunaDutyAssignDialog(day, point, refresh));
         // Bei „ganzer Tag ohne Dienst“ wird nur der Tagesvermerk zurückgenommen, nicht je Zeitpunkt.
         let waive = null;
+        // Ohne Vermerk, aber „kein Dienst nötig“ heißt: laut Anmeldung — umschalten dort, nicht hier.
         if (editable && point.state !== 'unscheduled' && !day.waiverId) {
-            waive = point.waiverId
-                ? waiverButton('Dienst wieder nötig', () => setWaiver(day, point, false))
-                : waiverButton('Kein Dienst nötig', () => setWaiver(day, point, true));
+            if (point.waiverId) waive = waiverButton('Dienst wieder nötig', () => setWaiver(day, point, false));
+            else if (!point.dutyWaived) waive = waiverButton('Kein Dienst nötig', () => setWaiver(day, point, true));
         }
 
         return element('article', {className: `sauna-duty-point ${status.className}`, children: [

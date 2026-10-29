@@ -10,6 +10,7 @@ import {renderGuestbook} from './public/guestbook.js';
 import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './public/site-chrome.js';
 import {renderMemberSelfServicePage} from './public/member-self-service.js';
 import {EMAIL_CONSENT_SLUG, renderEmailConsentPage} from './public/email-consent.js';
+import {renderSaunaApprovalPage, SAUNA_APPROVAL_SLUG} from './public/sauna-approval.js';
 
 const updateDocumentMetadata = (page) => {
     document.title = `${page.seoTitle || page.title} – Waldbad Borkheide`;
@@ -44,6 +45,7 @@ const preparePublicPage = async (slug) => {
 
     if (slug === MEMBER_ACCESS_SLUG) return () => renderMemberSelfServicePage(navigationTree);
     if (slug === EMAIL_CONSENT_SLUG) return () => renderEmailConsentPage(navigationTree);
+    if (slug === SAUNA_APPROVAL_SLUG) return () => renderSaunaApprovalPage(navigationTree);
 
     const page = await request('/api/public/v1/pages/' + encodePageSlug(slug));
     const publicContext = {visited: new Set([page.id]), pagesById: null, showEmbedErrors: false, isPreview: false};
@@ -79,6 +81,7 @@ const pageSlugFromUrl = (url) => {
     if (url.pathname === '/') return 'startseite';
     if (url.pathname === '/' + MEMBER_ACCESS_SLUG) return MEMBER_ACCESS_SLUG;
     if (url.pathname === '/' + EMAIL_CONSENT_SLUG) return EMAIL_CONSENT_SLUG;
+    if (url.pathname === '/' + SAUNA_APPROVAL_SLUG) return SAUNA_APPROVAL_SLUG;
     if (!url.pathname.startsWith('/seite/')) return null;
     try {
         return url.pathname.slice('/seite/'.length).split('/').map((segment) => decodeURIComponent(segment)).join('/') || null;

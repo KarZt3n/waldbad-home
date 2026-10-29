@@ -27,10 +27,11 @@ readonly class SaunaBookingAcceptance
 
     /**
      * @param non-empty-list<SaunaBooking> $bookings
+     * @param bool                         $dutyRequired siehe `SaunaBooking::$dutyRequired`
      *
      * @return non-empty-list<SaunaBooking>
      */
-    public function accept(array $bookings): array
+    public function accept(array $bookings, bool $dutyRequired = true): array
     {
         $problems = [];
         foreach ($bookings as $booking) {
@@ -46,7 +47,7 @@ readonly class SaunaBookingAcceptance
         }
 
         $now = $this->clock->now();
-        $saved = $this->manager->saveAll(array_map(static fn (SaunaBooking $booking): SaunaBooking => $booking->accept($now), $bookings));
+        $saved = $this->manager->saveAll(array_map(static fn (SaunaBooking $booking): SaunaBooking => $booking->accept($now, $dutyRequired), $bookings));
         if ($saved === []) {
             throw new \LogicException('Angenommene Sauna-Anmeldungen müssen gespeichert zurückgegeben werden.');
         }

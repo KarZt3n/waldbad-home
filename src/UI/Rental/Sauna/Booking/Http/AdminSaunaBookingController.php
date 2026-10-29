@@ -6,6 +6,7 @@ use App\Logic\Rental\Sauna\Booking\Query\ListSaunaBookingsQuery;
 use App\Logic\Rental\Sauna\Booking\UseCase\AcceptSaunaBookingUseCase;
 use App\Logic\Rental\Sauna\Booking\UseCase\AcceptSaunaRequesterBookingsUseCase;
 use App\Logic\Rental\Sauna\Booking\UseCase\CancelSaunaBookingUseCase;
+use App\Logic\Rental\Sauna\Booking\UseCase\ChangeSaunaBookingDutyUseCase;
 use App\Logic\Rental\Sauna\Booking\UseCase\RejectSaunaBookingUseCase;
 use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -28,21 +29,30 @@ final class AdminSaunaBookingController extends AbstractController
         return new JsonResponse($this->responseFactory->collection($query->execute()));
     }
 
+    /** Optional `{dutyRequired: false}`, wenn die Gäste ohne Sauna-Dienst kommen (Standard: Dienst nötig). */
     #[Route('/{id}/accept', name: 'api_admin_sauna_booking_accept', methods: ['POST'])]
-    public function accept(string $id, AcceptSaunaBookingUseCase $useCase): JsonResponse
+    public function accept(string $id, Request $request, AcceptSaunaBookingUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
 
-        return new JsonResponse($this->responseFactory->booking($useCase->execute($id)));
+        return new JsonResponse($this->responseFactory->booking($useCase->execute($id, $this->dutyRequired($request))));
     }
 
     /** „Alle annehmen“: alle offenen Anmeldungen einer anfragenden Person (`requesterKey` aus der Liste). */
     #[Route('/requesters/{requesterKey}/accept', name: 'api_admin_sauna_requester_accept', methods: ['POST'])]
-    public function acceptRequester(string $requesterKey, AcceptSaunaRequesterBookingsUseCase $useCase): JsonResponse
+    public function acceptRequester(string $requesterKey, Request $request, AcceptSaunaRequesterBookingsUseCase $useCase): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
 
-        return new JsonResponse($this->responseFactory->collection($useCase->execute($requesterKey)));
+        return new JsonResponse($this->responseFactory->collection($useCase->execute($requesterKey, $this->dutyRequired($request))));
+    }
+
+    #[Route('/{id}/duty', name: 'api_admin_sauna_booking_duty', methods: ['POST'])]
+    public function changeDuty(string $id, Request $request, ChangeSaunaBookingDutyUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
+
+        return new JsonResponse($this->responseFactory->booking($useCase->execute($id, $this->dutyRequired($request))));
     }
 
     /** Optional `{notify: false}`, um keine Stornobestätigung an die anfragende Person zu senden (Standard: senden). */
@@ -61,5 +71,10 @@ final class AdminSaunaBookingController extends AbstractController
         $this->denyAccessUnlessGranted(Permission::RentalSaunaEdit->value);
 
         return new JsonResponse($this->responseFactory->booking($useCase->execute($id)));
+    }
+
+    private function dutyRequired(Request $request): bool
+    {
+        return $request->getContent() === '' || $request->getPayload()->getBoolean('dutyRequired', true);
     }
 }

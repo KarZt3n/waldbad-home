@@ -14,7 +14,7 @@ readonly class SaunaDutyResponseFactory
     /**
      * @param list<SaunaDutyRosterDay> $days
      *
-     * @return array{days: list<array{date: string, closed: bool, closedReason: string, waiverId: string|null, points: list<array{time: string, state: string, kind: string, startingBookings: list<array<string, string|int>>, endingBookings: list<array<string, string|int>>, runningBookings: list<array<string, string|int>>, duties: list<array<string, string>>, waiverId: string|null, dutyWaived: bool}>}>}
+     * @return array{days: list<array{date: string, closed: bool, closedReason: string, waiverId: string|null, points: list<array{time: string, state: string, kind: string, startingBookings: list<array<string, string|int|bool>>, endingBookings: list<array<string, string|int|bool>>, runningBookings: list<array<string, string|int|bool>>, duties: list<array<string, string>>, waiverId: string|null, dutyWaived: bool}>}>}
      */
     public function roster(array $days): array
     {
@@ -75,7 +75,7 @@ readonly class SaunaDutyResponseFactory
         ], $candidates)];
     }
 
-    /** @return array<string, string|int> */
+    /** @return array<string, string|int|bool> */
     private static function booking(SaunaDutyBookingResponse $booking): array
     {
         return [
@@ -86,6 +86,7 @@ readonly class SaunaDutyResponseFactory
             'firstName' => $booking->firstName,
             'lastName' => $booking->lastName,
             'status' => $booking->status->value,
+            'dutyRequired' => $booking->dutyRequired,
         ];
     }
 }

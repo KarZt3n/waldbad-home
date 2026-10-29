@@ -63,7 +63,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
             self::MemberEmailConsentRequest => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald die Redaktion unter „Mitgliederverwaltung“ → Mitglied → Kontaktdaten die E-Mail-Einwilligung anfordert — der Erhalt von Vereinsinformationen per E-Mail gilt erst als zugestimmt, wenn der enthaltene Link angeklickt wird.',
             self::MemberEmailConsentOptOutRegret => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald es unter „Meine Mitgliedschaft“ die E-Mail-Einwilligung selbst abbestellt — enthält einen Link, um das rückgängig zu machen, falls es ein Versehen war.',
-            self::SaunaBookingSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über den Sauna-Kalender eine Anmeldung eingeht.',
+            self::SaunaBookingSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über den Sauna-Kalender eine Anmeldung eingeht. {{link}} und {{ablehnen_link}} führen zu einer Seite, auf der alle offenen Termine der Anfrage ohne Anmeldung angenommen bzw. abgelehnt werden können (14 Tage gültig, einmal verwendbar) — die Mail daher nicht weiterleiten. {{uebersicht_link}} öffnet die Anmeldungen in der Redaktion.',
             self::SaunaBookingAccepted => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ eine Sauna-Anfrage annimmt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds. Bei „Alle annehmen“ stehen alle angenommenen Termine der Person in einer Mail, sonst je angenommenem Termin eine eigene Mail.',
             self::SaunaBookingCancelled => 'Geht an die anfragende Person, sobald die Redaktion unter „Vermietung“ → „Sauna“ → „Anmeldungen“ einen angenommenen Termin storniert und dabei „Stornobestätigung senden“ angehakt lässt — an die in der Anfrage angegebene E-Mail-Adresse, sonst an die des zugeordneten Mitglieds.',
             self::EventHelpRequestSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Ich möchte helfen!“ eine Helferanmeldung zu einer Veranstaltung oder einem Arbeitseinsatz eingeht — eine Mail je Anmeldung, mitgebrachte Personen eingeschlossen.',
@@ -86,7 +86,7 @@ enum MailTemplateKey: string
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
             self::MemberEmailConsentRequest => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
             self::MemberEmailConsentOptOutRegret => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
-            self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'termine', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht'],
+            self::SaunaBookingSubmittedNotification => ['vorname', 'nachname', 'datum', 'uhrzeit', 'anfrageart', 'termine', 'personenzahl', 'preis', 'email', 'mitglied', 'nachricht', 'link', 'ablehnen_link', 'uebersicht_link'],
             self::SaunaBookingAccepted => ['vorname', 'nachname', 'datum', 'termine', 'preis', 'nachricht', 'vereinsname'],
             self::SaunaBookingCancelled => ['vorname', 'nachname', 'datum', 'termin', 'vereinsname'],
             self::EventHelpRequestSubmittedNotification => ['vorname', 'nachname', 'veranstaltung', 'datum', 'uhrzeit', 'personen', 'personenzahl', 'aktivitaeten', 'email', 'mitglied', 'nachricht', 'link'],
@@ -146,7 +146,7 @@ enum MailTemplateKey: string
 
                 hier ist dein Anmeldelink für die Redaktion im {{vereinsname}}:
 
-                {{link}}
+                [[In der Redaktion anmelden|{{link}}]]
 
                 Der Link ist {{gueltig_minuten}} Minuten gültig und kann nur einmal verwendet werden. Danach kannst du auf der Anmeldeseite einfach einen neuen Link anfordern.
 
@@ -160,9 +160,9 @@ enum MailTemplateKey: string
 
                 hier ist dein Zugang zu „Meine Mitgliedschaft" im {{vereinsname}}:
 
-                {{link}}
+                [[Meine Mitgliedschaft öffnen|{{link}}]]
 
-                Dein Passwort dazu: {{passwort}}
+                **Dein Passwort dazu: {{passwort}}**
 
                 Der Link ist {{gueltig_minuten}} Minuten gültig. Danach kannst du auf der Seite „Meine Mitgliedschaft" einfach einen neuen Zugang anfordern.
 
@@ -225,7 +225,11 @@ enum MailTemplateKey: string
 
                 Nachricht: {{nachricht}}
 
-                Bitte im Admin-Bereich unter „Vermietung“ → „Sauna“ → „Anmeldungen“ annehmen oder ablehnen.
+                [[Sauna-Anfrage annehmen|{{link}}]]
+                [[Ablehnen|{{ablehnen_link}}]]
+                [[Alle Anfragen ansehen|{{uebersicht_link}}]]
+
+                Annehmen und Ablehnen gehen ohne Anmeldung (beim Annehmen wird noch gefragt, ob ein Sauna-Dienst nötig ist). Die Links sind 14 Tage gültig, gelten für alle offenen Termine der Anfrage und können einmal benutzt werden — bitte die Mail daher nicht weiterleiten. Einzelne Termine lassen sich in der Übersicht bearbeiten.
                 TEXT,
             self::SaunaBookingAccepted => <<<'TEXT'
                 Hallo {{vorname}} {{nachname}},
@@ -365,6 +369,9 @@ enum MailTemplateKey: string
                 'email' => 'erika@example.com',
                 'mitglied' => 'Bad-01234',
                 'nachricht' => 'Wir bringen eigene Handtücher mit.',
+                'link' => 'https://waldbad-borkheide.de/sauna-anfrage?token=beispiel-token',
+                'ablehnen_link' => 'https://waldbad-borkheide.de/sauna-anfrage?token=beispiel-token&aktion=ablehnen',
+                'uebersicht_link' => 'https://waldbad-borkheide.de/admin/vermietung/sauna/anmeldungen',
             ],
             self::SaunaBookingAccepted => [
                 'vorname' => 'Erika',
