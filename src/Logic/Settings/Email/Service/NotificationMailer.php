@@ -6,6 +6,7 @@ use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Model\NotificationEvent;
+use App\Logic\Settings\MailTemplate\Model\EmailLogo;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
@@ -39,7 +40,7 @@ use Symfony\Component\Mime\Email;
  *
  * Jede Mail geht multipart raus: der reine Vorlagentext (`Email::text()`, als Fallback für Mail-
  * Programme ohne HTML-Unterstützung) sowie derselbe Text gestaltet im Design des Vereins
- * (`Email::html()`, siehe `BrandedEmailLayout`).
+ * (`Email::html()`, siehe `BrandedEmailLayout`), das Logo als eingebettetes Bild (siehe `EmailLogo`).
  */
 readonly class NotificationMailer
 {
@@ -84,7 +85,8 @@ readonly class NotificationMailer
     {
         try {
             $rendered = $this->templateRenderer->render($templateKey, $placeholders);
-            $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), AssociationName::CURRENT);
+            $logo = $this->logoProvider->getLogo();
+            $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $logo?->embeddedSource(), AssociationName::CURRENT);
             $sender = new Address($this->fromAddress, $this->fromName ?? '');
             $email = (new Email())
                 ->from($sender)
@@ -94,6 +96,9 @@ readonly class NotificationMailer
                 ->subject($rendered['subject'])
                 ->text($rendered['body'])
                 ->html($html);
+            if ($logo !== null) {
+                $email->embed($logo->contents, EmailLogo::CONTENT_ID, $logo->mimeType);
+            }
             foreach ($recipients as $recipient) {
                 $email->addTo($recipient);
             }

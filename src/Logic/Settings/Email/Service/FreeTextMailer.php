@@ -3,6 +3,7 @@
 namespace App\Logic\Settings\Email\Service;
 
 use App\Logic\Settings\Email\Model\AssociationName;
+use App\Logic\Settings\MailTemplate\Model\EmailLogo;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 use App\Logic\Settings\MailTemplate\Service\MailContentRenderer;
@@ -30,21 +31,26 @@ readonly class FreeTextMailer
 
     public function send(string $recipient, string $subject, string $body): void
     {
+        $logo = $this->logoProvider->getLogo();
         $html = $this->layout->wrap(
             $subject,
             $this->contentRenderer->toHtmlFragment($body),
-            $this->logoProvider->getLogoDataUri(),
+            $logo?->embeddedSource(),
             AssociationName::CURRENT,
         );
 
         $sender = new Address($this->fromAddress, $this->fromName ?? '');
-        $this->mailer->send((new Email())
+        $email = (new Email())
             ->from($sender)
             // Siehe NotificationMailer: Antworten gehen an den Verein, auch wenn der Versanddienst den Absender ersetzt.
             ->replyTo($sender)
             ->to($recipient)
             ->subject($subject)
             ->text($body)
-            ->html($html));
+            ->html($html);
+        if ($logo !== null) {
+            $email->embed($logo->contents, EmailLogo::CONTENT_ID, $logo->mimeType);
+        }
+        $this->mailer->send($email);
     }
 }

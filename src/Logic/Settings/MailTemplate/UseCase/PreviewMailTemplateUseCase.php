@@ -28,7 +28,7 @@ readonly class PreviewMailTemplateUseCase
     public function execute(MailTemplateKey $key, string $subject, string $body, ?string $signatureId): MailTemplatePreview
     {
         $rendered = $this->renderer->renderText($subject, $body, $key->samplePlaceholders(), $signatureId);
-        $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogoDataUri(), AssociationName::CURRENT);
+        $html = $this->layout->wrap($rendered['subject'], $rendered['html'], $this->logoProvider->getLogo()?->dataUri(), AssociationName::CURRENT);
 
         return new MailTemplatePreview($rendered['subject'], $rendered['body'], $html);
     }

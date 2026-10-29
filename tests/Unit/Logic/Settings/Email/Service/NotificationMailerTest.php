@@ -9,6 +9,7 @@ use App\Logic\Settings\Email\Model\NotificationEvent;
 use App\Logic\Settings\Email\Service\NotificationMailer;
 use App\Logic\Settings\MailSignature\Manager\MailSignatureManagerInterface;
 use App\Logic\Settings\MailTemplate\Manager\MailTemplateManagerInterface;
+use App\Logic\Settings\MailTemplate\Model\EmailLogo;
 use App\Logic\Settings\MailTemplate\Model\MailTemplate;
 use App\Logic\Settings\MailTemplate\Model\MailTemplateKey;
 use App\Logic\Settings\MailTemplate\Service\BrandedEmailLayout;
@@ -100,18 +101,45 @@ final class NotificationMailerTest extends TestCase
             ->sendTo('admin@example.test', MailTemplateKey::AdminLoginMagicLink, ['link' => 'https://example.test'], MailDelivery::Express);
     }
 
+    /** Gmail und andere Webmailer entfernen `data:`-Bilder; das Logo muss als eingebettetes Bild (CID) mitgehen. */
+    public function testEmbedsTheLogoAsInlineImageReferencedByContentId(): void
+    {
+        $manager = $this->createStub(EmailSettingsManagerInterface::class);
+        $manager->method('get')->willReturn(new EmailSettings([]));
+        $logo = $this->createStub(EmailLogoProviderInterface::class);
+        $logo->method('getLogo')->willReturn(new EmailLogo('PNG-DATA', 'image/png'));
+        $sent = null;
+        $mailer = $this->createMock(MailerInterface::class);
+        $mailer->expects(self::once())->method('send')->willReturnCallback(static function (Email $email) use (&$sent): void {
+            $sent = $email;
+        });
+
+        $this->mailerFor($manager, $mailer, logoProvider: $logo)
+            ->sendTo('applicant@example.test', MailTemplateKey::MembershipApplicationApproved, ['vorname' => 'Erika']);
+
+        self::assertInstanceOf(Email::class, $sent);
+        $html = (string) $sent->getHtmlBody();
+        self::assertStringContainsString('src="cid:logo"', $html);
+        self::assertStringNotContainsString('data:', $html);
+        $attachments = $sent->getAttachments();
+        self::assertCount(1, $attachments);
+        self::assertSame('image/png', $attachments[0]->getMediaType().'/'.$attachments[0]->getMediaSubtype());
+        self::assertStringContainsString('cid:'.$attachments[0]->getContentId(), quoted_printable_decode($sent->toString()));
+    }
+
     private function mailerFor(
         EmailSettingsManagerInterface $manager,
         MailerInterface $mailer,
         ?MailTemplateRenderer $renderer = null,
         ?LoggerInterface $logger = null,
+        ?EmailLogoProviderInterface $logoProvider = null,
     ): NotificationMailer {
         return new NotificationMailer(
             $mailer,
             $manager,
             $renderer ?? $this->renderer(),
             new BrandedEmailLayout(),
-            $this->logoProvider(),
+            $logoProvider ?? $this->logoProvider(),
             $logger ?? new NullLogger(),
             'from@example.test',
             'Verein',
@@ -138,7 +166,7 @@ final class NotificationMailerTest extends TestCase
     private function logoProvider(): EmailLogoProviderInterface
     {
         $provider = $this->createStub(EmailLogoProviderInterface::class);
-        $provider->method('getLogoDataUri')->willReturn(null);
+        $provider->method('getLogo')->willReturn(null);
 
         return $provider;
     }

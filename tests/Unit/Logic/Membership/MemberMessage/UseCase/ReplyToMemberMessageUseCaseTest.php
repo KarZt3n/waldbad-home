@@ -50,7 +50,7 @@ final class ReplyToMemberMessageUseCaseTest extends TestCase
     private function useCase(MemberMessageManagerInterface $manager, MailerInterface $mailer): ReplyToMemberMessageUseCase
     {
         $logo = $this->createStub(EmailLogoProviderInterface::class);
-        $logo->method('getLogoDataUri')->willReturn(null);
+        $logo->method('getLogo')->willReturn(null);
 
         return new ReplyToMemberMessageUseCase(
             $manager,

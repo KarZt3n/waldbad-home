@@ -9,8 +9,8 @@ namespace App\Logic\Settings\MailTemplate\Service;
  * inline gesetzte Styles, da HTML-Mails (insb. Outlook) modernes CSS größtenteils ignorieren; eine
  * Breite von 600px ist der verbreitete Kompromiss zwischen Desktop- und Mobil-Postfächern.
  *
- * Reine, von außen konfigurierbare Funktion ohne eigenen Dateizugriff — das Logo (bereits als
- * `data:`-URI) kommt über `EmailLogoProviderInterface` von außen, siehe `NotificationMailer`.
+ * Reine, von außen konfigurierbare Funktion ohne eigenen Dateizugriff — die Bildquelle des Logos
+ * (beim Versand `cid:`, in der Vorschau `data:`, siehe `EmailLogo`) kommt von außen, siehe `NotificationMailer`.
  */
 readonly class BrandedEmailLayout
 {
@@ -24,14 +24,14 @@ readonly class BrandedEmailLayout
     private const string LINE = '#dce5df';
     private const string FONT_STACK = "'Segoe UI', Helvetica, Arial, sans-serif";
 
-    public function wrap(string $subject, string $bodyHtmlFragment, ?string $logoDataUri, string $associationName): string
+    public function wrap(string $subject, string $bodyHtmlFragment, ?string $logoSource, string $associationName): string
     {
         $escapedSubject = htmlspecialchars($subject, ENT_QUOTES, 'UTF-8');
         $escapedAssociationName = htmlspecialchars($associationName, ENT_QUOTES, 'UTF-8');
-        $logoHtml = $logoDataUri !== null
+        $logoHtml = $logoSource !== null
             ? sprintf(
                 '<img src="%s" alt="%s" width="120" style="display:block;border:0;outline:none;max-width:120px;height:auto;">',
-                htmlspecialchars($logoDataUri, ENT_QUOTES, 'UTF-8'),
+                htmlspecialchars($logoSource, ENT_QUOTES, 'UTF-8'),
                 $escapedAssociationName,
             )
             : sprintf(

@@ -2,14 +2,15 @@
 
 namespace App\Data\Settings\MailTemplate;
 
+use App\Logic\Settings\MailTemplate\Model\EmailLogo;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 
 /**
  * Liest das für den Mailversand vorgesehene, bereits auf E-Mail-taugliche Größe verkleinerte
  * Vereinslogo (`public/downloads/waldbad-borkheide-logo-email.png`, separat von den größeren
- * Logo-Dateien für Web/Druck) einmalig ein und hält es als `data:`-URI im Speicher. Fehlt die
- * Datei (z. B. in einer minimalen Testumgebung), wird das nicht als Fehler behandelt — die Mail
- * wird dann eben ohne Logo verschickt.
+ * Logo-Dateien für Web/Druck) einmalig ein und hält es im Speicher. Fehlt die Datei (z. B. in einer
+ * minimalen Testumgebung), wird das nicht als Fehler behandelt — die Mail wird dann eben ohne Logo
+ * verschickt.
  */
 final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
 {
@@ -22,27 +23,26 @@ final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
     ];
 
     private bool $resolved = false;
-    private ?string $dataUri = null;
+    private ?EmailLogo $logo = null;
 
     public function __construct(private readonly string $logoPath)
     {
     }
 
-    public function getLogoDataUri(): ?string
+    public function getLogo(): ?EmailLogo
     {
         if ($this->resolved) {
-            return $this->dataUri;
+            return $this->logo;
         }
         $this->resolved = true;
 
         $contents = @file_get_contents($this->logoPath);
         if ($contents === false) {
-            return $this->dataUri = null;
+            return $this->logo = null;
         }
 
         $extension = strtolower(pathinfo($this->logoPath, PATHINFO_EXTENSION));
-        $mimeType = self::MIME_TYPES_BY_EXTENSION[$extension] ?? 'application/octet-stream';
 
-        return $this->dataUri = sprintf('data:%s;base64,%s', $mimeType, base64_encode($contents));
+        return $this->logo = new EmailLogo($contents, self::MIME_TYPES_BY_EXTENSION[$extension] ?? 'application/octet-stream');
     }
 }

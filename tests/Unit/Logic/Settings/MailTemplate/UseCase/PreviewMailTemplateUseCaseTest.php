@@ -80,7 +80,7 @@ final class PreviewMailTemplateUseCaseTest extends TestCase
     private function noLogo(): EmailLogoProviderInterface
     {
         $provider = $this->createStub(EmailLogoProviderInterface::class);
-        $provider->method('getLogoDataUri')->willReturn(null);
+        $provider->method('getLogo')->willReturn(null);
 
         return $provider;
     }
