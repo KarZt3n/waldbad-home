@@ -91,6 +91,8 @@ printf 'Bereite Release %s vor.\n' "$release_name"
 
 # Sicherung vor den Migrationen. Die Zugangsdaten gehen über eine temporäre Optionsdatei an
 # mysqldump, damit das Passwort nicht in der Prozessliste steht.
+printf 'Erstelle datenbanksicherung:'
+
 mysql_options="$(mktemp)"
 trap 'rm -f "$mysql_options"' EXIT
 chmod 0600 "$mysql_options"
@@ -117,6 +119,8 @@ mysqldump --defaults-extra-file="$mysql_options" --single-transaction --no-table
 chmod 0600 "$backup_file"
 rm -f "$mysql_options"
 printf 'Datenbank gesichert: %s\n' "$backup_file"
+
+printf 'Migration der DB-Scripte:'
 
 "$php" bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 "$php" bin/console app:media:synchronize-metadata --no-interaction
