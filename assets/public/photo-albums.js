@@ -5,15 +5,18 @@
 import {element, pageHref, request} from '../core.js';
 
 const OPEN_YEARS = 2;
+const formatAlbumDate = (isoDate) => new Date(isoDate + 'T00:00:00').toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
 
 const renderAction = (action) => {
-    const link = element('a', {className: 'secondary-button photo-album-action', text: action.label});
+    const link = element('a', {className: 'secondary-button photo-album-action', children: [element('span', {text: action.label})]});
     const setHref = (href) => {
         link.href = href;
         link.hidden = false;
         if (/^https?:\/\//i.test(href)) {
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
+            // Nur im Aktionsmenü auf schmalen Bildschirmen sichtbar (siehe CSS).
+            link.append(element('span', {className: 'photo-album-action-external', text: '↗', attributes: {'aria-hidden': 'true'}}));
         }
     };
     if (action.url) {
@@ -28,9 +31,44 @@ const renderAction = (action) => {
     return link;
 };
 
+// Auf schmalen Bildschirmen stehen die Buttons nicht neben dem Titel, sondern in einem Aktionsmenü
+// hinter einem „⋮“-Button rechts (siehe CSS); auf breiten Bildschirmen ist der Button ausgeblendet.
+const renderActions = (album) => {
+    const actions = element('span', {className: 'photo-album-actions', children: album.actions.map(renderAction)});
+    const toggle = element('button', {
+        className: 'photo-album-menu-toggle',
+        attributes: {type: 'button', 'aria-expanded': 'false', 'aria-label': `Aktionen zu „${album.title}“ anzeigen`},
+        children: [0, 1, 2].map(() => element('span', {className: 'photo-album-menu-dot'})),
+    });
+    const menu = element('span', {className: 'photo-album-menu', children: [toggle, actions]});
+    const setOpen = (open) => {
+        menu.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+    };
+    const closeOnOutsideClick = (event) => {
+        if (!menu.contains(event.target)) setOpen(false);
+        else document.addEventListener('click', closeOnOutsideClick, {once: true});
+    };
+    toggle.addEventListener('click', () => {
+        const open = !menu.classList.contains('open');
+        setOpen(open);
+        if (open) setTimeout(() => document.addEventListener('click', closeOnOutsideClick, {once: true}));
+    });
+    menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || !menu.classList.contains('open')) return;
+        setOpen(false);
+        toggle.focus();
+    });
+
+    return menu;
+};
+
 const renderAlbum = (album) => element('li', {className: 'photo-album', children: [
-    element('span', {className: 'photo-album-title', text: album.title}),
-    ...(album.actions.length ? [element('span', {className: 'photo-album-actions', children: album.actions.map(renderAction)})] : []),
+    element('span', {className: 'photo-album-heading', children: [
+        element('span', {className: 'photo-album-title', text: album.title}),
+        element('span', {className: 'photo-album-date', text: formatAlbumDate(album.date)}),
+    ]}),
+    ...(album.actions.length ? [renderActions(album)] : []),
 ]});
 
 const renderPhotoAlbumsExtension = (preview = false) => {

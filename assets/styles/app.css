@@ -2258,12 +2258,81 @@ dialog:modal {
 .photo-album-year-count { color: var(--muted); font-size: .9rem; }
 .photo-album-list { display: grid; margin: 0; padding: 0 1.2rem 1rem; list-style: none; }
 .photo-album { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; padding: .7rem 0; border-top: 1px solid var(--line); }
-.photo-album-title { flex: 1 1 18rem; color: #33463b; line-height: 1.5; }
+.photo-album-heading { display: grid; flex: 1 1 18rem; gap: .1rem; min-width: 0; }
+.photo-album-title { color: #33463b; line-height: 1.5; }
+.photo-album-date { color: var(--muted); font-size: .85rem; }
+.photo-album-menu { position: relative; display: flex; }
+.photo-album-menu-toggle { display: none; }
+.photo-album-action-external { display: none; }
 /* Erster Aktionsbutton (meist „Öffnen“) steht ganz rechts, jeder weitere links daneben. Nur optisch
    umgekehrt — in DOM- und Tabulatorreihenfolge bleibt der erste Button der erste. */
 .photo-album-actions { display: flex; flex-direction: row-reverse; flex-wrap: wrap; gap: .5rem; }
 .photo-album-action { margin-top: 0; padding: .4rem .9rem; font-size: .9rem; }
 .photo-album-action[hidden] { display: none; }
+@media (max-width: 640px) {
+    .photo-album { flex-wrap: nowrap; }
+    .photo-album-heading { flex-basis: auto; }
+    .photo-album-menu-toggle {
+        display: grid;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 auto;
+        place-content: center;
+        gap: .2rem;
+        margin-right: -.5rem;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        color: var(--forest-700);
+        background: transparent;
+        cursor: pointer;
+        transition: background-color .15s ease;
+    }
+    .photo-album-menu-dot { display: block; width: .3rem; height: .3rem; border-radius: 50%; background: currentColor; }
+    .photo-album-menu-toggle:hover,
+    .photo-album-menu.open .photo-album-menu-toggle { background: var(--forest-100); }
+    .photo-album-menu .photo-album-actions {
+        position: absolute;
+        z-index: 5;
+        top: calc(100% + .25rem);
+        right: -.25rem;
+        display: flex;
+        min-width: 12rem;
+        flex-direction: column;
+        gap: .15rem;
+        padding: .35rem;
+        border: 1px solid var(--line);
+        border-radius: .85rem;
+        background: var(--white);
+        box-shadow: 0 16px 40px rgb(16 40 28 / .16), 0 2px 6px rgb(16 40 28 / .08);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-.35rem) scale(.97);
+        transform-origin: top right;
+        transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+    }
+    .photo-album-menu.open .photo-album-actions { opacity: 1; visibility: visible; transform: none; transition: opacity .15s ease, transform .15s ease; }
+    .photo-album-menu .photo-album-action {
+        justify-content: space-between;
+        gap: 1rem;
+        width: 100%;
+        min-height: 2.75rem;
+        padding: .6rem .8rem;
+        border: 0;
+        border-radius: .55rem;
+        color: var(--forest-900);
+        background: transparent;
+        font-size: .95rem;
+        font-weight: 650;
+        text-align: left;
+    }
+    .photo-album-menu .photo-album-action:hover,
+    .photo-album-menu .photo-album-action:focus-visible { color: var(--forest-900); background: var(--forest-100); }
+    .photo-album-menu .photo-album-action-external { display: inline; color: var(--muted); font-weight: 400; }
+}
+@media (max-width: 640px) and (prefers-reduced-motion: reduce) {
+    .photo-album-menu .photo-album-actions, .photo-album-menu.open .photo-album-actions { transform: none; transition: none; }
+}
 
 /* Sauna-Dienstplan (siehe `showSaunaDuties` in admin/rental.js): gebuchte Einlässe rot (Dienst fehlt) bzw. grün (besetzt). */
 .sauna-duty { display: grid; gap: 1rem; }
