@@ -81,7 +81,7 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
                         className: 'brand-logo',
                         attributes: {
                             // Unter „Seiten“ → „Logo“ gepflegt, vom Server in die Seite geschrieben (siehe `FrontendController`).
-                            src: app.dataset.logoUrl || '/downloads/waldbad-borkheide-logo.svg',
+                            src: app.dataset.logoUrl || '/downloads/waldbad-borkheide-logo.png',
                             alt: '',
                             width: '96',
                             height: '72',
