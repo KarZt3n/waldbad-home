@@ -3,7 +3,7 @@
 // „Meine Mitgliedschaft“-Ansicht (`member-self-service.js`), daher als eigenes Modul statt in einem
 // der beiden, um einen gegenseitigen Import zu vermeiden.
 
-import {element, pageHref, request, treeContainsSlug} from '../core.js';
+import {app, element, pageHref, request, treeContainsSlug} from '../core.js';
 
 // Fester Slug der eigenständigen Route `/meine-mitgliedschaft` (siehe `FrontendController`) — keine
 // CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `preparePublicPage`,
@@ -80,7 +80,8 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
                     element('img', {
                         className: 'brand-logo',
                         attributes: {
-                            src: '/downloads/waldbad-borkheide-logo.svg',
+                            // Unter „Seiten“ → „Logo“ gepflegt, vom Server in die Seite geschrieben (siehe `FrontendController`).
+                            src: app.dataset.logoUrl || '/downloads/waldbad-borkheide-logo.svg',
                             alt: '',
                             width: '96',
                             height: '72',

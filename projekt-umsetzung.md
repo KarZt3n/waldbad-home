@@ -118,6 +118,7 @@ Sie benötigen insbesondere schnell auffindbare Informationen zu aktuellem Statu
 - sprechende, dauerhafte URLs
 - Social-Media- und Suchmaschinen-Metadaten pro Seite
 - Social-Media-Leiste am rechten Bildschirmrand aller öffentlichen Seiten; unter „Seiten“ → „Social Media“ pflegbar (Anzeige ein/aus, Plattformen wie Instagram und Facebook mit Link und Reihenfolge, jede Plattform höchstens einmal). Änderungen sind ohne Freigabe sofort online und daher Redakteuren mit Veröffentlichungsrecht für alle Seiten vorbehalten
+- Logo in der Kopfzeile unter „Seiten“ → „Logo“ pflegbar (Datei aus der Mediathek oder Upload, leer = mitgeliefertes Standardlogo); nur Dateien der eigenen Website, gleiche Berechtigung wie die Social-Media-Leiste
 - Cookie- und Einwilligungsverwaltung für optionale Dienste
 - zugängliche Darstellung auf Smartphone, Tablet und Desktop
 

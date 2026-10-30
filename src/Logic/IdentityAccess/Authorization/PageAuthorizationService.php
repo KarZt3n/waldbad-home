@@ -106,6 +106,14 @@ readonly class PageAuthorizationService
         }
     }
 
+    /** Das Logo erscheint ebenso ohne Freigabe sofort auf allen Seiten. */
+    public function assertCanEditBranding(PageAuthorizationContext $context): void
+    {
+        if (!$this->canEditExtensionTexts($context)) {
+            throw new AccessDeniedException('Das Logo dürfen nur Redakteure mit Veröffentlichungsrecht für alle Seiten ändern.');
+        }
+    }
+
     private function pageRole(PageAuthorizationContext $context, string $pageId): ?PageAccessRole
     {
         foreach ($context->pageAccess ?? [] as $access) {

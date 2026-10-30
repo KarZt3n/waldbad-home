@@ -5,7 +5,7 @@
 {% block importmap %}{{ importmap('public') }}{% endblock %}
 
 {% block body %}
-    <div id="app" data-app="public" data-page-slug="{{ slug }}">
+    <div id="app" data-app="public" data-page-slug="{{ slug }}" data-logo-url="{{ logoUrl }}">
         <p class="app-loading" role="status">Inhalte werden geladen …</p>
     </div>
 {% endblock %}

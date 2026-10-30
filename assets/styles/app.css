@@ -90,6 +90,9 @@ a { color: var(--forest-700); }
 .brand-logo {
     width: clamp(4.2rem, 6vw, 6rem);
     height: auto;
+    /* Ein unter „Seiten“ → „Logo“ gewähltes Hochformat-Logo darf die Kopfzeile nicht aufblähen. */
+    max-height: 4.5rem;
+    object-fit: contain;
     flex: 0 0 auto;
     filter: drop-shadow(0 .2rem .45rem rgb(0 0 0 / 18%));
 }
@@ -722,6 +725,13 @@ a { color: var(--forest-700); }
 .social-media-link-row .field { flex: 1; min-width: 0; margin: 0; }
 .social-media-link-actions { display: flex; gap: .35rem; }
 .social-media-add { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+
+/* Admin „Seiten“ → „Logo“: Vorschau auf dem Kopfzeilen-Hintergrund */
+.site-branding-preview { display: flex; align-items: center; gap: .8rem; width: fit-content; margin-bottom: 1rem; padding: 1rem 1.25rem; border-radius: .8rem; color: var(--white); background: var(--forest-950); }
+.site-branding-preview img { width: 6rem; height: auto; max-height: 6rem; object-fit: contain; }
+.site-branding-preview strong, .site-branding-preview small { display: block; }
+.site-branding-preview small { color: var(--lime-400); }
+.site-branding-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: 1rem 0; }
 
 .error-state, .login-shell {
     display: grid;

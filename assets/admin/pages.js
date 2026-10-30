@@ -9,6 +9,7 @@ import {renderContentCard} from '../content-rendering.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 import {renderPageExtensions} from './page-extensions.js';
 import {renderSocialMedia} from './social-media.js';
+import {renderSiteBranding} from './site-branding.js';
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
@@ -1759,12 +1760,13 @@ const renderPages = async (creating = null) => {
     ]);
 };
 
-// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen und Social Media gelten seitenübergreifend.
+// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen, Social Media und Logo gelten seitenübergreifend.
 const pagesTabs = () => [
     ['pages', 'Seiten', ['seiten'], () => renderPages()],
     ...(isPageAccessRestricted() ? [] : [
         ['extensions', 'Erweiterungen', ['seiten', 'erweiterungen'], () => showPageExtensions()],
         ['social-media', 'Social Media', ['seiten', 'social-media'], () => showSocialMedia()],
+        ['logo', 'Logo', ['seiten', 'logo'], () => showSiteBranding()],
     ]),
 ];
 
@@ -1801,6 +1803,10 @@ const showSocialMedia = async () => {
     mountPagesTab('social-media', await renderSocialMedia(showSocialMedia));
 };
 
+const showSiteBranding = async () => {
+    mountPagesTab('logo', await renderSiteBranding(showSiteBranding, {openMediaFilePicker}));
+};
+
 const showPages = async (segments = []) => {
     if (segments[0] === 'seiten' && segments[1] === 'erweiterungen' && !isPageAccessRestricted()) {
         await showPageExtensions(segments[2] || null);
@@ -1808,6 +1814,10 @@ const showPages = async (segments = []) => {
     }
     if (segments[0] === 'seiten' && segments[1] === 'social-media' && !isPageAccessRestricted()) {
         await showSocialMedia();
+        return;
+    }
+    if (segments[0] === 'seiten' && segments[1] === 'logo' && !isPageAccessRestricted()) {
+        await showSiteBranding();
         return;
     }
     selectedPageId = segments[0] === 'seiten' ? segments[1] || null : null;
