@@ -3,7 +3,7 @@
 // „Meine Mitgliedschaft“-Ansicht (`member-self-service.js`), daher als eigenes Modul statt in einem
 // der beiden, um einen gegenseitigen Import zu vermeiden.
 
-import {element, pageHref, treeContainsSlug} from '../core.js';
+import {element, pageHref, request, treeContainsSlug} from '../core.js';
 
 // Fester Slug der eigenständigen Route `/meine-mitgliedschaft` (siehe `FrontendController`) — keine
 // CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `preparePublicPage`,
@@ -119,6 +119,44 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
 
     return header;
 };
+// Icons der Social-Media-Leiste je `SocialPlatform` (Backend); Plattformen ohne Icon werden nicht angezeigt.
+const SOCIAL_MEDIA_ICONS = {
+    instagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r=".6" fill="currentColor"></circle></svg>',
+    facebook: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 8.6c0-.4.3-.6.6-.6H17V4h-3c-2.8 0-4 1.8-4 4.3V10H7.5v4H10v8h4v-8h2.6l.6-4H14z"></path></svg>',
+    youtube: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.6 7.2a2.6 2.6 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.6 2.6 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.8a2.6 2.6 0 0 0 1.8 1.8c1.6.4 7.8.4 7.8.4s6.2 0 7.8-.4a2.6 2.6 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15.1V8.9l5.2 3.1z"></path></svg>',
+    tiktok: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.6 3c.4 2.2 1.8 3.7 4 4v3.3a7.6 7.6 0 0 1-4-1.3v6.3A6.3 6.3 0 1 1 10.3 9v3.4a3 3 0 1 0 2.9 2.9V3z"></path></svg>',
+    whatsapp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.7-4.6A8.6 8.6 0 1 1 8 19.6z"></path><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 .9a5 5 0 0 1-2.8-2.8l.9-1-1-2z"></path></svg>',
+};
+// Wie die Navigation ändert sich die Leiste während eines Besuchs praktisch nie und wird nur einmal geladen.
+let socialMediaRequest = null;
+const loadSocialMediaLinks = () => {
+    socialMediaRequest ??= request('/api/public/v1/social-media')
+        .then((data) => data.items.filter((link) => SOCIAL_MEDIA_ICONS[link.platform]))
+        .catch(() => {
+            socialMediaRequest = null;
+            return [];
+        });
+
+    return socialMediaRequest;
+};
+/**
+ * Feste Leiste am rechten Bildschirmrand mit den unter „Seiten“ → „Social Media“ gepflegten Links.
+ * Wird nachgeladen, damit sie den Seitenaufbau nicht verzögert; ohne Links bleibt sie leer und unsichtbar.
+ */
+const buildSocialMediaBar = () => {
+    const bar = element('aside', {className: 'social-button-cont', attributes: {'aria-label': 'Social Media'}});
+    loadSocialMediaLinks().then((links) => bar.replaceChildren(...links.map((link) => {
+        const anchor = element('a', {
+            className: `social-button social-button-${link.platform}`,
+            attributes: {href: link.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${link.label} (öffnet in neuem Tab)`, title: link.label},
+        });
+        anchor.innerHTML = SOCIAL_MEDIA_ICONS[link.platform];
+
+        return anchor;
+    })));
+
+    return bar;
+};
 const buildSiteFooter = () => element('footer', {
     className: 'site-footer',
     children: [
@@ -130,6 +168,7 @@ const buildSiteFooter = () => element('footer', {
             element('a', {text: 'Unterstützer', attributes: {href: '/seite/unterstuetzer'}}),
             element('a', {text: 'Redaktion', attributes: {href: '/admin'}}),
         ]}),
+        buildSocialMediaBar(),
     ],
 });
 /**

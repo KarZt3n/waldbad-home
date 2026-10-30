@@ -98,6 +98,14 @@ readonly class PageAuthorizationService
         }
     }
 
+    /** Die Social-Media-Leiste erscheint wie die Erweiterungstexte ohne Freigabe sofort auf allen Seiten. */
+    public function assertCanEditSocialMedia(PageAuthorizationContext $context): void
+    {
+        if (!$this->canEditExtensionTexts($context)) {
+            throw new AccessDeniedException('Die Social-Media-Links dürfen nur Redakteure mit Veröffentlichungsrecht für alle Seiten ändern.');
+        }
+    }
+
     private function pageRole(PageAuthorizationContext $context, string $pageId): ?PageAccessRole
     {
         foreach ($context->pageAccess ?? [] as $access) {

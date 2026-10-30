@@ -245,7 +245,8 @@ a { color: var(--forest-700); }
 .page-shell { min-height: calc(100vh - 12rem); }
 
 .page-hero {
-    padding: clamp(4rem, 10vw, 8rem) max(1.25rem, calc((100vw - 72rem) / 2));
+    /* Unten mehr Luft, weil `.content-card` mit negativem Margin 2.5rem in den Hero hineinragt. */
+    padding: clamp(2.5rem, 5vw, 4.5rem) max(1.25rem, calc((100vw - 72rem) / 2)) clamp(4rem, 7vw, 6rem);
     color: var(--white);
     background:
         radial-gradient(circle at 75% 35%, rgb(100 183 198 / 34%), transparent 24rem),
@@ -258,7 +259,7 @@ a { color: var(--forest-700); }
     font-family: Georgia, "Times New Roman", serif;
     /* Untergrenze so klein, dass lange Einzelwörter („Veranstaltungen“) auch auf schmalen Handys
        in die Zeile passen; noch längere werden notfalls getrennt statt abgeschnitten. */
-    font-size: clamp(2rem, 8vw, 6.5rem);
+    font-size: clamp(2rem, 6vw, 4.5rem);
     line-height: .95;
     overflow-wrap: break-word;
 }
@@ -668,6 +669,49 @@ a { color: var(--forest-700); }
 
 .site-footer a { color: var(--lime-400); }
 .site-footer nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+
+/* Social-Media-Leiste (siehe `buildSocialMediaBar`): liegt im Footer-Markup, ist aber fest am rechten
+   Bildschirmrand verankert — unter der Kopfzeile (z-index 10), damit deren Menüs sie überdecken. */
+.social-button-cont {
+    position: fixed;
+    display: flex;
+    gap: .15rem;
+    z-index: 9;
+    top: 50%;
+    right: 0;
+    flex-direction: column;
+    padding: .25rem;
+    border-radius: .6rem 0 0 .6rem;
+    background: rgb(11 46 32 / 55%);
+    backdrop-filter: blur(6px);
+    opacity: .75;
+    transform: translateY(-50%);
+    transition: opacity .15s ease, background-color .15s ease;
+}
+.social-button-cont:hover, .social-button-cont:focus-within { background: rgb(11 46 32 / 85%); opacity: 1; }
+.social-button-cont a.social-button {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: .45rem;
+    color: var(--white);
+    transition: color .15s ease, background-color .15s ease;
+}
+.social-button-cont a.social-button:hover,
+.social-button-cont a.social-button:focus-visible { color: var(--forest-950); background: var(--lime-400); }
+.social-button-cont:empty { display: none; }
+.social-button svg { width: 1.05rem; height: 1.05rem; }
+@media print {
+    .social-button-cont { display: none; }
+}
+
+/* Admin „Seiten“ → „Social Media“ */
+.social-media-links { display: grid; gap: .75rem; margin: 1rem 0; }
+.social-media-link-row { display: flex; align-items: flex-end; gap: .75rem; }
+.social-media-link-row .field { flex: 1; min-width: 0; margin: 0; }
+.social-media-link-actions { display: flex; gap: .35rem; }
+.social-media-add { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
 
 .error-state, .login-shell {
     display: grid;
@@ -1636,9 +1680,9 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .mail-preview-text { margin: 0; padding: 1.5rem; overflow: auto; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; line-height: 1.6; color: var(--ink); }
 .preview-frame.mobile { width: 390px; max-width: 100%; }
 .preview-site-header { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; color: var(--white); background: var(--forest-950); }
-.preview-frame .page-hero { padding: clamp(3rem, 7vw, 6rem) clamp(1.25rem, 6vw, 5rem); }
-.preview-frame.mobile .page-hero { padding: 3rem 1.25rem; }
-.preview-frame.mobile .page-hero h1 { font-size: 3rem; }
+.preview-frame .page-hero { padding: clamp(2.5rem, 5vw, 4.5rem) clamp(1.25rem, 6vw, 5rem) clamp(4rem, 7vw, 6rem); }
+.preview-frame.mobile .page-hero { padding: 2.5rem 1.25rem 4rem; }
+.preview-frame.mobile .page-hero h1 { font-size: 2.25rem; }
 .preview-frame.mobile .content-card { padding: 1.25rem; }
 .preview-frame.mobile .image-text { flex-direction: column; align-items: stretch; }
     .preview-frame.mobile .image-text-media { width: 100%; flex-basis: auto; }

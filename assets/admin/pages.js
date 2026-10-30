@@ -8,6 +8,7 @@ import {canEditPages, canManagePageStructure, canPublishPages, isPageAccessRestr
 import {renderContentCard} from '../content-rendering.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 import {renderPageExtensions} from './page-extensions.js';
+import {renderSocialMedia} from './social-media.js';
 
 const BLOCK_TYPES = {
     heading: 'Überschrift',
@@ -1758,10 +1759,13 @@ const renderPages = async (creating = null) => {
     ]);
 };
 
-// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen gelten seitenübergreifend.
+// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen und Social Media gelten seitenübergreifend.
 const pagesTabs = () => [
     ['pages', 'Seiten', ['seiten'], () => renderPages()],
-    ...(isPageAccessRestricted() ? [] : [['extensions', 'Erweiterungen', ['seiten', 'erweiterungen'], () => showPageExtensions()]]),
+    ...(isPageAccessRestricted() ? [] : [
+        ['extensions', 'Erweiterungen', ['seiten', 'erweiterungen'], () => showPageExtensions()],
+        ['social-media', 'Social Media', ['seiten', 'social-media'], () => showSocialMedia()],
+    ]),
 ];
 
 const mountPagesTab = (activeKey, content) => {
@@ -1793,9 +1797,17 @@ const showPageExtensions = async (selectedKey = null) => {
     mountPagesTab('extensions', await renderPageExtensions(selectedKey, showPageExtensions));
 };
 
+const showSocialMedia = async () => {
+    mountPagesTab('social-media', await renderSocialMedia(showSocialMedia));
+};
+
 const showPages = async (segments = []) => {
     if (segments[0] === 'seiten' && segments[1] === 'erweiterungen' && !isPageAccessRestricted()) {
         await showPageExtensions(segments[2] || null);
+        return;
+    }
+    if (segments[0] === 'seiten' && segments[1] === 'social-media' && !isPageAccessRestricted()) {
+        await showSocialMedia();
         return;
     }
     selectedPageId = segments[0] === 'seiten' ? segments[1] || null : null;

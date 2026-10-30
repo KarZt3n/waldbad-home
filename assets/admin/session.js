@@ -39,6 +39,8 @@ const canPublishPages = (pageId = null) => canViewPages() && (
 const canManagePageStructure = () => canEditPages() && !isPageAccessRestricted();
 // Texte von Seitenerweiterungen gelten auf allen Seiten und sind sofort online (siehe `PageAuthorizationService::canEditExtensionTexts`).
 const canEditExtensionTexts = () => canViewPages() && (isGlobalAdministrator() || (!isPageAccessRestricted() && moduleRole('pages') === 'publisher'));
+// Die Social-Media-Leiste ist ebenso sofort auf allen Seiten online (siehe `PageAuthorizationService::assertCanEditSocialMedia`).
+const canEditSocialMedia = canEditExtensionTexts;
 
 export {
     setSessionState,
@@ -54,4 +56,5 @@ export {
     canPublishPages,
     canManagePageStructure,
     canEditExtensionTexts,
+    canEditSocialMedia,
 };

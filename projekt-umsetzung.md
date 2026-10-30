@@ -117,6 +117,7 @@ Sie benötigen insbesondere schnell auffindbare Informationen zu aktuellem Statu
 - konsistente Fehler-, Lade- und Leerzustände
 - sprechende, dauerhafte URLs
 - Social-Media- und Suchmaschinen-Metadaten pro Seite
+- Social-Media-Leiste am rechten Bildschirmrand aller öffentlichen Seiten; unter „Seiten“ → „Social Media“ pflegbar (Anzeige ein/aus, Plattformen wie Instagram und Facebook mit Link und Reihenfolge, jede Plattform höchstens einmal). Änderungen sind ohne Freigabe sofort online und daher Redakteuren mit Veröffentlichungsrecht für alle Seiten vorbehalten
 - Cookie- und Einwilligungsverwaltung für optionale Dienste
 - zugängliche Darstellung auf Smartphone, Tablet und Desktop
 
