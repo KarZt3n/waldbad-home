@@ -2,6 +2,7 @@
 
 namespace App\Tests\Functional\UI\Content\Branding\Http;
 
+use App\Logic\Common\SiteLogo;
 use App\Logic\IdentityAccess\User\Dto\CreateUserRequest;
 use App\Logic\IdentityAccess\User\Model\CmsModule;
 use App\Logic\IdentityAccess\User\Model\ModuleAccess;
@@ -34,7 +35,7 @@ final class SiteBrandingControllerTest extends WebTestCase
     {
         $this->client->request('GET', '/');
         self::assertResponseIsSuccessful();
-        self::assertSelectorExists('#app[data-logo-url="/downloads/waldbad-borkheide-logo.svg"]');
+        self::assertSelectorExists('#app[data-logo-url="'.SiteLogo::DEFAULT_URL.'"]');
 
         $csrfToken = $this->login('logo-publisher@example.test', ModuleRole::Publisher);
         $this->client->jsonRequest('PUT', '/api/admin/v1/site-branding', ['logoUrl' => '/uploads/logos/neu.png'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
@@ -42,7 +43,7 @@ final class SiteBrandingControllerTest extends WebTestCase
         self::assertSame([
             'logoUrl' => '/uploads/logos/neu.png',
             'customLogoUrl' => '/uploads/logos/neu.png',
-            'defaultLogoUrl' => '/downloads/waldbad-borkheide-logo.svg',
+            'defaultLogoUrl' => SiteLogo::DEFAULT_URL,
         ], $this->responseData());
 
         $this->client->request('GET', '/seite/kontakt');

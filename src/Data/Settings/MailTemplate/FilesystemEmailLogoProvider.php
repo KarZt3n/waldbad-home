@@ -2,15 +2,14 @@
 
 namespace App\Data\Settings\MailTemplate;
 
+use App\Logic\Common\SiteLogo;
 use App\Logic\Settings\MailTemplate\Model\EmailLogo;
 use App\Logic\Settings\MailTemplate\Service\EmailLogoProviderInterface;
 
 /**
- * Liest das für den Mailversand vorgesehene, bereits auf E-Mail-taugliche Größe verkleinerte
- * Vereinslogo (`public/downloads/waldbad-borkheide-logo-email.png`, separat von den größeren
- * Logo-Dateien für Web/Druck) einmalig ein und hält es im Speicher. Fehlt die Datei (z. B. in einer
- * minimalen Testumgebung), wird das nicht als Fehler behandelt — die Mail wird dann eben ohne Logo
- * verschickt.
+ * Liest das Vereinslogo (`SiteLogo::DEFAULT_URL` unter `public/`) einmalig ein und hält es im
+ * Speicher. Fehlt die Datei (z. B. in einer minimalen Testumgebung), wird das nicht als Fehler
+ * behandelt — die Mail wird dann eben ohne Logo verschickt.
  */
 final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
 {
@@ -25,7 +24,7 @@ final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
     private bool $resolved = false;
     private ?EmailLogo $logo = null;
 
-    public function __construct(private readonly string $logoPath)
+    public function __construct(private readonly string $publicDirectory)
     {
     }
 
@@ -36,12 +35,13 @@ final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
         }
         $this->resolved = true;
 
-        $contents = @file_get_contents($this->logoPath);
+        $logoPath = $this->publicDirectory.SiteLogo::DEFAULT_URL;
+        $contents = @file_get_contents($logoPath);
         if ($contents === false) {
             return $this->logo = null;
         }
 
-        $extension = strtolower(pathinfo($this->logoPath, PATHINFO_EXTENSION));
+        $extension = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
 
         return $this->logo = new EmailLogo($contents, self::MIME_TYPES_BY_EXTENSION[$extension] ?? 'application/octet-stream');
     }

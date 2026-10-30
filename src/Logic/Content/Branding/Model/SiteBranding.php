@@ -3,14 +3,14 @@
 namespace App\Logic\Content\Branding\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Common\SiteLogo;
 
 /**
  * Einzeiliger Einstellungs-Datensatz (Singleton) für das Logo in der Kopfzeile der Website. Ohne
- * eigenes Logo wird das mitgelieferte Standardlogo angezeigt.
+ * eigenes Logo wird das mitgelieferte Standardlogo (`SiteLogo::DEFAULT_URL`) angezeigt.
  */
 readonly class SiteBranding
 {
-    public const string DEFAULT_LOGO_URL = '/downloads/waldbad-borkheide-logo.svg';
     public const int MAX_URL_LENGTH = 500;
 
     public ?string $customLogoUrl;
@@ -35,6 +35,6 @@ readonly class SiteBranding
 
     public function logoUrl(): string
     {
-        return $this->customLogoUrl ?? self::DEFAULT_LOGO_URL;
+        return $this->customLogoUrl ?? SiteLogo::DEFAULT_URL;
     }
 }

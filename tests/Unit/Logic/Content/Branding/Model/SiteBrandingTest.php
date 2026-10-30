@@ -3,6 +3,7 @@
 namespace App\Tests\Unit\Logic\Content\Branding\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Common\SiteLogo;
 use App\Logic\Content\Branding\Model\SiteBranding;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -11,7 +12,7 @@ final class SiteBrandingTest extends TestCase
 {
     public function testFallsBackToDefaultLogo(): void
     {
-        self::assertSame(SiteBranding::DEFAULT_LOGO_URL, (new SiteBranding(null))->logoUrl());
+        self::assertSame(SiteLogo::DEFAULT_URL, (new SiteBranding(null))->logoUrl());
         self::assertNull((new SiteBranding('   '))->customLogoUrl);
     }
 

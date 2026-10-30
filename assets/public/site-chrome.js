@@ -80,8 +80,8 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
                     element('img', {
                         className: 'brand-logo',
                         attributes: {
-                            // Unter „Seiten“ → „Logo“ gepflegt, vom Server in die Seite geschrieben (siehe `FrontendController`).
-                            src: app.dataset.logoUrl || '/downloads/waldbad-logo.png',
+                            // Unter „Seiten“ → „Logo“ gepflegt bzw. Standardlogo, vom Server in die Seite geschrieben (siehe `FrontendController`).
+                            src: app.dataset.logoUrl,
                             alt: '',
                             width: '96',
                             height: '72',

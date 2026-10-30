@@ -9,7 +9,6 @@
 parameters:
     uploads_root_directory: '%kernel.project_dir%/public/uploads'
     media_upload_directory: '%uploads_root_directory%/media'
-    email_logo_path: '%kernel.project_dir%/public/downloads/waldbad-borkheide-logo-email.png'
 
 services:
     # default configuration for services in *this* file
@@ -33,7 +32,7 @@ services:
             $saunaBookingLimiter: '@limiter.sauna_booking'
             $mediaUploadDirectory: '%media_upload_directory%'
             $uploadsRootDirectory: '%uploads_root_directory%'
-            $logoPath: '%email_logo_path%'
+            $publicDirectory: '%kernel.project_dir%/public'
             $fromAddress: '%env(MAILER_FROM_ADDRESS)%'
             $fromName: '%env(MAILER_FROM_NAME)%'
             $workAssignmentSelfServicePeriod: '%work_assignment_self_service_period%'
