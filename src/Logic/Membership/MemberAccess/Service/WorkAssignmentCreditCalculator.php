@@ -49,6 +49,65 @@ readonly class WorkAssignmentCreditCalculator
      */
     public function calculateForPeriod(array $householdMembers, \DateTimeImmutable $periodFrom, \DateTimeImmutable $periodTo): WorkAssignmentCreditResponse
     {
+        $memberIds = array_map(static fn (Member $member): string => $member->id, $householdMembers);
+
+        return $this->build(
+            $householdMembers,
+            $periodFrom,
+            $periodTo,
+            $this->creditPerHourCents($periodFrom),
+            $this->workedMinutesQuery->totalMinutes($memberIds, $periodFrom, $periodTo),
+        );
+    }
+
+    /**
+     * Wie `calculateForPeriod()` für viele Haushalte auf einmal (z. B. die Gutschrift-Überweisung an
+     * alle Haushalte) — Stunden und Beitragssatz werden dafür nur einmal statt je Haushalt geladen.
+     *
+     * @param array<string, list<Member>> $households
+     *
+     * @return array<string, WorkAssignmentCreditResponse> mit denselben Schlüsseln wie `$households`
+     */
+    public function calculateForHouseholds(array $households, \DateTimeImmutable $periodFrom, \DateTimeImmutable $periodTo): array
+    {
+        $memberIds = [];
+        foreach ($households as $householdMembers) {
+            foreach ($householdMembers as $member) {
+                $memberIds[] = $member->id;
+            }
+        }
+        $minutesByMember = $memberIds === [] ? [] : $this->workedMinutesQuery->minutesByMember($memberIds, $periodFrom, $periodTo);
+        $creditPerHourCents = $this->creditPerHourCents($periodFrom);
+
+        $credits = [];
+        foreach ($households as $key => $householdMembers) {
+            $workedMinutes = array_sum(array_map(
+                static fn (Member $member): int => $minutesByMember[$member->id] ?? 0,
+                $householdMembers,
+            ));
+            $credits[$key] = $this->build($householdMembers, $periodFrom, $periodTo, $creditPerHourCents, $workedMinutes);
+        }
+
+        return $credits;
+    }
+
+    private function creditPerHourCents(\DateTimeImmutable $periodFrom): int
+    {
+        // Die Stundenzahl richtet sich nach dem Beginn des Zeitraums, nicht nach "heute" — sie soll
+        // widerspiegeln, was für den Zuschlag galt, der in genau diesem Zeitraum berechnet wurde.
+        $requiredHours = $this->config->requiredHoursAt($periodFrom);
+        $surchargeRate = $this->rates->findByCategory(ContributionCategory::WorkAssignmentSurcharge);
+
+        return $surchargeRate !== null && $requiredHours > 0
+            ? (int) round($surchargeRate->annualAmountCents() / $requiredHours)
+            : 0;
+    }
+
+    /**
+     * @param list<Member> $householdMembers
+     */
+    private function build(array $householdMembers, \DateTimeImmutable $periodFrom, \DateTimeImmutable $periodTo, int $creditPerHourCents, int $workedMinutes): WorkAssignmentCreditResponse
+    {
         $liableMembers = array_values(array_filter(
             $householdMembers,
             static fn (Member $member): bool => $member->workAssignmentSurchargeCents !== null,
@@ -57,18 +116,6 @@ readonly class WorkAssignmentCreditCalculator
             static fn (Member $member): int => $member->workAssignmentSurchargeCents ?? 0,
             $liableMembers,
         ));
-
-        // Die Stundenzahl richtet sich nach dem Beginn des Zeitraums, nicht nach "heute" — sie soll
-        // widerspiegeln, was für den Zuschlag galt, der in genau diesem Zeitraum berechnet wurde.
-        $requiredHours = $this->config->requiredHoursAt($periodFrom);
-
-        $surchargeRate = $this->rates->findByCategory(ContributionCategory::WorkAssignmentSurcharge);
-        $creditPerHourCents = $surchargeRate !== null && $requiredHours > 0
-            ? (int) round($surchargeRate->annualAmountCents() / $requiredHours)
-            : 0;
-
-        $memberIds = array_map(static fn (Member $member): string => $member->id, $householdMembers);
-        $workedMinutes = $this->workedMinutesQuery->totalMinutes($memberIds, $periodFrom, $periodTo);
 
         $creditCents = min(
             (int) round($workedMinutes * $creditPerHourCents / 60),
@@ -80,7 +127,7 @@ readonly class WorkAssignmentCreditCalculator
             periodTo: $periodTo->format('Y-m-d'),
             liableMemberCount: count($liableMembers),
             totalSurchargeCents: $totalSurchargeCents,
-            requiredHoursPerAssignment: $requiredHours,
+            requiredHoursPerAssignment: $this->config->requiredHoursAt($periodFrom),
             creditPerHourCents: $creditPerHourCents,
             workedMinutes: $workedMinutes,
             creditCents: $creditCents,

@@ -984,6 +984,67 @@ final class MembershipManagementWorkflowTest extends WebTestCase
     }
 
     /**
+     * Gutschriften-Übersicht: ohne geleistete Stunden ist nichts zu überweisen, ein Export wird
+     * abgelehnt; Beitragsjahre außerhalb der Auswahl ebenso.
+     */
+    public function testWorkAssignmentRefundOverviewAndExport(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), $headers);
+        self::assertResponseIsSuccessful();
+        $memberId = $this->string($this->responseData(), 'id');
+        $currentYear = (int) (new \DateTimeImmutable())->format('Y');
+
+        $this->client->request('GET', '/api/admin/v1/work-assignment-refunds', server: $headers);
+        self::assertResponseIsSuccessful();
+        $overview = $this->responseData();
+        self::assertSame($currentYear, $overview['year']);
+        self::assertSame([$currentYear, $currentYear - 1, $currentYear - 2], $overview['selectableYears']);
+        self::assertSame([], $overview['valid']);
+        self::assertSame([], $overview['invalid']);
+        self::assertSame([], $overview['withoutAmount']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/work-assignment-refunds/export', [
+            'year' => $currentYear,
+            'executionDate' => (new \DateTimeImmutable('+3 days'))->format('Y-m-d'),
+            'primaryMemberNumbers' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        // Detailansicht eines Haushalts ohne Stunden: nichts zu überweisen.
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: $headers);
+        $primaryMemberNumber = $this->string($this->responseData(), 'primaryMemberNumber');
+        $this->client->request('GET', '/api/admin/v1/work-assignment-refunds/'.$primaryMemberNumber, server: $headers);
+        self::assertResponseIsSuccessful();
+        $detail = $this->responseData();
+        self::assertSame($currentYear, $detail['year']);
+        $entry = $this->arrayData($detail, 'entry');
+        self::assertSame(0, $entry['amountCents']);
+        self::assertSame('Musterfrau', $entry['lastName']);
+        $members = $this->arrayList($detail, 'members');
+        self::assertCount(1, $members);
+        self::assertIsArray($members[0]);
+        self::assertSame([], $members[0]['participations']);
+
+        self::assertIsString($detail['defaultExecutionDate']);
+        // Einzelexport ohne Betrag wird abgelehnt.
+        $this->client->jsonRequest('POST', '/api/admin/v1/work-assignment-refunds/'.$primaryMemberNumber.'/export', [
+            'year' => $currentYear,
+            'executionDate' => $detail['defaultExecutionDate'],
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->request('GET', '/api/admin/v1/work-assignment-refunds/UNBEKANNT', server: $headers);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->request('GET', '/api/admin/v1/work-assignment-refunds?year=2000', server: $headers);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->request('GET', '/api/admin/v1/work-assignment-refunds?year=abc', server: $headers);
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function validMember(): array

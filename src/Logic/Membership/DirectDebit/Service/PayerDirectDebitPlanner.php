@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\DirectDebit\Service;
 
+use App\Logic\Common\Iban;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\DirectDebit\Manager\DirectDebitCreditorManagerInterface;
@@ -41,9 +42,6 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  */
 readonly class PayerDirectDebitPlanner
 {
-    /** Bankleitzahl 00000000 gibt es nicht — so ist die beim Sage-Import gesetzte Platzhalter-IBAN erkennbar. */
-    private const string PLACEHOLDER_GERMAN_BANK_CODE = '00000000';
-
     public function __construct(
         private MemberManagerInterface $members,
         private ContributionRateManagerInterface $rates,
@@ -296,7 +294,7 @@ readonly class PayerDirectDebitPlanner
 
             return $blockers;
         }
-        if ($payer->iban === null || (str_starts_with($payer->iban, 'DE') && substr($payer->iban, 4, 8) === self::PLACEHOLDER_GERMAN_BANK_CODE)) {
+        if (Iban::isMissingOrPlaceholder($payer->iban)) {
             $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::MissingBankAccount, 'Für den Zahler ist keine echte Bankverbindung hinterlegt.');
         }
         if ($payer->mandateReference === null || trim($payer->mandateReference) === '') {

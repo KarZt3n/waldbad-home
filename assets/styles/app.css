@@ -2026,6 +2026,12 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .direct-debit-dialog { width: min(52rem, calc(100vw - 2rem)); }
 .direct-debit-overview-dialog { width: min(72rem, calc(100vw - 2rem)); }
 .direct-debit-overview-actions { margin: 0 0 1rem; }
+.direct-debit-overview-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.direct-debit-overview-heading h2 { margin: 0; }
+/* Gutschriften: Beitragsjahr und Ausführungsdatum links, Export-Button rechts auf Höhe der Felder. */
+.work-assignment-refund-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; }
+.work-assignment-refund-controls > label { flex: 0 1 12rem; }
+.work-assignment-refund-controls > .button { margin-left: auto; }
 /* `minmax(0, 1fr)` statt der Grid-Vorgabe `auto`: sonst weiten die breiten Tabellen die Spalte über
    die Dialogbreite hinaus auf, und die rechtsbündigen Buttons rutschen aus dem sichtbaren Bereich. */
 .direct-debit-overview-dialog .activity-dialog-content, .direct-debit-overview-body, .direct-debit-accordion .event-helper-archive-list { grid-template-columns: minmax(0, 1fr); }

@@ -8,6 +8,15 @@ namespace App\Logic\Common;
  */
 final class Iban
 {
+    /** Bankleitzahl 00000000 gibt es nicht — so ist die beim Sage-Import gesetzte Platzhalter-IBAN erkennbar. */
+    private const string PLACEHOLDER_GERMAN_BANK_CODE = '00000000';
+
+    /** Keine echte Bankverbindung: keine IBAN oder die Platzhalter-IBAN aus dem Sage-Import. */
+    public static function isMissingOrPlaceholder(?string $iban): bool
+    {
+        return $iban === null || (str_starts_with($iban, 'DE') && substr($iban, 4, 8) === self::PLACEHOLDER_GERMAN_BANK_CODE);
+    }
+
     public static function normalize(string $iban): string
     {
         return strtoupper((string) preg_replace('/\s+/', '', $iban));

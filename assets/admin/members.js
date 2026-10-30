@@ -580,10 +580,18 @@ const creditedWorkMinutes = (credit) => Math.min(credit.workedMinutes, credit.li
  * Reiter „Arbeitseinsätze“: Gutschrift je Beitragsjahr ganz oben, darunter je Jahr ein Accordion mit
  * den Veranstaltungen bzw. Einsätzen des Haushalts, die wiederum aufklappbar ihre Hilfezeiträume zeigen.
  */
-const renderMemberWorkAssignments = (years) => {
+const renderMemberWorkAssignments = (years, refund = null) => {
     const currentYear = new Date().getFullYear();
+    // Gutschriften lassen sich wie in der SEPA-Übersicht für das laufende und die zwei Vorjahre überweisen.
+    const refundButton = (year) => {
+        if (!refund || year < currentYear - 2 || year > currentYear) return element('td');
+        const button = element('button', {className: 'secondary-button', text: 'Gutschrift…', attributes: {type: 'button'}});
+        button.addEventListener('click', () => openWorkAssignmentRefundDialog(refund.primaryMemberNumber, year, refund.onExported));
+
+        return element('td', {children: [button]});
+    };
     const creditTable = element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
-        element('thead', {children: [element('tr', {children: ['Beitragsjahr', 'Geleistet (Familie)', 'Benötigt', 'Gutschrift']
+        element('thead', {children: [element('tr', {children: ['Beitragsjahr', 'Geleistet (Familie)', 'Benötigt', 'Gutschrift', ...(refund ? [''] : [])]
             .map((text) => element('th', {text}))})]}),
         element('tbody', {children: years.map(({year, credit}) => {
             const requiredHours = credit.liableMemberCount * credit.requiredHoursPerAssignment;
@@ -592,6 +600,7 @@ const renderMemberWorkAssignments = (years) => {
                 element('td', {text: formatWorkHours(credit.workedMinutes)}),
                 element('td', {text: credit.liableMemberCount ? `${requiredHours} Std. (${credit.liableMemberCount}× ${credit.requiredHoursPerAssignment} Std.)` : 'Kein Zuschlag'}),
                 element('td', {children: [element('strong', {text: credit.liableMemberCount ? formatEuro(credit.creditCents) : '–'})]}),
+                ...(refund ? [refundButton(year)] : []),
             ]});
         })}),
     ]})]});
@@ -1069,7 +1078,9 @@ const openMemberDialog = async (member, onSaved) => {
         workAssignmentsRequested = true;
         try {
             const data = await request(`/api/admin/v1/members/${member.id}/work-assignments`);
-            workAssignmentSection.replaceChildren(...renderMemberWorkAssignments(data.years));
+            workAssignmentSection.replaceChildren(...renderMemberWorkAssignments(data.years, canEditModule('members')
+                ? {primaryMemberNumber: member.primaryMemberNumber, onExported: async () => {}}
+                : null));
         } catch (error) {
             workAssignmentsRequested = false;
             workAssignmentSection.replaceChildren(element('p', {className: 'empty-copy', text: error.message}));
@@ -1492,8 +1503,9 @@ const postDirectDebitExport = async (url, body) => {
     throw error;
 };
 
-// Einzel- (`/members/{id}/direct-debit-export`) und Sammelexport (`/direct-debits/export`).
-const exportDirectDebitWithOptionalPin = async (url, body) => {
+// Einzel- (`/members/{id}/direct-debit-export`) und Sammelexport (`/direct-debits/export`) sowie die
+// Gutschrift-Überweisung (`/work-assignment-refunds/export`) — alle unter demselben PIN-Schutz.
+const exportDirectDebitWithOptionalPin = async (url, body, title = 'SEPA-Lastschrift exportieren') => {
     try {
         return await postDirectDebitExport(url, body);
     } catch (error) {
@@ -1501,7 +1513,7 @@ const exportDirectDebitWithOptionalPin = async (url, body) => {
     }
     let file = null;
     const unlocked = await promptForPin(
-        'SEPA-Lastschrift exportieren',
+        title,
         'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
         async (pin) => { file = await postDirectDebitExport(url, {...body, pin}); },
     );
@@ -1655,22 +1667,67 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
     dialog.showModal();
 };
 
+// Auf-/zuklappbarer Abschnitt der Übersicht; der Zustand bleibt beim Neuladen (z. B. nach einem
+// Export) in `openSections` erhalten.
+const sepaAccordion = (openSections, key, title, badge, children) => {
+    const details = element('details', {className: 'event-helper-archive direct-debit-accordion', children: [
+        element('summary', {children: [element('strong', {text: title}), element('span', {className: 'status-badge', text: badge})]}),
+        element('div', {className: 'event-helper-archive-list', children}),
+    ]});
+    details.open = Boolean(openSections[key]);
+    details.addEventListener('toggle', () => { openSections[key] = details.open; });
+
+    return details;
+};
+
+// Nicht exportierbare Einträge nach Grund gefiltert (Reiter); ein Eintrag mit mehreren Gründen
+// erscheint in jedem passenden Reiter. Der gewählte Reiter bleibt beim Neuladen erhalten (`state`).
+const sepaObstacleSection = (entries, categories, state, renderTable) => {
+    const panel = element('div');
+    const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'Gründe'}});
+    const tabs = [
+        ['', `Alle (${entries.length})`],
+        ...categories.map((category) => [category.kind, `${category.label} (${category.count})`]),
+    ];
+    if (!tabs.some(([kind]) => kind === state.obstacleKind)) state.obstacleKind = '';
+    const render = () => {
+        strip.replaceChildren(...tabs.map(([kind, label]) => {
+            const button = element('button', {className: `sub-tab${kind === state.obstacleKind ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
+            button.addEventListener('click', () => { state.obstacleKind = kind; render(); });
+
+            return button;
+        }));
+        panel.replaceChildren(renderTable(state.obstacleKind
+            ? entries.filter((entry) => entry.obstacles.some((obstacle) => obstacle.kind === state.obstacleKind))
+            : entries));
+    };
+    render();
+
+    return element('div', {children: [strip, panel]});
+};
+
+const sepaTable = (headers, rows) => element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
+    element('thead', {children: [element('tr', {children: headers.map((text) => element('th', {text}))})]}),
+    element('tbody', {children: rows}),
+]})]});
+
+const sumAmounts = (entries) => entries.reduce((total, entry) => total + entry.amountCents, 0);
+
 // Lastschrift-Übersicht aller Zahler (siehe `GetDirectDebitOverviewQuery`): oben die nicht
 // exportierbaren mit Grund, darunter die exportierbaren. Ein Klick öffnet die Einzelvorschau
 // (`openDirectDebitDialog`); „Alle exportieren“ erzeugt eine gemeinsame XML-Datei für alle
 // exportierbaren Zahler mit den Vorgaben ihrer jeweiligen Einzelvorschau.
-const openDirectDebitOverviewDialog = async () => {
-    const dialog = element('dialog', {className: 'activity-dialog direct-debit-overview-dialog'});
-    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+const directDebitOverviewPanel = () => {
     const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Lastschriften werden geladen …')]});
     const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
     exportAll.disabled = true;
-    const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
     let overview = null;
+    const state = {obstacleKind: ''};
+    const openSections = {invalid: false, valid: false, withoutAmount: false};
 
-    const table = (entries, withObstacles) => {
-        const headers = ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', 'Betrag', ...(withObstacles ? ['Grund'] : [])];
-        const rows = entries.map((entry) => {
+    const table = (entries, withObstacles) => sepaTable(
+        ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', 'Betrag', ...(withObstacles ? ['Grund'] : [])],
+        entries.map((entry) => {
             const row = element('tr', {className: 'member-row', attributes: {tabindex: '0', role: 'button'}, children: [
                 ...[entry.memberNumber, entry.primaryMemberNumber, entry.lastName, entry.firstName, formatIban(entry.iban)]
                     .map((text) => element('td', {text})),
@@ -1682,43 +1739,8 @@ const openDirectDebitOverviewDialog = async () => {
             row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
 
             return row;
-        });
-
-        return element('div', {className: 'table-scroll-area', children: [element('table', {className: 'data-table', children: [
-            element('thead', {children: [element('tr', {children: headers.map((text) => element('th', {text}))})]}),
-            element('tbody', {children: rows}),
-        ]})]});
-    };
-    const sum = (entries) => entries.reduce((total, entry) => total + entry.amountCents, 0);
-    // Nicht exportierbare Zahler nach Grund gefiltert (Tabs); ein Zahler mit mehreren Gründen
-    // erscheint in jedem passenden Tab. Der gewählte Tab bleibt beim Neuladen erhalten.
-    let activeObstacleKind = '';
-    // Auf-/Zugeklappt-Zustand der beiden Listen bleibt beim Neuladen (z. B. nach einem Einzelexport) erhalten.
-    const openSections = {invalid: false, valid: false, withoutAmount: false};
-    const invalidSection = () => {
-        const panel = element('div');
-        const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'Gründe'}});
-        const tabs = [
-            ['', `Alle (${overview.invalid.length})`],
-            ...overview.obstacleCategories.map((category) => [category.kind, `${category.label} (${category.count})`]),
-        ];
-        if (!tabs.some(([kind]) => kind === activeObstacleKind)) activeObstacleKind = '';
-        const render = () => {
-            strip.replaceChildren(...tabs.map(([kind, label]) => {
-                const button = element('button', {className: `sub-tab${kind === activeObstacleKind ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
-                button.addEventListener('click', () => { activeObstacleKind = kind; render(); });
-
-                return button;
-            }));
-            const entries = activeObstacleKind
-                ? overview.invalid.filter((entry) => entry.obstacles.some((obstacle) => obstacle.kind === activeObstacleKind))
-                : overview.invalid;
-            panel.replaceChildren(table(entries, true));
-        };
-        render();
-
-        return element('div', {children: [strip, panel]});
-    };
+        }),
+    );
 
     async function load() {
         try {
@@ -1730,25 +1752,17 @@ const openDirectDebitOverviewDialog = async () => {
         }
         exportAll.disabled = overview.valid.length === 0;
         exportAll.textContent = `Alle exportieren (${overview.valid.length})`;
-        const accordion = (key, title, badge, children) => {
-            const details = element('details', {className: 'event-helper-archive direct-debit-accordion', children: [
-                element('summary', {children: [element('strong', {text: title}), element('span', {className: 'status-badge', text: badge})]}),
-                element('div', {className: 'event-helper-archive-list', children}),
-            ]});
-            details.open = openSections[key];
-            details.addEventListener('toggle', () => { openSections[key] = details.open; });
-
-            return details;
-        };
         body.replaceChildren(
-            accordion('invalid', 'Nicht exportierbar', String(overview.invalid.length), [
+            sepaAccordion(openSections, 'invalid', 'Nicht exportierbar', String(overview.invalid.length), [
                 element('p', {className: 'field-hint', text: 'Diese Zahler sind nicht im Sammelexport enthalten. Zum Prüfen oder Einzelexport einen Datensatz anklicken.'}),
-                overview.invalid.length ? invalidSection() : emptyState('Keine – alle Zahler sind exportierbar.'),
+                overview.invalid.length
+                    ? sepaObstacleSection(overview.invalid, overview.obstacleCategories, state, (entries) => table(entries, true))
+                    : emptyState('Keine – alle Zahler sind exportierbar.'),
             ]),
-            accordion('valid', 'Exportierbar', `${overview.valid.length} · ${formatEuro(sum(overview.valid))}`, [
+            sepaAccordion(openSections, 'valid', 'Exportierbar', `${overview.valid.length} · ${formatEuro(sumAmounts(overview.valid))}`, [
                 overview.valid.length ? table(overview.valid, false) : emptyState('Keine exportierbaren Lastschriften.'),
             ]),
-            ...(overview.withoutAmount.length ? [accordion('withoutAmount', 'Ohne abzubuchenden Betrag', String(overview.withoutAmount.length), [
+            ...(overview.withoutAmount.length ? [sepaAccordion(openSections, 'withoutAmount', 'Ohne abzubuchenden Betrag', String(overview.withoutAmount.length), [
                 element('p', {className: 'field-hint', text: 'Bei diesen Zahlern ist mit den Vorgaben der Einzelvorschau nichts abzubuchen (z. B. beitragsfrei oder ausgetreten); sie sind nicht im Sammelexport enthalten.'}),
                 table(overview.withoutAmount, false),
             ])] : []),
@@ -1763,7 +1777,7 @@ const openDirectDebitOverviewDialog = async () => {
             .map(([date, count]) => `${formatDateDE(date)} (${count})`).join(', ');
         const confirmed = await confirmAction(
             'Alle Lastschriften exportieren?',
-            `${overview.valid.length} Lastschriften über insgesamt ${formatEuro(sum(overview.valid))} werden in eine XML-Datei exportiert — jeweils mit Positionen, Fälligkeit und Verwendungszweck der Einzelvorschau. Fälligkeiten: ${dueSummary}. Der Export wird in der Lastschrift-Historie festgehalten und rückt die „Nächste Buchung“ der Zahler vor.`,
+            `${overview.valid.length} Lastschriften über insgesamt ${formatEuro(sumAmounts(overview.valid))} werden in eine XML-Datei exportiert — jeweils mit Positionen, Fälligkeit und Verwendungszweck der Einzelvorschau. Fälligkeiten: ${dueSummary}. Der Export wird in der Lastschrift-Historie festgehalten und rückt die „Nächste Buchung“ der Zahler vor.`,
             'Exportieren',
         );
         if (!confirmed) return;
@@ -1782,18 +1796,255 @@ const openDirectDebitOverviewDialog = async () => {
         }
     });
 
+    return {
+        panel: element('div', {className: 'member-dialog-panel', children: [
+            element('div', {className: 'confirm-dialog-actions direct-debit-overview-actions', children: [exportAll]}),
+            body,
+        ]}),
+        load,
+    };
+};
+
+const formatHours = (minutes) => `${(minutes / 60).toLocaleString('de-DE', {maximumFractionDigits: 2})} Std.`;
+
+// Gutschrift eines Haushalts im Detail (siehe `GetWorkAssignmentRefundDetailQuery`), aufgebaut wie
+// die Lastschrift-Vorschau: Empfänger und Vereinskonto, je Mitglied Zuschlag und Einsätze, dann die
+// Berechnung. Ist der Haushalt überweisbar, lässt sich die Gutschrift hier auch einzeln als
+// XML-Datei (pain.001) exportieren — z. B. vom Reiter „Arbeitseinsätze“ eines Mitglieds aus.
+const openWorkAssignmentRefundDialog = async (primaryMemberNumber, year, onExported = async () => {}) => {
+    let detail;
+    try {
+        detail = await request(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(primaryMemberNumber)}?year=${encodeURIComponent(year)}`);
+    } catch (error) {
+        toast(error.message, 'error');
+        return;
+    }
+    const {entry} = detail;
+    const exportable = entry.payerId !== null && entry.amountCents > 0 && entry.obstacles.length === 0;
+    const dialog = element('dialog', {className: 'confirm-dialog direct-debit-dialog'});
+    const message = formMessage();
+    const close = element('button', {className: exportable ? 'secondary-button' : 'button', text: exportable ? 'Abbrechen' : 'Schließen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'XML exportieren', attributes: {type: 'submit'}});
+    const executionDate = field('Ausführungsdatum', 'work-assignment-refund-detail-execution-date', detail.defaultExecutionDate, 'date');
+
+    const memberList = element('ul', {className: 'direct-debit-positions', children: detail.members.map((member) => element('li', {children: [
+        element('strong', {text: `${member.name} · ${member.memberNumber}`}),
+        element('div', {className: 'direct-debit-position', children: [
+            element('span', {text: member.surchargeCents === null ? 'Kein Arbeitseinsatz-Zuschlag' : 'Arbeitseinsatz-Zuschlag'}),
+            element('span', {className: 'direct-debit-position-amount', text: member.surchargeCents === null ? '–' : formatEuro(member.surchargeCents)}),
+        ]}),
+        ...(member.participations.length
+            ? member.participations.map((participation) => element('div', {className: 'direct-debit-position', children: [
+                element('span', {text: `${participation.eventTitle} (${formatDateDE(participation.eventDate)}${participation.eventTime ? `, ${participation.eventTime}` : ''})`}),
+                element('span', {className: 'direct-debit-position-amount', text: formatHours(participation.minutes)}),
+            ]}))
+            : [element('small', {className: 'field-hint', text: `Keine Einsätze in ${detail.year}.`})]),
+    ]}))});
+
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'SEPA-Gutschrift'}),
+        element('h2', {text: `Gutschrift für ${entry.firstName} ${entry.lastName} (${entry.memberNumber})`}),
+        element('p', {className: 'field-hint', text: `Beitragsjahr ${detail.year} · Haushalt ${entry.primaryMemberNumber}`}),
+        ...entry.obstacles.map((obstacle) => element('p', {className: 'failure-message', text: obstacle.message})),
+        element('div', {className: 'direct-debit-columns', children: [
+            element('section', {children: [
+                element('h3', {text: 'Zahlungsempfänger'}),
+                directDebitDataRow('Kontoinhaber', entry.payerId ? entry.recipientName : null),
+                directDebitDataRow('IBAN', formatIban(entry.iban)),
+                directDebitDataRow('Bank', detail.bankName),
+            ]}),
+            element('section', {children: [
+                element('h3', {text: 'Auftraggeber (Vereinskonto)'}),
+                directDebitDataRow('Name', detail.clubAccount.name),
+                directDebitDataRow('IBAN', formatIban(detail.clubAccount.iban)),
+                directDebitDataRow('BIC', detail.clubAccount.bic),
+            ]}),
+        ]}),
+        element('h3', {text: 'Mitglieder und Einsätze'}),
+        memberList,
+        element('h3', {text: 'Berechnung'}),
+        directDebitDataRow('Geleistete Stunden', formatHours(entry.workedMinutes)),
+        directDebitDataRow('Satz je Stunde', `${formatEuro(detail.creditPerHourCents)} (Zuschlag ÷ ${entry.requiredHoursPerAssignment} Std. je Arbeitseinsatz)`),
+        directDebitDataRow('Höchstbetrag', `${formatEuro(detail.totalSurchargeCents)} (${entry.liableMemberCount} × Arbeitseinsatz-Zuschlag)`),
+        directDebitDataRow('Gutschrift', formatEuro(entry.creditCents)),
+        directDebitDataRow('Bereits überwiesen', detail.refunds.length
+            ? detail.refunds.map((refund) => `${formatEuro(refund.amountCents)} am ${formatDateDE(refund.exportedAt.slice(0, 10))}`).join(', ')
+            : 'Noch nichts'),
+        element('div', {className: 'member-payer-total', children: [element('span', {text: 'Betrag der Überweisung'}), element('span', {text: formatEuro(entry.amountCents)})]}),
+        ...(exportable ? [fieldRow([executionDate])] : []),
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: exportable ? [close, submit] : [close]}),
+    ]});
+    close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!exportable) return;
+        message.textContent = '';
+        submit.disabled = true;
+        try {
+            const file = await exportDirectDebitWithOptionalPin(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(primaryMemberNumber)}/export`, {
+                year: detail.year,
+                executionDate: executionDate.querySelector('input').value,
+            }, 'SEPA-Gutschrift exportieren');
+            if (!file) return;
+            downloadFile(file);
+            toast('Die SEPA-Überweisungsdatei wurde erstellt.');
+            dialog.close();
+            await onExported();
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+        } finally {
+            submit.disabled = false;
+        }
+    });
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+};
+
+// Gutschrift der geleisteten Arbeitsstunden je Haushalt (siehe `GetWorkAssignmentRefundOverviewQuery`):
+// Beitragsjahr wählen, Ausführungsdatum festlegen und alle überweisbaren Haushalte als eine
+// SEPA-Überweisungsdatei (pain.001) exportieren. Bereits überwiesene Beträge zieht der Server ab.
+const workAssignmentRefundPanel = () => {
+    const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Gutschriften werden geladen …')]});
+    const yearField = selectField('Beitragsjahr', 'work-assignment-refund-year', [], '');
+    const yearSelect = yearField.querySelector('select');
+    const executionDateField = field('Ausführungsdatum', 'work-assignment-refund-execution-date', '', 'date');
+    const executionDateInput = executionDateField.querySelector('input');
+    const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
+    exportAll.disabled = true;
+    let overview = null;
+    const state = {obstacleKind: ''};
+    const openSections = {invalid: false, valid: true, withoutAmount: false};
+
+    const table = (entries, withObstacles) => sepaTable(
+        ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', 'Stunden', 'Betrag', ...(withObstacles ? ['Grund'] : [])],
+        entries.map((entry) => {
+            const row = element('tr', {className: 'member-row', attributes: {tabindex: '0', role: 'button'}, children: [
+                ...[entry.memberNumber, entry.primaryMemberNumber, entry.lastName, entry.firstName, formatIban(entry.iban), formatHours(entry.workedMinutes)]
+                    .map((text) => element('td', {text})),
+                element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
+                ...(withObstacles ? [element('td', {className: 'direct-debit-obstacles', text: entry.obstacles.map((obstacle) => obstacle.message).join(' ')})] : []),
+            ]});
+            const open = () => openWorkAssignmentRefundDialog(entry.primaryMemberNumber, overview.year, load);
+            row.addEventListener('click', open);
+            row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+
+            return row;
+        }),
+    );
+
+    const load = async () => {
+        const year = yearSelect.value;
+        try {
+            overview = await request(`/api/admin/v1/work-assignment-refunds${year ? `?year=${encodeURIComponent(year)}` : ''}`);
+        } catch (error) {
+            body.replaceChildren(emptyState('Die Gutschriften konnten nicht geladen werden.'));
+            toast(error.message, 'error');
+            return;
+        }
+        yearSelect.replaceChildren(...overview.selectableYears.map((value) => element('option', {text: String(value), attributes: {value: String(value)}})));
+        yearSelect.value = String(overview.year);
+        if (!executionDateInput.value) executionDateInput.value = overview.defaultExecutionDate;
+        exportAll.disabled = overview.valid.length === 0;
+        exportAll.textContent = `Alle exportieren (${overview.valid.length})`;
+        body.replaceChildren(
+            element('p', {className: 'field-hint', text: 'Gutschrift = geleistete Stunden des Haushalts × Satz je Stunde, höchstens der Arbeitseinsatz-Zuschlag des Haushalts. Empfänger ist der Zahler, bereits überwiesene Beträge des Jahres werden abgezogen.'}),
+            sepaAccordion(openSections, 'invalid', 'Nicht überweisbar', String(overview.invalid.length), [
+                element('p', {className: 'field-hint', text: 'Diese Haushalte sind nicht in der Sammelüberweisung enthalten.'}),
+                overview.invalid.length
+                    ? sepaObstacleSection(overview.invalid, overview.obstacleCategories, state, (entries) => table(entries, true))
+                    : emptyState('Keine – alle Haushalte sind überweisbar.'),
+            ]),
+            sepaAccordion(openSections, 'valid', 'Überweisbar', `${overview.valid.length} · ${formatEuro(sumAmounts(overview.valid))}`, [
+                overview.valid.length ? table(overview.valid, false) : emptyState('Keine überweisbaren Gutschriften.'),
+            ]),
+            ...(overview.withoutAmount.length ? [sepaAccordion(openSections, 'withoutAmount', 'Nichts zu überweisen', String(overview.withoutAmount.length), [
+                element('p', {className: 'field-hint', text: 'Diese Haushalte haben Stunden geleistet, aber keinen Arbeitseinsatz-Zuschlag, oder ihre Gutschrift wurde bereits vollständig überwiesen.'}),
+                table(overview.withoutAmount, false),
+            ])] : []),
+        );
+    };
+
+    yearSelect.addEventListener('change', () => load());
+    exportAll.addEventListener('click', async () => {
+        if (!overview?.valid.length) return;
+        if (!executionDateInput.value) {
+            toast('Bitte ein Ausführungsdatum wählen.', 'error');
+            return;
+        }
+        const confirmed = await confirmAction(
+            'Alle Gutschriften exportieren?',
+            `${overview.valid.length} Überweisungen über insgesamt ${formatEuro(sumAmounts(overview.valid))} für das Beitragsjahr ${overview.year} werden in eine XML-Datei exportiert, Ausführung am ${formatDateDE(executionDateInput.value)}. Der Export wird in der Gutschrift-Historie festgehalten, damit nicht doppelt überwiesen wird.`,
+            'Exportieren',
+        );
+        if (!confirmed) return;
+        exportAll.disabled = true;
+        try {
+            const file = await exportDirectDebitWithOptionalPin('/api/admin/v1/work-assignment-refunds/export', {
+                year: overview.year,
+                executionDate: executionDateInput.value,
+                primaryMemberNumbers: overview.valid.map((entry) => entry.primaryMemberNumber),
+            }, 'SEPA-Gutschrift exportieren');
+            if (!file) return;
+            downloadFile(file);
+            toast('Die SEPA-Überweisungsdatei wurde erstellt.');
+        } catch (error) {
+            toast(error.message, 'error');
+        } finally {
+            await load();
+        }
+    });
+
+    return {
+        panel: element('div', {className: 'member-dialog-panel', children: [
+            element('div', {className: 'work-assignment-refund-controls', children: [yearField, executionDateField, exportAll]}),
+            body,
+        ]}),
+        load,
+    };
+};
+
+// SEPA-Overlay mit zwei Reitern: Lastschriften (Mitgliedsbeiträge) und Gutschriften (geleistete
+// Arbeitsstunden). Die Gutschriften werden erst beim ersten Öffnen ihres Reiters geladen.
+const openDirectDebitOverviewDialog = async () => {
+    const dialog = element('dialog', {className: 'activity-dialog direct-debit-overview-dialog'});
+    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+    const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
+    const tabs = [
+        {label: 'Lastschriften (Beiträge)', ...directDebitOverviewPanel(), loaded: true},
+        {label: 'Gutschriften (Arbeitsstunden)', ...workAssignmentRefundPanel(), loaded: false},
+    ];
+    const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'SEPA-Bereiche'}});
+    const select = (active) => {
+        strip.replaceChildren(...tabs.map((tab) => {
+            const button = element('button', {className: `sub-tab${tab === active ? ' active' : ''}`, text: tab.label, attributes: {type: 'button', 'aria-pressed': String(tab === active)}});
+            button.addEventListener('click', () => select(tab));
+
+            return button;
+        }));
+        tabs.forEach((tab) => { tab.panel.hidden = tab !== active; });
+        if (!active.loaded) {
+            active.loaded = true;
+            active.load();
+        }
+    };
+    select(tabs[0]);
+
     closeButton.addEventListener('click', () => dialog.close());
     close.addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => dialog.remove());
     dialog.append(close, element('div', {className: 'activity-dialog-content', children: [
-        element('p', {className: 'eyebrow', text: 'SEPA-Lastschriften'}),
-        element('h2', {text: 'Lastschriften aller Zahler'}),
-        element('div', {className: 'confirm-dialog-actions direct-debit-overview-actions', children: [closeButton, exportAll]}),
-        body,
+        element('p', {className: 'eyebrow', text: 'SEPA'}),
+        element('div', {className: 'direct-debit-overview-heading', children: [element('h2', {text: 'Lastschriften und Gutschriften'}), closeButton]}),
+        strip,
+        ...tabs.map((tab) => tab.panel),
     ]}));
     document.body.append(dialog);
     dialog.showModal();
-    await load();
+    await tabs[0].load();
 };
 
 /** SEPA-Gläubigerdaten des Vereins (siehe `DirectDebitCreditor`) — Voraussetzung für jeden Lastschrift-Export. */
@@ -1944,7 +2195,7 @@ const showMembers = () => {
         actions.push(recalculateAll);
     }
     if (canEditModule('members')) {
-        const directDebits = element('button', {className: 'secondary-button', text: 'SEPA-Lastschriften…', attributes: {type: 'button'}});
+        const directDebits = element('button', {className: 'secondary-button', text: 'SEPA-Lastschriften/Gutschriften…', attributes: {type: 'button'}});
         directDebits.addEventListener('click', () => openDirectDebitOverviewDialog());
         actions.push(directDebits);
     }
