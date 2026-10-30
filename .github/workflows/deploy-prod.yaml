@@ -84,6 +84,10 @@ jobs:
               IdentityFile ~/.ssh/prod_deploy
               IdentitiesOnly yes
               StrictHostKeyChecking yes
+              # Das Cache-Aufwärmen auf Prod läuft minutenlang ohne Ausgabe; ohne Keepalive trennt
+              # der Hoster die stille Verbindung, und mit ihr endet das Deploy-Skript auf dem Server.
+              ServerAliveInterval 30
+              ServerAliveCountMax 10
           EOF
 
       - name: Release hochladen
