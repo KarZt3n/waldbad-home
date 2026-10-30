@@ -254,7 +254,7 @@ a { color: var(--forest-700); }
 }
 
 .page-hero h1 {
-    max-width: 16ch;
+    /*max-width: 16ch;*/
     margin: 1rem 0;
     font-family: Georgia, "Times New Roman", serif;
     /* Untergrenze so klein, dass lange Einzelwörter („Veranstaltungen“) auch auf schmalen Handys
