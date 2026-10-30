@@ -3,7 +3,7 @@
 // erst der Klick auf den Button, nicht schon das Öffnen der Seite (Link-Vorschau im E-Mail-Programm).
 
 import {app, element, formatDateDE, formatEuro, formMessage, request} from '../core.js';
-import {buildSiteFooter, buildSiteHeader} from './site-chrome.js';
+import {buildSiteFooter, buildSiteHeader, buildSocialMediaBar} from './site-chrome.js';
 
 const SAUNA_APPROVAL_SLUG = 'sauna-anfrage';
 const STATUS_LABELS = {open: 'offen', accepted: 'bereits angenommen', rejected: 'abgelehnt', cancelled: 'storniert'};
@@ -105,6 +105,7 @@ const renderSaunaApprovalPage = async (navigationTree) => {
                     element('h1', {text: reject ? 'Sauna-Anfrage ablehnen' : 'Sauna-Anfrage annehmen'}),
                 ]}),
                 content,
+                buildSocialMediaBar(),
             ],
         }),
         buildSiteFooter(),

@@ -7,7 +7,7 @@ import {
     app, contributionAge, element, field, fieldRow, FAMILY_ROLE_LABELS, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS,
     PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, request, SALUTATION_LABELS, toast,
 } from '../core.js';
-import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './site-chrome.js';
+import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, MEMBER_ACCESS_SLUG} from './site-chrome.js';
 
 // E-Mail-Einwilligung vorerst nicht anzeigen (Umschalter im Bearbeiten-Dialog und Zeile in den
 // Kontaktdaten). Code, API und Bestätigungsseite bleiben erhalten — zum Einblenden auf `true` setzen.
@@ -450,6 +450,7 @@ const renderMemberSelfServicePage = async (navigationTree) => {
                     ],
                 }),
                 element('div', {className: 'content-card', children: [content]}),
+                buildSocialMediaBar(),
             ],
         }),
         buildSiteFooter(),

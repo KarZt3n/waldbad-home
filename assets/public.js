@@ -7,7 +7,7 @@ import {app, buildPageTree, element, encodePageSlug, renderError, request} from 
 import {renderContentCard} from './content-rendering.js';
 import {renderContactForm} from './public/contact.js';
 import {renderGuestbook} from './public/guestbook.js';
-import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, MEMBER_ACCESS_SLUG} from './public/site-chrome.js';
+import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, MEMBER_ACCESS_SLUG} from './public/site-chrome.js';
 import {renderMemberSelfServicePage} from './public/member-self-service.js';
 import {EMAIL_CONSENT_SLUG, renderEmailConsentPage} from './public/email-consent.js';
 import {renderSaunaApprovalPage, SAUNA_APPROVAL_SLUG} from './public/sauna-approval.js';
@@ -69,6 +69,7 @@ const preparePublicPage = async (slug) => {
                         ],
                     }),
                     article,
+                    buildSocialMediaBar(),
                 ],
             }),
             buildSiteFooter(),

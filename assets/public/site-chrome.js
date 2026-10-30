@@ -13,6 +13,7 @@ const MEMBER_ACCESS_SLUG = 'meine-mitgliedschaft';
 // neu; die Listener der vorherigen am `document` werden darüber wieder entfernt.
 let headerListeners = new AbortController();
 let memberAccessListeners = new AbortController();
+let socialMediaListeners = new AbortController();
 /**
  * Baut die Kopfzeile inkl. Hauptnavigation, verwendet von `preparePublicPage` sowohl für normale
  * CMS-Seiten als auch für die eigenständige „Meine Mitgliedschaft"-Ansicht — `extraChildren` hängt
@@ -139,21 +140,69 @@ const loadSocialMediaLinks = () => {
 
     return socialMediaRequest;
 };
+// Liefert die Farben eines Hintergrunds als [r, g, b, a]; Verläufe (z. B. `.page-hero`) zählen über
+// ihre einzelnen Farbstopps, Hintergrundbilder gelten als dunkel.
+const backgroundColors = (style) => {
+    if (style.backgroundImage.includes('url(')) return [[0, 0, 0, 1]];
+    return [...`${style.backgroundImage} ${style.backgroundColor}`.matchAll(/rgba?\(([^)]+)\)/g)]
+        .map((match) => match[1].split(',').map(Number))
+        .map(([r, g, b, a = 1]) => [r, g, b, a])
+        .filter(([, , , a]) => a >= .5);
+};
+const isDarkAt = (x, y, ignore) => {
+    for (const node of document.elementsFromPoint(x, y)) {
+        if (ignore.contains(node)) continue;
+        const colors = backgroundColors(getComputedStyle(node));
+        if (!colors.length) continue;
+        const luminance = colors.reduce((sum, [r, g, b]) => sum + (.2126 * r + .7152 * g + .0722 * b), 0) / colors.length;
+
+        return luminance < 140;
+    }
+
+    return false;
+};
 /**
- * Feste Leiste am rechten Bildschirmrand mit den unter „Seiten“ → „Social Media“ gepflegten Links.
- * Wird nachgeladen, damit sie den Seitenaufbau nicht verzögert; ohne Links bleibt sie leer und unsichtbar.
+ * Leiste mit den unter „Seiten“ → „Social Media“ gepflegten Links, als letztes Element in `<main>`
+ * eingehängt: Per `position: sticky` (siehe CSS) bleibt sie am unteren Bildschirmrand und endet von
+ * selbst über dem Footer, ohne dass ihre Position per Skript nachgeführt werden muss. Jedes Icon prüft
+ * beim Scrollen den Hintergrund dahinter und wird auf dunklen Flächen weiß (`.on-dark`), sonst grün.
+ * Wird nachgeladen, damit sie den Seitenaufbau nicht verzögert; ohne Links bleibt sie leer.
  */
 const buildSocialMediaBar = () => {
+    socialMediaListeners.abort();
+    socialMediaListeners = new AbortController();
+    const {signal} = socialMediaListeners;
     const bar = element('aside', {className: 'social-button-cont', attributes: {'aria-label': 'Social Media'}});
-    loadSocialMediaLinks().then((links) => bar.replaceChildren(...links.map((link) => {
-        const anchor = element('a', {
-            className: `social-button social-button-${link.platform}`,
-            attributes: {href: link.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${link.label} (öffnet in neuem Tab)`, title: link.label},
+    let scheduled = false;
+    const updateContrast = () => {
+        scheduled = false;
+        if (!bar.isConnected) return;
+        bar.querySelectorAll('.social-button').forEach((button) => {
+            const rect = button.getBoundingClientRect();
+            button.classList.toggle('on-dark', isDarkAt(rect.left + rect.width / 2, rect.top + rect.height / 2, bar));
         });
-        anchor.innerHTML = SOCIAL_MEDIA_ICONS[link.platform];
+    };
+    const scheduleContrast = () => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(updateContrast);
+    };
+    window.addEventListener('scroll', scheduleContrast, {signal, passive: true});
+    window.addEventListener('resize', scheduleContrast, {signal});
+    loadSocialMediaLinks().then((links) => {
+        bar.replaceChildren(...links.map((link) => {
+            const anchor = element('a', {
+                className: `social-button social-button-${link.platform}`,
+                attributes: {href: link.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `${link.label} (öffnet in neuem Tab)`, title: link.label},
+            });
+            anchor.innerHTML = SOCIAL_MEDIA_ICONS[link.platform];
 
-        return anchor;
-    })));
+            return anchor;
+        }));
+        // Die Leiste wird vor dem Einsetzen der Seite gebaut; Bilder bekommen ihre Höhe erst später.
+        scheduleContrast();
+        setTimeout(scheduleContrast, 500);
+    });
 
     return bar;
 };
@@ -168,7 +217,6 @@ const buildSiteFooter = () => element('footer', {
             element('a', {text: 'Unterstützer', attributes: {href: '/seite/unterstuetzer'}}),
             element('a', {text: 'Redaktion', attributes: {href: '/admin'}}),
         ]}),
-        buildSocialMediaBar(),
     ],
 });
 /**
@@ -215,4 +263,4 @@ const buildMemberAccessNav = () => {
     return container;
 };
 
-export {MEMBER_ACCESS_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav};
+export {MEMBER_ACCESS_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav, buildSocialMediaBar};

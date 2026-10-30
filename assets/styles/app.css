@@ -670,38 +670,48 @@ a { color: var(--forest-700); }
 .site-footer a { color: var(--lime-400); }
 .site-footer nav { display: flex; flex-wrap: wrap; gap: 1rem; }
 
-/* Social-Media-Leiste (siehe `buildSocialMediaBar`): liegt im Footer-Markup, ist aber fest am rechten
-   Bildschirmrand verankert — unter der Kopfzeile (z-index 10), damit deren Menüs sie überdecken. */
+/* Social-Media-Leiste (siehe `buildSocialMediaBar`): letztes Element in `<main>`, ohne eigene Höhe.
+   `position: sticky` hält ihre Unterkante am unteren Bildschirmbereich, solange `<main>` darüber
+   hinausreicht; am Seitenende bleibt sie am Ende von `<main>` und damit über dem Footer stehen. Die
+   Icons wachsen von der Unterkante nach oben (`justify-content: flex-end` bei Höhe 0). Ohne eigenen
+   Hintergrund: grüne Icons auf hellen Flächen, weiße (`.on-dark`) auf dunklen. */
 .social-button-cont {
-    position: fixed;
-    display: flex;
-    gap: .15rem;
+    position: sticky;
     z-index: 9;
-    top: 50%;
-    right: 0;
+    bottom: calc(25vh - 3rem);
+    display: flex;
+    width: fit-content;
+    height: 0;
     flex-direction: column;
-    padding: .25rem;
-    border-radius: .6rem 0 0 .6rem;
-    background: rgb(11 46 32 / 55%);
-    backdrop-filter: blur(6px);
-    opacity: .75;
-    transform: translateY(-50%);
-    transition: opacity .15s ease, background-color .15s ease;
+    justify-content: flex-end;
+    gap: .6rem;
+    margin-left: auto;
+    margin-right: 1.25rem;
+    transform: translateY(-1rem);
 }
-.social-button-cont:hover, .social-button-cont:focus-within { background: rgb(11 46 32 / 85%); opacity: 1; }
 .social-button-cont a.social-button {
     display: grid;
-    width: 2rem;
-    height: 2rem;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 auto;
     place-items: center;
-    border-radius: .45rem;
-    color: var(--white);
-    transition: color .15s ease, background-color .15s ease;
+    border: 2px solid var(--forest-700);
+    border-radius: 50%;
+    color: var(--forest-700);
+    background: transparent;
+    transition: color .2s ease, border-color .2s ease, background-color .2s ease;
 }
+.social-button-cont a.social-button.on-dark { border-color: var(--white); color: var(--white); }
 .social-button-cont a.social-button:hover,
-.social-button-cont a.social-button:focus-visible { color: var(--forest-950); background: var(--lime-400); }
-.social-button-cont:empty { display: none; }
-.social-button svg { width: 1.05rem; height: 1.05rem; }
+.social-button-cont a.social-button:focus-visible { border-color: var(--forest-700); color: var(--white); background: var(--forest-700); }
+.social-button-cont a.social-button.on-dark:hover,
+.social-button-cont a.social-button.on-dark:focus-visible { border-color: var(--white); color: var(--forest-950); background: var(--white); }
+.social-button svg { width: 1.3rem; height: 1.3rem; }
+@media (max-width: 760px) {
+    .social-button-cont { bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); gap: .3rem; margin-right: .4rem; transform: translateY(-.5rem); }
+    .social-button-cont a.social-button { width: 1.8rem; height: 1.8rem; border-width: 1.5px; }
+    .social-button svg { width: .85rem; height: .85rem; }
+}
 @media print {
     .social-button-cont { display: none; }
 }
