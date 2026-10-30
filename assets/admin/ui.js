@@ -222,7 +222,7 @@ const treeLayout = (panel, content, {storageKey, defaultWidth, className = ''}) 
 // Lade-Hinweis für Ansichtswechsel (Menü, Reiter, Baum): erscheint erst, wenn der Wechsel länger
 // als eine Sekunde dauert, damit schnelle Wechsel nicht flackern. Liegt die Ansicht hinter einem
 // Dialog (z. B. PIN-Abfrage), zählt die Wartezeit erst ab dessen Schließen.
-const NAVIGATION_LOADER_DELAY_MS = 1000;
+const NAVIGATION_LOADER_DELAY_MS = 500;
 const DIALOG_POLL_MS = 250;
 let pendingNavigations = 0;
 let navigationLoaderTimer = null;
