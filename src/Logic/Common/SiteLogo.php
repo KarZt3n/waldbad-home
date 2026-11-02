@@ -9,5 +9,5 @@ namespace App\Logic\Common;
  */
 final class SiteLogo
 {
-    public const string DEFAULT_URL = '/downloads/waldbad-logo.png';
+    public const string DEFAULT_URL = '/downloads/waldbad-logo-webp.webp';
 }
