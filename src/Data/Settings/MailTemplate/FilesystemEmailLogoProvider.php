@@ -35,7 +35,7 @@ final class FilesystemEmailLogoProvider implements EmailLogoProviderInterface
         }
         $this->resolved = true;
 
-        $logoPath = $this->publicDirectory.SiteLogo::DEFAULT_URL;
+        $logoPath = $this->publicDirectory.SiteLogo::MAIL;
         $contents = @file_get_contents($logoPath);
         if ($contents === false) {
             return $this->logo = null;
