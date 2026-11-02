@@ -4,7 +4,6 @@ namespace App\Logic\Media\PhotoAlbum\Query;
 
 use App\Logic\Media\PhotoAlbum\Dto\PhotoAlbumResponse;
 use App\Logic\Media\PhotoAlbum\Manager\PhotoAlbumManagerInterface;
-use App\Logic\Media\PhotoAlbum\Model\PhotoAlbum;
 
 readonly class ListPhotoAlbumsQuery
 {
@@ -13,15 +12,10 @@ readonly class ListPhotoAlbumsQuery
     }
 
     /**
-     * @return list<PhotoAlbumResponse> neueste zuerst; mit `$onlyVisible` nur im Frontend sichtbare
+     * @return list<PhotoAlbumResponse> neueste zuerst
      */
-    public function execute(bool $onlyVisible = false): array
+    public function execute(): array
     {
-        $albums = $this->manager->all();
-        if ($onlyVisible) {
-            $albums = array_values(array_filter($albums, static fn (PhotoAlbum $album): bool => $album->visible));
-        }
-
-        return array_map(PhotoAlbumResponse::fromAlbum(...), $albums);
+        return array_map(PhotoAlbumResponse::fromAlbum(...), $this->manager->all());
     }
 }

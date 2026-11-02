@@ -2,3 +2,13 @@
 <FilesMatch "\.(?:php|phar|phtml|cgi|pl|py|sh)$">
     Require all denied
 </FilesMatch>
+
+# Ersetzte Dateien behalten ihre URL, daher nur begrenzt cachen; danach prüft der Browser per ETag/Last-Modified.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(?:jpe?g|png|gif|webp|avif|svg)$">
+        Header set Cache-Control "public, max-age=604800"
+    </FilesMatch>
+    <FilesMatch "\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|txt|csv|zip)$">
+        Header set Cache-Control "public, max-age=3600, must-revalidate"
+    </FilesMatch>
+</IfModule>

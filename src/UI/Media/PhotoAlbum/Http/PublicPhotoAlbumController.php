@@ -2,7 +2,8 @@
 
 namespace App\UI\Media\PhotoAlbum\Http;
 
-use App\Logic\Media\PhotoAlbum\Query\ListPhotoAlbumsQuery;
+use App\Logic\Media\PhotoAlbum\Query\GetPhotoAlbumYearQuery;
+use App\Logic\Media\PhotoAlbum\Query\ListPhotoAlbumYearsQuery;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -13,9 +14,15 @@ readonly class PublicPhotoAlbumController
     {
     }
 
-    #[Route('', name: 'api_public_photo_album_list', methods: ['GET'])]
-    public function list(ListPhotoAlbumsQuery $query): JsonResponse
+    #[Route('/years', name: 'api_public_photo_album_years', methods: ['GET'])]
+    public function years(ListPhotoAlbumYearsQuery $query): JsonResponse
     {
-        return new JsonResponse($this->responseFactory->collection($query->execute(onlyVisible: true)));
+        return new JsonResponse($this->responseFactory->years($query->execute()));
+    }
+
+    #[Route('/years/{year}', name: 'api_public_photo_album_year', requirements: ['year' => '\d{4}'], methods: ['GET'])]
+    public function year(int $year, GetPhotoAlbumYearQuery $query): JsonResponse
+    {
+        return new JsonResponse($this->responseFactory->year($query->execute($year)));
     }
 }

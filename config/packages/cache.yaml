@@ -17,3 +17,10 @@ framework:
         # Namespaced pools use the above "app" backend by default
         #pools:
             #my.dedicated.cache: null
+
+        pools:
+            # Fotoarchiv: wird bei jeder Änderung neu aufgebaut; die Lebensdauer begrenzt nur
+            # Abweichungen durch direkte Datenbankänderungen (sonst `app:photo-albums:warm-cache`).
+            cache.photo_albums:
+                adapter: cache.app
+                default_lifetime: 7776000

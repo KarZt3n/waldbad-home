@@ -8,9 +8,12 @@ use App\Logic\IdentityAccess\User\Model\ModuleAccess;
 use App\Logic\IdentityAccess\User\Model\ModuleRole;
 use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
+use App\Logic\Media\PhotoAlbum\Model\PhotoAlbum;
+use App\Logic\Media\PhotoAlbum\PhotoAlbumCacheInterface;
 use App\Tests\Support\FixedSecureTokenGenerator;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\SchemaTool;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -31,6 +34,11 @@ final class PhotoAlbumWorkflowTest extends WebTestCase
         $schemaTool = new SchemaTool($entityManager);
         $schemaTool->dropSchema($metadata);
         $schemaTool->createSchema($metadata);
+        $cache = self::getContainer()->get('cache.photo_albums');
+        if (!$cache instanceof CacheItemPoolInterface) {
+            throw new \LogicException('Der Cache des Fotoarchivs ist im Testcontainer nicht verfügbar.');
+        }
+        $cache->clear();
     }
 
     public function testEntriesAreManagedAndOnlyVisibleOnesArePublic(): void
@@ -66,11 +74,13 @@ final class PhotoAlbumWorkflowTest extends WebTestCase
         ], $headers);
         self::assertResponseStatusCodeSame(422);
 
-        $this->client->request('GET', '/api/public/v1/photo-albums');
+        $this->client->request('GET', '/api/public/v1/photo-albums/years');
         self::assertResponseIsSuccessful();
-        $public = $this->responseData();
-        self::assertSame(1, $public['total']);
-        $items = $public['items'];
+        self::assertSame([['year' => 2026, 'count' => 1]], array_map(
+            static fn (array $year): array => ['year' => $year['year'], 'count' => $year['count']],
+            $this->yearItems(),
+        ));
+        $items = $this->publicYear(2026)['items'];
         self::assertIsArray($items);
         self::assertIsArray($items[0]);
         self::assertSame(['Öffnen', 'Ergebnisse'], array_column(is_array($items[0]['actions']) ? $items[0]['actions'] : [], 'label'));
@@ -86,8 +96,37 @@ final class PhotoAlbumWorkflowTest extends WebTestCase
 
         $this->client->jsonRequest('DELETE', '/api/admin/v1/photo-albums/'.$id, [], $headers);
         self::assertResponseStatusCodeSame(204);
-        $this->client->request('GET', '/api/public/v1/photo-albums');
-        self::assertSame(0, $this->responseData()['total']);
+        $this->client->request('GET', '/api/public/v1/photo-albums/years');
+        self::assertSame([], $this->yearItems());
+    }
+
+    public function testSavingWarmsUpTheServerSideCache(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->client->jsonRequest('POST', '/api/admin/v1/photo-albums', [
+            'title' => 'Eisbaden',
+            'date' => '2025-01-03',
+            'visible' => true,
+            'actions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $cached = $this->photoAlbumCache()->load();
+        self::assertNotNull($cached);
+        self::assertSame(['Eisbaden'], array_map(static fn (PhotoAlbum $album): string => $album->title, $cached));
+
+        // Ohne Warm-up nach dem Speichern käme die Änderung nicht im öffentlichen Archiv an, solange der Cache gilt.
+        $this->photoAlbumCache()->store([]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/photo-albums', [
+            'title' => 'Waldbadlauf',
+            'date' => '2025-05-01',
+            'visible' => true,
+            'actions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $items = $this->publicYear(2025)['items'];
+        self::assertIsArray($items);
+        self::assertSame(['Waldbadlauf', 'Eisbaden'], array_column($items, 'title'));
     }
 
     public function testLegacyImportIsRepeatableWithoutDuplicates(): void
@@ -101,11 +140,12 @@ final class PhotoAlbumWorkflowTest extends WebTestCase
         self::assertSame(0, $tester->execute(['file' => $file]));
         self::assertStringContainsString('0 Foto-Einträge angelegt, 162 bereits vorhanden', $tester->getDisplay());
 
-        $this->client->request('GET', '/api/public/v1/photo-albums');
-        $items = $this->responseData()['items'];
+        $this->client->request('GET', '/api/public/v1/photo-albums/years');
+        $years = $this->yearItems();
+        self::assertSame(2026, $years[0]['year']);
+        self::assertSame(162, array_sum(array_column($years, 'count')));
+        $items = $this->publicYear(2003)['items'];
         self::assertIsArray($items);
-        self::assertIsArray($items[0]);
-        self::assertSame(2026, $items[0]['year']);
         $last = $items[count($items) - 1];
         self::assertIsArray($last);
         self::assertSame('Eröffnung des Waldbades Borkheide am 14. Juni 2003', $last['title']);
@@ -137,6 +177,34 @@ final class PhotoAlbumWorkflowTest extends WebTestCase
         self::assertIsString($login['csrfToken']);
 
         return $login['csrfToken'];
+    }
+
+    private function photoAlbumCache(): PhotoAlbumCacheInterface
+    {
+        $cache = self::getContainer()->get(PhotoAlbumCacheInterface::class);
+        if (!$cache instanceof PhotoAlbumCacheInterface) {
+            throw new \LogicException('Der Cache des Fotoarchivs ist im Testcontainer nicht verfügbar.');
+        }
+
+        return $cache;
+    }
+
+    /** @return array<string, mixed> */
+    private function publicYear(int $year): array
+    {
+        $this->client->request('GET', '/api/public/v1/photo-albums/years/'.$year);
+        self::assertResponseIsSuccessful();
+
+        return $this->responseData();
+    }
+
+    /** @return list<array<array-key, mixed>> */
+    private function yearItems(): array
+    {
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+
+        return array_values(array_filter($items, is_array(...)));
     }
 
     /** @return array<string, mixed> */

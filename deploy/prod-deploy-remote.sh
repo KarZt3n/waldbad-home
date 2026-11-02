@@ -124,6 +124,7 @@ printf 'Migration der DB-Scripte:'
 
 "$php" bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 "$php" bin/console app:media:synchronize-metadata --no-interaction
+"$php" bin/console app:photo-albums:warm-cache --no-interaction
 
 # Neue Assets haben gehashte Dateinamen und können vor dem Umschalten bereitliegen.
 printf 'Neue Assets haben gehashte Dateinamen und können vor dem Umschalten bereitliegen:'

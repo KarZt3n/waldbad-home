@@ -14,4 +14,7 @@ interface PhotoAlbumManagerInterface
     public function save(PhotoAlbum $album): PhotoAlbum;
 
     public function delete(string $id): void;
+
+    /** Baut den Cache neu aus der Datenbank auf, z. B. nach einem Deploy. */
+    public function warmUpCache(): void;
 }
