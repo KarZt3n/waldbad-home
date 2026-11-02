@@ -28,9 +28,10 @@ readonly class BrandedEmailLayout
     {
         $escapedSubject = htmlspecialchars($subject, ENT_QUOTES, 'UTF-8');
         $escapedAssociationName = htmlspecialchars($associationName, ENT_QUOTES, 'UTF-8');
+        // Breite als Attribut (Outlook) und als CSS (Apple Mail skaliert sonst auf die Bildgröße).
         $logoHtml = $logoSource !== null
             ? sprintf(
-                '<img src="%s" alt="%s" width="120" style="display:block;border:0;outline:none;max-width:120px;height:auto;">',
+                '<img src="%s" alt="%s" width="120" style="display:block;border:0;outline:none;width:120px;max-width:120px;height:auto;">',
                 htmlspecialchars($logoSource, ENT_QUOTES, 'UTF-8'),
                 $escapedAssociationName,
             )
