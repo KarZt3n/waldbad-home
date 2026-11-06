@@ -51,7 +51,7 @@ const renderEmailConsentPage = async (navigationTree) => {
                 element('section', {
                     className: 'page-hero',
                     children: [
-                        element('p', {className: 'eyebrow', text: 'Naturbad · Borkheide'}),
+                        element('p', {className: 'eyebrow', text: 'Waldbad · Borkheide'}),
                         element('h1', {text: 'E-Mail-Einwilligung'}),
                     ],
                 }),

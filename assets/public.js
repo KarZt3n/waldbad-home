@@ -63,7 +63,7 @@ const preparePublicPage = async (slug) => {
                     element('section', {
                         className: 'page-hero',
                         children: [
-                            element('p', {className: 'eyebrow', text: 'Naturbad · Borkheide'}),
+                            element('p', {className: 'eyebrow', text: 'Waldbad · Borkheide'}),
                             element('h1', {text: page.title}),
                             ...(page.seoDescription ? [element('p', {className: 'lead', text: page.seoDescription})] : []),
                         ],

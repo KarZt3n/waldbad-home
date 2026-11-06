@@ -445,7 +445,7 @@ const renderMemberSelfServicePage = async (navigationTree) => {
                 element('section', {
                     className: 'page-hero',
                     children: [
-                        element('p', {className: 'eyebrow', text: 'Naturbad · Borkheide'}),
+                        element('p', {className: 'eyebrow', text: 'Waldbad · Borkheide'}),
                         element('h1', {text: 'Meine Mitgliedschaft'}),
                     ],
                 }),
