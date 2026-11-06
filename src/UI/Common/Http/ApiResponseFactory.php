@@ -79,6 +79,7 @@ readonly class ApiResponseFactory
      *         eventHelpButtonLabel: string|null,
      *         eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *         eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *         actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *         extensionKey: string|null,
      *         collectionColumns: int|null,
      *         collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
@@ -131,6 +132,10 @@ readonly class ApiResponseFactory
                     'eventCallToActions' => array_map(
                         static fn (\App\Logic\Content\Page\Model\EventCallToAction $action): array => ['label' => $action->label, 'url' => $action->url, 'pageId' => $action->pageId],
                         $block->eventCallToActions,
+                    ),
+                    'actionButtons' => array_map(
+                        static fn (\App\Logic\Content\Page\Model\ActionButton $button): array => ['label' => $button->label, 'url' => $button->url, 'pageId' => $button->pageId],
+                        $block->actionButtons,
                     ),
                     'extensionKey' => $block->extensionKey,
                     'collectionColumns' => $block->collectionColumns,

@@ -34,6 +34,7 @@ class PublishedPageEntity
      *     eventHelpButtonLabel?: string|null,
      *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     actionButtons?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey?: string|null,
      *     collectionColumns?: int|null,
      *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
@@ -124,6 +125,7 @@ class PublishedPageEntity
      *     eventHelpButtonLabel?: string|null,
      *     eventActivities?: list<array{activityId: string, requiredHelpers: int}>,
      *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     actionButtons?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey?: string|null,
      *     collectionColumns?: int|null,
      *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
@@ -202,6 +204,7 @@ class PublishedPageEntity
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey: string|null,
      *     collectionColumns: int|null,
      *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
@@ -262,6 +265,7 @@ class PublishedPageEntity
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey: string|null,
      *     collectionColumns: int|null,
      *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>

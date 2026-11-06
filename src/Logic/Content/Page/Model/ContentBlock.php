@@ -33,6 +33,8 @@ readonly class ContentBlock
         public array $eventActivities = [],
         /** @var list<EventCallToAction> */
         public array $eventCallToActions = [],
+        /** @var list<ActionButton> */
+        public array $actionButtons = [],
         public ?string $extensionKey = null,
         public ?int $collectionColumns = null,
         /** @var list<ContentCollectionItem> */
@@ -74,6 +76,11 @@ readonly class ContentBlock
 
         if ($this->type !== ContentBlockType::Event && $this->eventCallToActions !== []) {
             throw new BusinessRuleViolationException('Zusätzliche Aktionsbuttons sind nur bei Veranstaltungen erlaubt.');
+        }
+
+        if (!in_array($this->type, [ContentBlockType::RichText, ContentBlockType::Image, ContentBlockType::ImageText], true)
+            && $this->actionButtons !== []) {
+            throw new BusinessRuleViolationException('Aktionsbuttons sind nur bei Text-, Bild- sowie Bild-und-Text-Blöcken erlaubt.');
         }
 
         $activityIds = array_map(static fn (EventActivityAssignment $assignment): string => $assignment->activityId, $this->eventActivities);
@@ -241,6 +248,7 @@ readonly class ContentBlock
             eventHelpButtonLabel: $this->eventHelpButtonLabel,
             eventActivities: $this->eventActivities,
             eventCallToActions: $this->eventCallToActions,
+            actionButtons: $this->actionButtons,
             extensionKey: $this->extensionKey,
             collectionColumns: $this->collectionColumns,
             collectionItems: $collectionItems,

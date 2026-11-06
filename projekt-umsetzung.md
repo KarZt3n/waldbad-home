@@ -167,6 +167,8 @@ Bild-Text-Blöcke erlauben zusätzlich eine Bildbreite zwischen 20 und 80 Prozen
 
 Reine Bild-Blöcke erlauben eine Bildbreite zwischen 20 und 100 Prozent sowie eine linksbündige, zentrierte oder rechtsbündige Ausrichtung.
 
+Text-, Bild- sowie Bild-und-Text-Blöcke können optional einen oder mehrere Aktionsbuttons erhalten. Jeder Button besitzt eine frei wählbare Beschriftung und verweist entweder auf eine interne CMS-Seite oder auf eine sichere externe Adresse.
+
 Bild-Text-Collections stellen zusammengehörige Angebote oder Merkmale als responsives Kartenraster dar. Die Redakteurin oder der Redakteur wählt für Desktop ein bis vier Spalten. Jede Karte besitzt eine Überschrift sowie optional Rich Text, Bild, Alternativtext und Bildquelle; Karten können ergänzt, entfernt und umsortiert werden. Auf kleinen Viewports wird das Raster automatisch einspaltig. Der Block „Collection: Bild + Text“ wird ohne Überschrift und Einträge angelegt, damit er für unterschiedliche Inhalte neutral verwendet werden kann.
 
 Für jede veröffentlichte Seite wird ein eigener Veröffentlichungsstand gespeichert. Wird die Seite anschließend bearbeitet und als Entwurf gespeichert, bleiben die zuletzt veröffentlichten Inhalte, der veröffentlichte Slug und die veröffentlichte Navigation im Frontend aktiv. Erst ein erneutes Veröffentlichen ersetzt diesen Stand; „Zurückziehen“ entfernt ihn ausdrücklich aus dem Frontend.

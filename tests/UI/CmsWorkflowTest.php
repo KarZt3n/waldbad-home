@@ -542,6 +542,11 @@ final class CmsWorkflowTest extends WebTestCase
                 [
                     'type' => 'rich_text',
                     'content' => '<p><strong>Fett</strong> und <font color="#ff0000" size="4">farbig</font><script>alert(1)</script></p>',
+                    'actionButtons' => [[
+                        'label' => 'Extern öffnen',
+                        'url' => 'example.test/angebot',
+                        'pageId' => null,
+                    ]],
                 ],
                 [
                     'type' => 'custom_html',
@@ -558,6 +563,11 @@ final class CmsWorkflowTest extends WebTestCase
                     'verticalAlignment' => 'top',
                     'textAlignment' => 'center',
                     'imageFit' => 'contain',
+                    'actionButtons' => [[
+                        'label' => 'Mehr zum Bild',
+                        'url' => 'https://example.test/bildinfo',
+                        'pageId' => null,
+                    ]],
                 ],
                 [
                     'type' => 'image',
@@ -566,6 +576,11 @@ final class CmsWorkflowTest extends WebTestCase
                     'mediaAlt' => null,
                     'layout' => 'right',
                     'imageWidthPercent' => 65,
+                    'actionButtons' => [[
+                        'label' => 'Galerie öffnen',
+                        'url' => 'https://example.test/galerie',
+                        'pageId' => null,
+                    ]],
                 ],
                 [
                     'type' => 'feature_collection',
@@ -628,6 +643,9 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertStringContainsString('"verticalAlignment":"top"', $responseContent);
         self::assertStringContainsString('"textAlignment":"center"', $responseContent);
         self::assertStringContainsString('"imageFit":"contain"', $responseContent);
+        self::assertStringContainsString('"actionButtons":[{"label":"Extern \u00f6ffnen","url":"https:\/\/example.test\/angebot","pageId":null}]', $responseContent);
+        self::assertStringContainsString('"actionButtons":[{"label":"Mehr zum Bild","url":"https:\/\/example.test\/bildinfo","pageId":null}]', $responseContent);
+        self::assertStringContainsString('"actionButtons":[{"label":"Galerie \u00f6ffnen","url":"https:\/\/example.test\/galerie","pageId":null}]', $responseContent);
         self::assertStringContainsString('"mediaSource":"Foto: Waldbad-Team"', $responseContent);
         self::assertStringContainsString('"layout":"right"', $responseContent);
         self::assertStringContainsString('"imageWidthPercent":65', $responseContent);
@@ -672,6 +690,15 @@ final class CmsWorkflowTest extends WebTestCase
         $publicPage = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($publicPage);
         self::assertSame('Testseite', $publicPage['title']);
+        $publicBlocks = $publicPage['blocks'];
+        self::assertIsArray($publicBlocks);
+        $publicTextBlock = $publicBlocks[0];
+        self::assertIsArray($publicTextBlock);
+        $publicActionButtons = $publicTextBlock['actionButtons'];
+        self::assertIsArray($publicActionButtons);
+        $publicActionButton = $publicActionButtons[0];
+        self::assertIsArray($publicActionButton);
+        self::assertSame('https://example.test/angebot', $publicActionButton['url']);
 
         $eventReferencePayload = $page;
         $eventReferencePayload['title'] = 'Veranstaltungshinweis';

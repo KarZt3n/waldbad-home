@@ -3,6 +3,7 @@
 namespace App\Tests\Unit\Logic\Content\Page\Model;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Content\Page\Model\ActionButton;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\Content\Page\Model\ContentCollectionItem;
@@ -136,5 +137,46 @@ final class ContentBlockTest extends TestCase
         $action = new EventCallToAction('Google öffnen', 'google.com', null);
 
         self::assertSame('https://google.com', $action->url);
+    }
+
+    public function testTextImageAndImageTextBlocksKeepActionButtons(): void
+    {
+        $external = new ActionButton('Extern öffnen', 'example.org/angebot', null);
+        $internal = new ActionButton('Mehr erfahren', null, 'information-page');
+
+        $text = new ContentBlock(ContentBlockType::RichText, '<p>Informationen</p>', actionButtons: [$external, $internal]);
+        $image = new ContentBlock(ContentBlockType::Image, '', mediaUrl: '/bild.jpg', actionButtons: [$internal]);
+        $imageText = new ContentBlock(
+            ContentBlockType::ImageText,
+            '<p>Informationen</p>',
+            mediaUrl: '/bild.jpg',
+            layout: 'image_left',
+            actionButtons: [$external],
+        );
+
+        self::assertSame('https://example.org/angebot', $external->url);
+        self::assertSame([$external, $internal], $text->actionButtons);
+        self::assertSame([$internal], $image->actionButtons);
+        self::assertSame([$external], $imageText->actionButtons);
+    }
+
+    public function testOtherBlockTypesRejectActionButtons(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('nur bei Text-, Bild- sowie Bild-und-Text-Blöcken');
+
+        new ContentBlock(
+            ContentBlockType::Alert,
+            '<p>Hinweis</p>',
+            actionButtons: [new ActionButton('Mehr erfahren', '/', null)],
+        );
+    }
+
+    public function testActionButtonRejectsUnsafeUrlScheme(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('kein erlaubtes Ziel');
+
+        new ActionButton('Unsicher', 'javascript:alert(1)', null);
     }
 }

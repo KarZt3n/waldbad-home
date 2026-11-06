@@ -336,6 +336,9 @@ a { color: var(--forest-700); }
 .content-image.align-left { margin-right: auto; margin-left: 0; }
 .content-image.align-center { margin-right: auto; margin-left: auto; }
 .content-image.align-right { margin-right: 0; margin-left: auto; }
+.image-content-block .content-image { margin-bottom: 1rem; }
+.image-content-block.align-center .content-action-row { justify-content: center; }
+.image-content-block.align-right .content-action-row { justify-content: flex-end; }
 
 .content-image img {
     display: block;
@@ -565,6 +568,8 @@ a { color: var(--forest-700); }
 .image-text.text-left .image-text-copy { text-align: left; }
 .image-text.text-center .image-text-copy { text-align: center; }
 .image-text.text-right .image-text-copy { text-align: right; }
+.image-text.text-center .content-action-row { justify-content: center; }
+.image-text.text-right .content-action-row { justify-content: flex-end; }
 .image-text.fit-cover .image-text-media img { object-fit: cover; }
 .image-text.fit-contain .image-text-media img { object-fit: contain; background: #f0f4f1; }
 
@@ -1767,6 +1772,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .event-block > .event-media { width: 100%; min-height: 14rem; max-height: none; order: initial; }
     /* Gestapelt unter dem Bild liest sich rechtsbündiger Text schlecht. */
     .image-text.text-right .image-text-copy, .event-block.text-right .event-copy { text-align: left; }
+    .image-text.text-right .content-action-row { justify-content: flex-start; }
     .page-teaser.text-right .page-teaser-copy { justify-items: start; }
     .feature-collection-grid { grid-template-columns: 1fr; }
     .media-input-row { grid-template-columns: 1fr; }
@@ -1819,6 +1825,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .event-call-action-target > .field { height: 100%; }
 .event-action-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
 .event-action-row .button { margin-top: 0; }
+.content-action-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.content-action-row .button { margin-top: 0; }
 .selected-activity-list { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 .activity-chip { background: #e1f1e8; border-radius: 999px; padding: .3rem .65rem; font-size: .9rem; }
 

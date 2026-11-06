@@ -56,10 +56,97 @@ const createBlock = (type) => ({
     eventHelpButtonLabel: type === 'event' ? 'Ich möchte helfen!' : null,
     eventActivities: [],
     eventCallToActions: [],
+    actionButtons: [],
     extensionKey: type === 'extension' ? 'membership_application' : null,
     collectionColumns: type === 'feature_collection' ? 3 : null,
     collectionItems: [],
 });
+const actionButtonEditor = (block, index, handlers) => {
+    block.actionButtons = Array.isArray(block.actionButtons) ? block.actionButtons : [];
+    const list = element('div', {className: 'event-call-action-editor-list'});
+    const renderButtons = () => {
+        list.replaceChildren(...block.actionButtons.map((button, buttonIndex) => {
+            const label = field('Button-Beschriftung', `block-action-label-${index}-${buttonIndex}`, button.label || 'Mehr erfahren');
+            const labelInput = label.querySelector('input');
+            labelInput.maxLength = 80;
+            labelInput.required = true;
+            labelInput.addEventListener('input', () => button.label = labelInput.value);
+
+            const targetType = element('select', {attributes: {'aria-label': 'Art des Linkziels'}, children: [
+                element('option', {text: 'Externe Adresse verlinken', attributes: {value: 'url'}}),
+                element('option', {text: 'CMS-Seite verlinken', attributes: {value: 'page'}}),
+            ]});
+            targetType.value = button.pageId ? 'page' : 'url';
+            const targetField = element('div', {className: 'event-call-action-target'});
+            const renderTarget = () => {
+                if (targetType.value === 'page') {
+                    const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
+                    pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
+                    flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
+                        if (candidate.id === handlers.currentPageId) return;
+                        pageSelect.append(element('option', {
+                            text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
+                            attributes: {value: candidate.id},
+                        }));
+                    });
+                    pageSelect.value = button.pageId || '';
+                    pageSelect.required = true;
+                    pageSelect.addEventListener('change', () => button.pageId = pageSelect.value || null);
+                    targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                    return;
+                }
+
+                const url = field('Externe Adresse', `block-action-url-${index}-${buttonIndex}`, button.url || 'https://');
+                const urlInput = url.querySelector('input');
+                urlInput.maxLength = 2048;
+                urlInput.required = true;
+                urlInput.placeholder = 'https://www.beispiel.de/…';
+                urlInput.addEventListener('input', () => button.url = urlInput.value);
+                targetField.replaceChildren(url);
+            };
+            targetType.addEventListener('change', () => {
+                if (targetType.value === 'page') {
+                    button.url = null;
+                } else {
+                    button.pageId = null;
+                    button.url = 'https://';
+                }
+                renderTarget();
+            });
+            renderTarget();
+
+            const remove = element('button', {className: 'tree-icon-button danger', text: '×', attributes: {type: 'button', title: 'Aktionsbutton entfernen', 'aria-label': 'Aktionsbutton entfernen'}});
+            remove.addEventListener('click', async () => {
+                const confirmed = await confirmAction('Aktionsbutton entfernen?', 'Der Aktionsbutton wird aus diesem Inhaltsblock entfernt.', 'Entfernen');
+                if (!confirmed) return;
+                block.actionButtons.splice(buttonIndex, 1);
+                renderButtons();
+            });
+
+            return element('div', {className: 'event-call-action-editor-row', children: [
+                label,
+                element('label', {className: 'field', children: [element('span', {text: 'Linkziel'}), targetType]}),
+                targetField,
+                remove,
+            ]});
+        }));
+    };
+
+    const add = element('button', {className: 'secondary-button', text: '＋ Aktionsbutton hinzufügen', attributes: {type: 'button'}});
+    add.addEventListener('click', () => {
+        block.actionButtons.push({label: 'Mehr erfahren', url: 'https://', pageId: null});
+        renderButtons();
+        list.lastElementChild?.querySelector('input')?.focus();
+    });
+    renderButtons();
+
+    return element('fieldset', {className: 'event-call-action-editor', children: [
+        element('legend', {text: 'Aktionsbuttons (optional)'}),
+        element('small', {text: 'Buttons können auf eine interne CMS-Seite oder eine externe Adresse verweisen.'}),
+        list,
+        add,
+    ]});
+};
 const slugify = (value) => value
     .trim()
     .toLocaleLowerCase('de-DE')
@@ -1116,6 +1203,9 @@ const blockEditor = (block, index, handlers) => {
             fileRow,
             label,
         );
+    }
+    if (['rich_text', 'image', 'image_text'].includes(block.type)) {
+        card.append(actionButtonEditor(block, index, handlers));
     }
 
     const remove = element('button', {className: 'text-button danger', text: 'Block entfernen', attributes: {type: 'button'}});

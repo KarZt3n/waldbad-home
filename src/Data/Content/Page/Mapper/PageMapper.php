@@ -4,6 +4,7 @@ namespace App\Data\Content\Page\Mapper;
 
 use App\Data\Content\Page\Entity\PageEntity;
 use App\Data\Content\Page\Entity\PublishedPageEntity;
+use App\Logic\Content\Page\Model\ActionButton;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\Content\Page\Model\ContentCollectionItem;
@@ -50,6 +51,10 @@ readonly class PageMapper
                     eventCallToActions: array_map(
                         static fn (array $action): EventCallToAction => new EventCallToAction($action['label'], $action['url'], $action['pageId']),
                         $block['eventCallToActions'] ?? [],
+                    ),
+                    actionButtons: array_map(
+                        static fn (array $button): ActionButton => new ActionButton($button['label'], $button['url'], $button['pageId']),
+                        $block['actionButtons'] ?? [],
                     ),
                     extensionKey: $block['extensionKey'] ?? null,
                     collectionColumns: $block['collectionColumns'] ?? null,
@@ -138,6 +143,10 @@ readonly class PageMapper
                     eventCallToActions: array_map(
                         static fn (array $action): EventCallToAction => new EventCallToAction($action['label'], $action['url'], $action['pageId']),
                         $block['eventCallToActions'] ?? [],
+                    ),
+                    actionButtons: array_map(
+                        static fn (array $button): ActionButton => new ActionButton($button['label'], $button['url'], $button['pageId']),
+                        $block['actionButtons'] ?? [],
                     ),
                     extensionKey: $block['extensionKey'] ?? null,
                     collectionColumns: $block['collectionColumns'] ?? null,
@@ -259,6 +268,7 @@ readonly class PageMapper
      *     eventHelpButtonLabel: string|null,
      *     eventActivities: list<array{activityId: string, requiredHelpers: int}>,
      *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
+     *     actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey: string|null,
      *     collectionColumns: int|null,
      *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
@@ -294,6 +304,10 @@ readonly class PageMapper
                 'eventCallToActions' => array_map(
                     static fn (EventCallToAction $action): array => ['label' => $action->label, 'url' => $action->url, 'pageId' => $action->pageId],
                     $block->eventCallToActions,
+                ),
+                'actionButtons' => array_map(
+                    static fn (ActionButton $button): array => ['label' => $button->label, 'url' => $button->url, 'pageId' => $button->pageId],
+                    $block->actionButtons,
                 ),
                 'extensionKey' => $block->extensionKey,
                 'collectionColumns' => $block->collectionColumns,

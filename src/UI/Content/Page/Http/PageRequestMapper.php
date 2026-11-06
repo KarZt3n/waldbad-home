@@ -5,6 +5,7 @@ namespace App\UI\Content\Page\Http;
 use App\Logic\Content\Page\Dto\CreatePageRequest;
 use App\Logic\Content\Page\Dto\UpdatePageRequest;
 use App\Logic\Content\Page\HtmlSanitizerInterface;
+use App\Logic\Content\Page\Model\ActionButton;
 use App\Logic\Content\Page\Model\ContentBlock;
 use App\Logic\Content\Page\Model\ContentBlockType;
 use App\Logic\Content\Page\Model\ContentCollectionItem;
@@ -96,6 +97,7 @@ readonly class PageRequestMapper
             $eventHelpButtonLabel = $block['eventHelpButtonLabel'] ?? null;
             $eventActivities = $block['eventActivities'] ?? [];
             $eventCallToActions = $block['eventCallToActions'] ?? [];
+            $actionButtons = $block['actionButtons'] ?? [];
             $extensionKey = $block['extensionKey'] ?? null;
             $collectionColumns = $block['collectionColumns'] ?? null;
             $collectionItems = $block['collectionItems'] ?? [];
@@ -189,6 +191,7 @@ readonly class PageRequestMapper
                     pageId: $actionPageId === '' ? null : $actionPageId,
                 );
             }
+            $mappedActionButtons = $this->actionButtons($actionButtons);
             if ($extensionKey !== null && !is_string($extensionKey)) {
                 throw new BadRequestHttpException('Der Erweiterungsschlüssel muss eine Zeichenkette sein.');
             }
@@ -250,9 +253,41 @@ readonly class PageRequestMapper
                 eventHelpButtonLabel: $eventHelpButtonLabel === null || trim($eventHelpButtonLabel) === '' ? null : trim($eventHelpButtonLabel),
                 eventActivities: $mappedActivities,
                 eventCallToActions: $mappedEventCallToActions,
+                actionButtons: $mappedActionButtons,
                 extensionKey: $extensionKey === null || trim($extensionKey) === '' ? null : trim($extensionKey),
                 collectionColumns: $collectionColumns,
                 collectionItems: $this->collectionItems($collectionItems),
+            );
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @return list<ActionButton>
+     */
+    private function actionButtons(mixed $buttons): array
+    {
+        if (!is_array($buttons) || !array_is_list($buttons)) {
+            throw new BadRequestHttpException('Die Aktionsbuttons müssen als Liste angegeben werden.');
+        }
+
+        $mapped = [];
+        foreach ($buttons as $button) {
+            $label = is_array($button) ? ($button['label'] ?? null) : null;
+            $url = is_array($button) ? ($button['url'] ?? null) : null;
+            $pageId = is_array($button) ? ($button['pageId'] ?? null) : null;
+            if (!is_array($button)
+                || !is_string($label)
+                || ($url !== null && !is_string($url))
+                || ($pageId !== null && !is_string($pageId))) {
+                throw new BadRequestHttpException('Ein Aktionsbutton benötigt Beschriftung und ein gültiges Ziel.');
+            }
+
+            $mapped[] = new ActionButton(
+                label: trim(strip_tags($label)),
+                url: $url === null || trim($url) === '' ? null : trim($url),
+                pageId: $pageId === null || trim($pageId) === '' ? null : trim($pageId),
             );
         }
 

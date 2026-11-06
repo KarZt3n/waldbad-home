@@ -400,6 +400,35 @@ const renderEventScheduleExtension = (kind, mode, context) => {
 
     return container;
 };
+const renderActionButtons = (actions, context) => {
+    const row = element('div', {className: 'content-action-row'});
+    (Array.isArray(actions) ? actions : []).forEach((action) => {
+        if (!action?.label || (!action.url && !action.pageId)) return;
+
+        const link = element('a', {className: 'button secondary-button', text: action.label});
+        const setHref = (href) => {
+            link.href = href;
+            link.hidden = false;
+            if (/^https?:\/\//i.test(href)) {
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+            }
+        };
+        if (action.url) {
+            setHref(action.url);
+        } else {
+            link.hidden = true;
+            const localPage = context.pagesById?.get(action.pageId);
+            const pageRequest = localPage
+                ? Promise.resolve(localPage)
+                : request('/api/public/v1/pages/id/' + encodeURIComponent(action.pageId));
+            pageRequest.then((targetPage) => setHref(pageHref(targetPage.slug))).catch(() => link.remove());
+        }
+        row.append(link);
+    });
+
+    return row.childElementCount > 0 ? row : null;
+};
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
         return renderMembershipApplicationForm(context.isPreview === true);
@@ -652,7 +681,10 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
     if (block.type === 'rich_text' || block.type === 'custom_html') {
         const container = element('div', {className: block.type === 'custom_html' ? 'custom-html' : 'rich-html'});
         container.innerHTML = block.content;
-        return container;
+        const actions = block.type === 'rich_text' ? renderActionButtons(block.actionButtons, context) : null;
+        return actions === null
+            ? container
+            : element('section', {className: 'text-content-block', children: [container, actions]});
     }
     if (block.type === 'image_text') {
         const copy = element('div', {className: 'image-text-copy'});
@@ -672,6 +704,8 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             imageContent,
             ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
         ]});
+        const actions = renderActionButtons(block.actionButtons, context);
+        if (actions !== null) copy.append(actions);
         return element('section', {
             className: `image-text ${block.layout === 'image_right' ? 'image-right' : 'image-left'} align-${verticalAlignment} text-${textAlignment} fit-${imageFit}`,
             attributes: {style: `--image-width: ${imageWidth}%`},
@@ -684,7 +718,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
     if (block.type === 'image') {
         const imageWidth = Number.isInteger(block.imageWidthPercent) ? block.imageWidthPercent : 100;
         const imageAlignment = ['left', 'center', 'right'].includes(block.layout) ? block.layout : 'center';
-        return element('figure', {
+        const figure = element('figure', {
             className: `content-image align-${imageAlignment}`,
             attributes: {style: `--image-width: ${imageWidth}%`},
             children: [
@@ -692,6 +726,10 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                 ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
             ],
         });
+        const actions = renderActionButtons(block.actionButtons, context);
+        return actions === null
+            ? figure
+            : element('section', {className: `image-content-block align-${imageAlignment}`, children: [figure, actions]});
     }
     if (block.type === 'alert') {
         const alertContent = element('div');
