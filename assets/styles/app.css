@@ -81,6 +81,7 @@ a { color: var(--forest-700); }
 
 .brand {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: .8rem;
     color: var(--white);
@@ -128,7 +129,9 @@ a { color: var(--forest-700); }
 
 .main-nav {
     display: flex;
-    flex-wrap: wrap;
+    min-width: 0;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     gap: .4rem;
 }
@@ -140,6 +143,7 @@ a { color: var(--forest-700); }
     text-decoration: none;
     font-size: .9rem;
 }
+.main-nav > .main-nav-item > a { white-space: nowrap; }
 
 .main-nav a:hover, .main-nav a.active {
     color: var(--forest-950);
@@ -205,6 +209,62 @@ a { color: var(--forest-700); }
 .main-nav-item:hover > .submenu,
 .main-nav-item:focus-within > .submenu,
 .main-nav-item.submenu-open > .submenu { display: grid; gap: .2rem; }
+
+/* Sobald die Hauptnavigation nicht mehr in eine Zeile passt, verschiebt `site-chrome.js` die
+   überzähligen rechten Einträge hierher. Auf kleinen Viewports übernimmt weiterhin das vollständige
+   mobile Menü. */
+.main-nav-overflow { position: relative; display: flex; flex: 0 0 auto; align-items: center; }
+.main-nav-overflow[hidden] { display: none; }
+.main-nav-overflow-toggle {
+    display: flex;
+    width: 2.55rem;
+    height: 2.55rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: .28rem;
+    padding: 0;
+    border: 1px solid rgb(255 255 255 / 22%);
+    border-radius: 999px;
+    color: var(--white);
+    background: transparent;
+    cursor: pointer;
+}
+.main-nav-overflow-toggle:hover,
+.main-nav-overflow.open .main-nav-overflow-toggle,
+.main-nav-overflow.has-active .main-nav-overflow-toggle {
+    border-color: var(--lime-400);
+    color: var(--forest-950);
+    background: var(--lime-400);
+}
+.main-nav-overflow-bar { width: 1.25rem; height: 2px; border-radius: 999px; background: currentColor; }
+.main-nav-overflow-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + .35rem);
+    right: 0;
+    display: none;
+    width: max-content;
+    min-width: 14rem;
+    max-width: min(22rem, calc(100vw - 2rem));
+    padding: .45rem;
+    border: 1px solid rgb(255 255 255 / 14%);
+    border-radius: .75rem;
+    background: var(--forest-950);
+    box-shadow: var(--shadow);
+}
+.main-nav-overflow.open .main-nav-overflow-menu { display: grid; gap: .2rem; }
+.main-nav-overflow-menu > .main-nav-item { flex-wrap: wrap; align-items: center; }
+.main-nav-overflow-menu > .main-nav-item > a { flex: 1; border-radius: .45rem; white-space: nowrap; }
+.main-nav-overflow-menu .submenu {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    margin: .2rem 0 .25rem .65rem;
+    border: 0;
+    box-shadow: none;
+}
+.main-nav-overflow-menu .submenu::before { display: none; }
 
 /* „Meine Mitgliedschaft"-Icon ganz rechts in der Kopfzeile (siehe `buildMemberAccessNav`) mit
    Pulldown, optisch an .submenu angelehnt. */
@@ -1760,6 +1820,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
         padding-top: .75rem;
         border-top: 1px solid rgb(255 255 255 / 14%);
     }
+    .main-nav-overflow { display: none; }
     .site-header.nav-open .main-nav { display: flex; }
     .main-nav-item { flex-wrap: wrap; }
     .submenu { position: static; width: 100%; margin-left: .75rem; border: 0; box-shadow: none; }

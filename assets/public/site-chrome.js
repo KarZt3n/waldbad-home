@@ -56,10 +56,31 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
     };
     const links = navigationTree.map((item) => renderNavigationItem(item));
 
+    const overflowToggle = element('button', {
+        className: 'main-nav-overflow-toggle',
+        attributes: {
+            type: 'button',
+            'aria-haspopup': 'true',
+            'aria-expanded': 'false',
+            'aria-label': 'Weitere Seiten anzeigen',
+        },
+        children: [
+            element('span', {className: 'main-nav-overflow-bar'}),
+            element('span', {className: 'main-nav-overflow-bar'}),
+            element('span', {className: 'main-nav-overflow-bar'}),
+        ],
+    });
+    const overflowMenu = element('div', {className: 'main-nav-overflow-menu'});
+    const overflow = element('div', {
+        className: 'main-nav-overflow',
+        attributes: {hidden: ''},
+        children: [overflowToggle, overflowMenu],
+    });
+
     const mainNav = element('nav', {
         className: 'main-nav',
         attributes: {id: 'main-nav', 'aria-label': 'Hauptnavigation'},
-        children: links,
+        children: [...links, overflow],
     });
     const navToggle = element('button', {
         className: 'nav-toggle',
@@ -104,6 +125,61 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
         navToggle.setAttribute('aria-expanded', 'false');
         navToggle.setAttribute('aria-label', 'Menü öffnen');
     };
+    const closeOverflow = () => {
+        overflow.classList.remove('open');
+        overflowToggle.setAttribute('aria-expanded', 'false');
+        overflowToggle.setAttribute('aria-label', 'Weitere Seiten anzeigen');
+    };
+    const updateOverflow = () => {
+        closeOverflow();
+
+        [...overflowMenu.children].forEach((item) => mainNav.insertBefore(item, overflow));
+        overflow.hidden = true;
+        overflow.classList.remove('has-active');
+
+        if (window.matchMedia('(max-width: 760px)').matches) return;
+
+        const navigationOverflows = () => {
+            const navigationBounds = mainNav.getBoundingClientRect();
+
+            return [...mainNav.children]
+                .filter((item) => item !== overflow || !overflow.hidden)
+                .some((item) => {
+                    const itemBounds = item.getBoundingClientRect();
+
+                    return itemBounds.left < navigationBounds.left - 1 || itemBounds.right > navigationBounds.right + 1;
+                });
+        };
+
+        while (navigationOverflows()) {
+            const visibleItems = [...mainNav.children].filter((item) => item !== overflow);
+            const lastVisibleItem = visibleItems.at(-1);
+            if (!lastVisibleItem) break;
+
+            overflow.hidden = false;
+            overflowMenu.prepend(lastVisibleItem);
+        }
+
+        if (!overflowMenu.children.length) {
+            overflow.hidden = true;
+            return;
+        }
+
+        overflow.classList.toggle('has-active', Boolean(overflowMenu.querySelector('.active, .active-branch')));
+    };
+    let overflowUpdateFrame = null;
+    const scheduleOverflowUpdate = () => {
+        if (overflowUpdateFrame !== null) cancelAnimationFrame(overflowUpdateFrame);
+        overflowUpdateFrame = requestAnimationFrame(() => {
+            overflowUpdateFrame = null;
+            updateOverflow();
+        });
+    };
+    overflowToggle.addEventListener('click', () => {
+        const open = overflow.classList.toggle('open');
+        overflowToggle.setAttribute('aria-expanded', String(open));
+        overflowToggle.setAttribute('aria-label', open ? 'Weitere Seiten ausblenden' : 'Weitere Seiten anzeigen');
+    });
     navToggle.addEventListener('click', () => {
         const open = header.classList.toggle('nav-open');
         navToggle.setAttribute('aria-expanded', String(open));
@@ -114,10 +190,25 @@ const buildSiteHeader = (navigationTree, activeSlug, extraChildren = []) => {
     });
     document.addEventListener('click', (event) => {
         if (header.classList.contains('nav-open') && !header.contains(event.target)) closeNav();
+        if (overflow.classList.contains('open') && !overflow.contains(event.target)) closeOverflow();
     }, {signal});
     document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && header.classList.contains('nav-open')) closeNav();
+        if (event.key !== 'Escape') return;
+        if (header.classList.contains('nav-open')) closeNav();
+        if (overflow.classList.contains('open')) {
+            closeOverflow();
+            overflowToggle.focus();
+        }
     }, {signal});
+    window.addEventListener('resize', scheduleOverflowUpdate, {signal});
+    header.querySelector('.brand-logo').addEventListener('load', scheduleOverflowUpdate, {signal});
+    document.fonts?.ready.then(() => {
+        if (!signal.aborted) scheduleOverflowUpdate();
+    });
+    signal.addEventListener('abort', () => {
+        if (overflowUpdateFrame !== null) cancelAnimationFrame(overflowUpdateFrame);
+    }, {once: true});
+    scheduleOverflowUpdate();
 
     return header;
 };
