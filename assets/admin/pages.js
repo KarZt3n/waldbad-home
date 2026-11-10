@@ -7,6 +7,7 @@ import {emptyState, openContextMenuAtElement, openContextMenuFromEvent, sectionH
 import {canEditPages, canManagePageStructure, canPublishPages, isPageAccessRestricted} from './session.js';
 import {renderContentCard} from '../content-rendering.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
+import {openImagePicker, openMediaFilePicker} from './media-picker.js';
 import {renderPageExtensions} from './page-extensions.js';
 import {renderSocialMedia} from './social-media.js';
 import {renderSiteBranding} from './site-branding.js';
@@ -378,103 +379,6 @@ const richTextEditor = (block, index, onChange = null, ariaLabel = 'Rich-Text-In
 
     return element('div', {className: 'rich-text-editor', children: [toolbar, editor, source]});
 };
-const openImagePicker = async (onSelect) => {
-    const dialog = element('dialog', {className: 'media-dialog'});
-    const close = element('button', {className: 'text-button', text: 'Schließen', attributes: {type: 'button'}});
-    close.addEventListener('click', () => dialog.close());
-    const content = element('div', {className: 'media-grid', children: [element('p', {text: 'Bilder werden geladen …'})]});
-    dialog.append(
-        element('header', {className: 'media-dialog-header', children: [
-            element('div', {children: [element('p', {className: 'eyebrow', text: 'Medien'}), element('h2', {text: 'Bild auswählen'})]}),
-            close,
-        ]}),
-        content,
-    );
-    dialog.addEventListener('close', () => dialog.remove());
-    document.body.append(dialog);
-    dialog.showModal();
-
-    try {
-        const media = await request('/api/admin/v1/media/images');
-        if (!media.items.length) {
-            content.replaceChildren(emptyState('Es wurden noch keine Bilder hochgeladen.'));
-            return;
-        }
-        content.replaceChildren(...media.items.map((image) => {
-            const choose = element('button', {className: 'secondary-button full', text: 'Auswählen', attributes: {type: 'button'}});
-            choose.addEventListener('click', () => {
-                onSelect(image);
-                dialog.close();
-            });
-            return element('article', {className: 'media-card', children: [
-                element('img', {attributes: {src: image.url, alt: '', loading: 'lazy'}}),
-                element('strong', {text: image.originalName}),
-                element('small', {text: `${image.width} × ${image.height} px · ${image.url.slice(0, image.url.lastIndexOf('/'))}`}),
-                ...(image.source ? [element('small', {className: 'media-card-source', text: `Quelle: ${image.source}`})] : []),
-                choose,
-            ]});
-        }));
-    } catch (error) {
-        content.replaceChildren(emptyState(error.message));
-    }
-};
-const mediaFileTypeLabel = (file) => (file.url.split('.').pop() || 'Datei').toUpperCase();
-// Dateiauswahl aus der Mediathek (alle Ordner) für Linkziele wie den Handlungsaufruf.
-const openMediaFilePicker = async (onSelect) => {
-    const dialog = element('dialog', {className: 'media-dialog'});
-    const close = element('button', {className: 'text-button', text: 'Schließen', attributes: {type: 'button'}});
-    close.addEventListener('click', () => dialog.close());
-    const search = element('input', {attributes: {type: 'search', placeholder: 'Dateiname oder Ordner suchen …', 'aria-label': 'Dateiname oder Ordner suchen'}});
-    const folder = element('select', {attributes: {'aria-label': 'Ordner'}, children: [element('option', {text: 'Alle Ordner', attributes: {value: ''}})]});
-    const list = element('ul', {className: 'media-file-picker-list', children: [element('li', {text: 'Dateien werden geladen …'})]});
-    dialog.append(
-        element('header', {className: 'media-dialog-header', children: [
-            element('div', {children: [element('p', {className: 'eyebrow', text: 'Mediathek'}), element('h2', {text: 'Datei auswählen'})]}),
-            close,
-        ]}),
-        element('div', {className: 'media-file-picker-toolbar', children: [search, folder]}),
-        list,
-    );
-    dialog.addEventListener('close', () => dialog.remove());
-    document.body.append(dialog);
-    dialog.showModal();
-    search.focus();
-
-    try {
-        const [library, folders] = await Promise.all([
-            request('/api/admin/v1/media-library?recursive=1'),
-            request('/api/admin/v1/media-library/folders'),
-        ]);
-        folder.append(...folders.items.map((item) => element('option', {text: `/uploads/${item.path}`, attributes: {value: item.path}})));
-        const render = () => {
-            const term = search.value.trim().toLowerCase();
-            const files = library.items.filter((file) => (!folder.value || file.folder === folder.value || file.folder.startsWith(`${folder.value}/`))
-                && (!term || `${file.originalName} ${file.url}`.toLowerCase().includes(term)));
-            list.replaceChildren(...(files.length ? files.map((file) => {
-                const choose = element('button', {className: 'media-file-picker-item', attributes: {type: 'button'}, children: [
-                    file.isImage
-                        ? element('img', {attributes: {src: file.url, alt: '', loading: 'lazy'}})
-                        : element('span', {className: 'media-file-picker-type', text: mediaFileTypeLabel(file)}),
-                    element('span', {children: [
-                        element('strong', {text: file.originalName}),
-                        element('small', {text: file.url}),
-                    ]}),
-                ]});
-                choose.addEventListener('click', () => {
-                    onSelect(file);
-                    dialog.close();
-                });
-
-                return element('li', {children: [choose]});
-            }) : [element('li', {children: [emptyState(library.items.length ? 'Keine Datei passt zur Auswahl.' : 'Die Mediathek enthält noch keine Dateien.')]})]));
-        };
-        search.addEventListener('input', render);
-        folder.addEventListener('change', render);
-        render();
-    } catch (error) {
-        list.replaceChildren(element('li', {children: [emptyState(error.message)]}));
-    }
-};
 const collectionItemMediaEditor = (item, key) => {
     const media = field('Bild-URL (optional)', `collection-media-${key}`, item.mediaUrl || '');
     const alt = field('Alternativtext (optional; leer = dekorativ)', `collection-alt-${key}`, item.mediaAlt || '');
@@ -504,11 +408,8 @@ const collectionItemMediaEditor = (item, key) => {
         }
     });
 
-    const uploadInput = element('input', {attributes: {type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: 'hidden'}});
-    const uploadButton = element('button', {className: 'secondary-button', text: 'Bild hochladen', attributes: {type: 'button'}});
-    const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen', attributes: {type: 'button'}});
+    const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen …', attributes: {type: 'button'}});
     const uploadMessage = element('small', {className: 'upload-message', attributes: {'aria-live': 'polite'}});
-    uploadButton.addEventListener('click', () => uploadInput.click());
     selectButton.addEventListener('click', () => openImagePicker((image) => {
         item.mediaUrl = image.url;
         item.mediaSource = image.source || null;
@@ -517,35 +418,10 @@ const collectionItemMediaEditor = (item, key) => {
         storedSource = image.source || null;
         uploadMessage.textContent = `${image.originalName} wurde ausgewählt.`;
         toast(`${image.originalName} wurde ausgewählt.`);
-    }));
-    uploadInput.addEventListener('change', async () => {
-        const image = uploadInput.files?.[0];
-        if (!image) return;
-        const body = new FormData();
-        body.append('image', image);
-        body.append('source', sourceInput.value.trim());
-        uploadButton.disabled = true;
-        uploadMessage.textContent = 'Bild wird hochgeladen …';
-        try {
-            const stored = await request('/api/admin/v1/media/images', {method: 'POST', body});
-            item.mediaUrl = stored.url;
-            item.mediaSource = stored.source || null;
-            mediaInput.value = stored.url;
-            sourceInput.value = stored.source || '';
-            storedSource = stored.source || null;
-            uploadMessage.textContent = `${stored.originalName} wurde hochgeladen (${stored.width} × ${stored.height} px).`;
-            toast(`${stored.originalName} wurde hochgeladen.`);
-        } catch (error) {
-            uploadMessage.textContent = error.message;
-            toast(error.message, 'error');
-        } finally {
-            uploadButton.disabled = false;
-            uploadInput.value = '';
-        }
-    });
+    }, {getUploadSource: () => sourceInput.value.trim()}));
 
     return element('div', {className: 'collection-media-editor', children: [
-        element('div', {className: 'media-input-row', children: [media, selectButton, uploadButton, uploadInput]}),
+        element('div', {className: 'media-input-row', children: [media, selectButton]}),
         uploadMessage,
         alt,
         source,
@@ -1018,11 +894,8 @@ const blockEditor = (block, index, handlers) => {
                 toast(error.message, 'error');
             }
         });
-        const uploadInput = element('input', {attributes: {type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: 'hidden'}});
-        const uploadButton = element('button', {className: 'secondary-button', text: 'Bild hochladen', attributes: {type: 'button'}});
-        const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen', attributes: {type: 'button'}});
+        const selectButton = element('button', {className: 'secondary-button', text: 'Bild auswählen …', attributes: {type: 'button'}});
         const uploadMessage = element('small', {className: 'upload-message', attributes: {'aria-live': 'polite'}});
-        uploadButton.addEventListener('click', () => uploadInput.click());
         selectButton.addEventListener('click', () => openImagePicker((image) => {
             block.mediaUrl = image.url;
             block.mediaSource = image.source || null;
@@ -1031,34 +904,9 @@ const blockEditor = (block, index, handlers) => {
             storedSource = image.source || null;
             uploadMessage.textContent = `${image.originalName} wurde ausgewählt.`;
             toast(`${image.originalName} wurde ausgewählt.`);
-        }));
-        uploadInput.addEventListener('change', async () => {
-            const image = uploadInput.files?.[0];
-            if (!image) return;
-            const body = new FormData();
-            body.append('image', image);
-            body.append('source', sourceInput.value.trim());
-            uploadButton.disabled = true;
-            uploadMessage.textContent = 'Bild wird hochgeladen …';
-            try {
-                const stored = await request('/api/admin/v1/media/images', {method: 'POST', body});
-                block.mediaUrl = stored.url;
-                block.mediaSource = stored.source || null;
-                mediaInput.value = stored.url;
-                sourceInput.value = stored.source || '';
-                storedSource = stored.source || null;
-                uploadMessage.textContent = `${stored.originalName} wurde hochgeladen (${stored.width} × ${stored.height} px).`;
-                toast(`${stored.originalName} wurde hochgeladen.`);
-            } catch (error) {
-                uploadMessage.textContent = error.message;
-                toast(error.message, 'error');
-            } finally {
-                uploadButton.disabled = false;
-                uploadInput.value = '';
-            }
-        });
+        }, {getUploadSource: () => sourceInput.value.trim()}));
         card.append(
-            element('div', {className: 'media-input-row', children: [media, selectButton, uploadButton, uploadInput]}),
+            element('div', {className: 'media-input-row', children: [media, selectButton]}),
             uploadMessage,
             alt,
             source,
@@ -1928,7 +1776,7 @@ const showSocialMedia = async () => {
 };
 
 const showSiteBranding = async () => {
-    mountPagesTab('logo', await renderSiteBranding(showSiteBranding, {openMediaFilePicker}));
+    mountPagesTab('logo', await renderSiteBranding(showSiteBranding));
 };
 
 const showPages = async (segments = []) => {

@@ -5,9 +5,9 @@
 import {element, field, formMessage, request, toast} from '../core.js';
 import {sectionHeading} from './ui.js';
 import {canEditSiteBranding} from './session.js';
+import {openImagePicker} from './media-picker.js';
 
-// Die Mediathek-Dialoge kommen aus `pages.js` herein, um einen zyklischen Import zu vermeiden.
-const renderSiteBranding = async (mount, {openMediaFilePicker}) => {
+const renderSiteBranding = async (mount) => {
     const data = await request('/api/admin/v1/site-branding');
     const editable = canEditSiteBranding();
     const message = formMessage();
@@ -33,33 +33,9 @@ const renderSiteBranding = async (mount, {openMediaFilePicker}) => {
     };
     const actions = [];
     if (editable) {
-        const select = element('button', {className: 'secondary-button', text: 'Aus Mediathek wählen', attributes: {type: 'button'}});
-        select.addEventListener('click', () => openMediaFilePicker((file) => {
-            if (!file.isImage) {
-                toast('Bitte eine Bilddatei auswählen.', 'error');
-                return;
-            }
-            setUrl(file.url, `${file.originalName} wurde ausgewählt.`);
-        }));
-        const uploadInput = element('input', {attributes: {type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif', hidden: 'hidden'}});
-        const upload = element('button', {className: 'secondary-button', text: 'Bild hochladen', attributes: {type: 'button'}});
-        upload.addEventListener('click', () => uploadInput.click());
-        uploadInput.addEventListener('change', async () => {
-            const image = uploadInput.files?.[0];
-            if (!image) return;
-            const body = new FormData();
-            body.append('image', image);
-            upload.disabled = true;
-            try {
-                const stored = await request('/api/admin/v1/media/images', {method: 'POST', body});
-                setUrl(stored.url, `${stored.originalName} wurde hochgeladen.`);
-            } catch (error) {
-                toast(error.message, 'error');
-            } finally {
-                upload.disabled = false;
-                uploadInput.value = '';
-            }
-        });
+        // Auswahl und Upload laufen im Mediathek-Overlay (Ordnerbaum im Dialog, siehe `media-picker.js`).
+        const select = element('button', {className: 'secondary-button', text: 'Bild auswählen …', attributes: {type: 'button'}});
+        select.addEventListener('click', () => openImagePicker((image) => setUrl(image.url, `${image.originalName} wurde ausgewählt.`)));
         const reset = element('button', {className: 'text-button', text: 'Standardlogo verwenden', attributes: {type: 'button'}});
         reset.addEventListener('click', () => setUrl(''));
         const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
@@ -76,7 +52,7 @@ const renderSiteBranding = async (mount, {openMediaFilePicker}) => {
                 save.disabled = false;
             }
         });
-        actions.push(element('div', {className: 'site-branding-actions', children: [select, upload, uploadInput, reset]}));
+        actions.push(element('div', {className: 'site-branding-actions', children: [select, reset]}));
         actions.push(element('div', {className: 'confirm-dialog-actions', children: [save]}));
     }
 

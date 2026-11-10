@@ -436,7 +436,7 @@ a { color: var(--forest-700); }
     background: linear-gradient(90deg, #f2f7f3 0%, var(--white) 100%);
     box-shadow: none;
 }
-.event-block.has-image { grid-template-columns: var(--event-image-width, 32%) minmax(0, 1fr); }
+.event-block.has-image { grid-template-columns: var(--event-image-width, 20%) minmax(0, 1fr); }
 .event-media { display: grid; grid-template-rows: minmax(14rem, 1fr) auto; min-width: 0; height: 100%; margin: 0; overflow: hidden; border-radius: .8rem; }
 .event-media img { display: block; width: 100%; height: 100%; min-height: 14rem; object-fit: cover; }
 .event-block.image_right { grid-template-columns: minmax(0, 1fr) var(--event-image-width, 32%); background: linear-gradient(270deg, #f2f7f3 0%, var(--white) 100%); }
@@ -1548,7 +1548,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 
 .media-input-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: .75rem;
     align-items: end;
 }
@@ -1557,18 +1557,45 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .upload-message { min-height: 1.4em; color: var(--muted); }
 .layout-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 
+/* Medien-Dialoge (Bild-/Dateiauswahl in Seitenblöcken, Collections, Veranstaltungen, Logo):
+   fest dimensioniertes Overlay — der Inhalt wird nie höher als der Bildschirm, statt dessen
+   scrollen Baum und Dateiliste innen. */
 .media-dialog {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
     width: min(68rem, calc(100vw - 2rem));
-    max-height: calc(100vh - 2rem);
+    height: calc(100vh - 2rem);
     padding: 0;
     border: 0;
     border-radius: var(--radius);
+    background: var(--white);
     box-shadow: var(--shadow);
+    overflow: hidden;
 }
 
 .media-dialog::backdrop { background: rgb(11 46 32 / 75%); }
-.media-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; color: var(--ink); background: var(--white); }
+.media-dialog-header { display: flex; justify-content: space-between; gap: .75rem; align-items: center; padding: 1.25rem 1.5rem; color: var(--ink); background: var(--white); }
 .media-dialog-header h2 { margin: .2rem 0 0; }
+
+/* Bildauswahl mit Mediathek-Ordnerbaum: links der Ordnerbaum, rechts die Bilder des gewählten
+   Ordners (wie die Mediathek-Ansicht, nur als Overlay). */
+.media-picker-dialog { width: min(72rem, calc(100vw - 2rem)); grid-template-rows: auto minmax(0, 1fr); }
+.media-picker-dialog .tree-layout { height: 100%; margin: 0; align-items: stretch; }
+.media-picker-dialog .tree-panel { position: static; max-height: 100%; }
+.media-picker-content { grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; padding: 1.25rem 1.5rem; }
+.media-picker-header > .media-picker-info { display: grid; gap: .2rem; min-width: 0; }
+.media-picker-header > .media-picker-info h3 { margin: 0; overflow-wrap: anywhere; }
+.media-picker-header > .media-picker-info small { color: var(--muted); }
+.media-picker-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: .5rem; }
+.media-picker-content > .media-picker-grid { overflow: auto; padding: 0 0 1rem; align-content: start; }
+@media (max-width: 760px) {
+    /* Gestapelter Baum: das Overlay scrollt als Ganzes, hält den Baum aber kompakt. */
+    .media-picker-dialog .tree-layout { height: auto; grid-template-columns: minmax(0, 1fr); overflow: auto; align-items: start; }
+    .media-picker-dialog .tree-panel { max-height: 16rem; }
+    .media-picker-content { min-height: 18rem; overflow: visible; }
+    .media-picker-content > .media-picker-grid { overflow: visible; }
+}
+
 /* Übersicht (Startseite der Redaktion): eine Kachel je offener Aufgabe, offene zuerst. */
 .overview-groups { display: grid; gap: 1.75rem; }
 .overview-group { display: grid; gap: .75rem; }
@@ -1668,7 +1695,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .media-file-picker-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; padding: 0 1.5rem 1rem; }
 .media-file-picker-toolbar input { flex: 1 1 16rem; }
 .media-file-picker-toolbar select { flex: 0 1 18rem; }
-.media-file-picker-list { display: grid; gap: .35rem; max-height: 60vh; margin: 0; padding: 0 1.5rem 1.5rem; overflow: auto; list-style: none; }
+.media-file-picker-list { display: grid; gap: .35rem; margin: 0; min-height: 0; padding: 0 1.5rem 1.5rem; overflow: auto; list-style: none; align-content: start; }
 .media-file-picker-item { display: flex; width: 100%; align-items: center; gap: .75rem; min-width: 0; padding: .5rem; border: 1px solid var(--line); border-radius: .6rem; color: inherit; background: var(--white); font: inherit; text-align: left; cursor: pointer; }
 .media-file-picker-item:hover, .media-file-picker-item:focus-visible { border-color: var(--forest-700); background: var(--forest-100); }
 .media-file-picker-item img, .media-file-picker-type { width: 3rem; height: 3rem; flex: 0 0 3rem; border-radius: .4rem; object-fit: cover; }
