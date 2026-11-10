@@ -636,7 +636,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         ]}) : null;
         return element('article', {
             className: `event-block${block.mediaUrl ? ` has-image ${layout} align-${verticalAlignment} text-${textAlignment} fit-${imageFit}` : ''}`,
-            attributes: {style: `--event-image-width: ${imageWidth}%`},
+            attributes: {style: `--event-image-width: 24%`},
             children: [
             ...(media ? [media] : []),
             copy,
