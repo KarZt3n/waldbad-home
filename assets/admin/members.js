@@ -1473,6 +1473,27 @@ const openRecalculationErrorsDialog = (errors) => {
     dialog.showModal();
 };
 
+// Sammel-Neuberechnung aller Beiträge für ein Beitragsjahr (`YYYY`). Übersprungene Mitglieder
+// werden samt Grund angezeigt, statt wie bei `actionButton` ungelesen zu verfallen. Liefert, ob
+// der Lauf durchgelaufen ist.
+const recalculateAllContributions = async (year) => {
+    try {
+        const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST', body: JSON.stringify({year})});
+        if (result.errors.length) {
+            toast(`${result.updated} Mitglied(er) aktualisiert, ${result.errors.length} übersprungen — siehe Liste.`, 'info');
+            openRecalculationErrorsDialog(result.errors);
+        } else {
+            toast(`Die Beiträge wurden für alle ${result.updated} Mitglieder für das Beitragsjahr ${year} neu berechnet.`);
+        }
+
+        return true;
+    } catch (error) {
+        toast(error.message, 'error');
+
+        return false;
+    }
+};
+
 // SEPA-Lastschrift für den Zahler eines Mitglieds (siehe `PayerDirectDebitPlanner`): Vorschau mit
 // Zahlungsdaten, an-/abwählbaren Positionen, Fälligkeitsdatum, Lastschrifttyp und
 // Verwendungszweck; der Export liefert die bei der Bank einzureichende XML-Datei (pain.008).
@@ -1716,9 +1737,17 @@ const sumAmounts = (entries) => entries.reduce((total, entry) => total + entry.a
 // Lastschrift-Übersicht aller Zahler (siehe `GetDirectDebitOverviewQuery`): oben die nicht
 // exportierbaren mit Grund, darunter die exportierbaren. Ein Klick öffnet die Einzelvorschau
 // (`openDirectDebitDialog`); „Alle exportieren“ erzeugt eine gemeinsame XML-Datei für alle
-// exportierbaren Zahler mit den Vorgaben ihrer jeweiligen Einzelvorschau.
+// exportierbaren Zahler mit den Vorgaben ihrer jeweiligen Einzelvorschau. Die Beträge stammen aus
+// den gespeicherten Beiträgen; vor dem Einzug für ein neues Beitragsjahr lassen sich diese hier für
+// das eingegebene Jahr neu berechnen (Beitragsalter zum Stichtag 31.12.).
 const directDebitOverviewPanel = () => {
     const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Lastschriften werden geladen …')]});
+    const yearField = field('Beitragsjahr', 'direct-debit-recalculate-year', String(new Date().getFullYear()), 'number');
+    const yearInput = yearField.querySelector('input');
+    yearInput.min = '1900';
+    yearInput.max = '2999';
+    yearInput.step = '1';
+    const recalculate = element('button', {className: 'secondary-button', text: 'Beiträge neu berechnen', attributes: {type: 'button'}});
     const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
     exportAll.disabled = true;
     let overview = null;
@@ -1769,6 +1798,27 @@ const directDebitOverviewPanel = () => {
         );
     }
 
+    recalculate.addEventListener('click', async () => {
+        const year = yearInput.value.trim();
+        if (!/^\d{4}$/.test(year)) {
+            toast('Bitte ein Beitragsjahr angeben.', 'error');
+            yearInput.focus();
+            return;
+        }
+        const confirmed = await confirmAction(
+            `Beiträge für ${year} neu berechnen?`,
+            `Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Alter und Kategorie gelten zum Stichtag 31.12.${year}. Das kann nicht rückgängig gemacht werden.`,
+            'Neu berechnen',
+        );
+        if (!confirmed) return;
+        recalculate.disabled = true;
+        try {
+            if (await recalculateAllContributions(year)) await load();
+        } finally {
+            recalculate.disabled = false;
+        }
+    });
+
     exportAll.addEventListener('click', async () => {
         if (!overview?.valid.length) return;
         const dueDates = new Map();
@@ -1798,7 +1848,7 @@ const directDebitOverviewPanel = () => {
 
     return {
         panel: element('div', {className: 'member-dialog-panel', children: [
-            element('div', {className: 'confirm-dialog-actions direct-debit-overview-actions', children: [exportAll]}),
+            element('div', {className: 'direct-debit-overview-controls direct-debit-overview-actions', children: [yearField, recalculate, exportAll]}),
             body,
         ]}),
         load,
@@ -2169,25 +2219,13 @@ const showMembers = () => {
         actions.push(create);
     }
     if (canEditModule('members')) {
-        // Bewusst kein generischer `actionButton`: der Antwortkörper enthält je übersprungenem
-        // Mitglied dessen Mitgliedsnummer und den Grund (`errors`) — die müssen sichtbar
-        // gemacht werden, statt wie bei `actionButton` ungelesen zu verfallen.
         const recalculateAll = element('button', {className: 'secondary-button', text: 'Beiträge neu berechnen', attributes: {type: 'button'}});
         recalculateAll.addEventListener('click', async () => {
             const year = await openRecalculateAllContributionsDialog();
             if (!year) return;
             recalculateAll.disabled = true;
             try {
-                const result = await request('/api/admin/v1/members/recalculate-contributions', {method: 'POST', body: JSON.stringify({year})});
-                if (result.errors.length) {
-                    toast(`${result.updated} Mitglied(er) aktualisiert, ${result.errors.length} übersprungen — siehe Liste.`, 'info');
-                    openRecalculationErrorsDialog(result.errors);
-                } else {
-                    toast(`Die Beiträge wurden für alle ${result.updated} Mitglieder neu berechnet.`);
-                }
-                await showMembershipManagement();
-            } catch (error) {
-                toast(error.message, 'error');
+                if (await recalculateAllContributions(year)) await showMembershipManagement();
             } finally {
                 recalculateAll.disabled = false;
             }
