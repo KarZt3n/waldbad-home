@@ -108,6 +108,7 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', $this->validApplication());
         self::assertResponseStatusCodeSame(202);
         $applicationId = $this->responseData()['id'];
+        self::assertIsString($applicationId);
 
         $csrfToken = $this->loginAsSuperAdmin();
         $this->client->jsonRequest('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/reject', [
@@ -131,6 +132,7 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/public/v1/membership-applications', $this->validApplication());
         self::assertResponseStatusCodeSame(202);
         $applicationId = $this->responseData()['id'];
+        self::assertIsString($applicationId);
 
         // `loginAsSuperAdmin()` gewährt kein Mitglieder-Modul; für die Freigabe (Mitglied anlegen)
         // wird zusätzlich `CmsModule::Members` benötigt.
@@ -151,6 +153,7 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/auth/v1/login', ['token' => FixedSecureTokenGenerator::TOKEN]);
         self::assertResponseIsSuccessful();
         $csrfToken = $this->responseData()['csrfToken'];
+        self::assertIsString($csrfToken);
 
         $this->client->request('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/release', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
@@ -173,7 +176,7 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    public function testMembershipExtensionCanBeStoredAsPageBlock(): void
+    public function testPageExtensionsAndTheirOptionsCanBePublished(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
         $this->client->jsonRequest('POST', '/api/admin/v1/pages', [
@@ -190,6 +193,11 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
                 'type' => 'extension',
                 'content' => '',
                 'extensionKey' => 'membership_application',
+            ], [
+                'type' => 'extension',
+                'content' => '',
+                'extensionKey' => 'events_current_year',
+                'extensionOptions' => ['showImages' => false],
             ]],
         ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
 
@@ -200,6 +208,19 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         $block = $page['blocks'][0];
         self::assertSame('extension', $block['type']);
         self::assertSame('membership_application', $block['extensionKey']);
+        self::assertSame([], $block['extensionOptions']);
+        self::assertIsArray($page['blocks'][1]);
+        self::assertSame(['showImages' => false], $page['blocks'][1]['extensionOptions']);
+        self::assertIsString($page['id']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/pages/'.$page['id'].'/publish', [], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/public/v1/pages/mitglied-werden-test');
+        self::assertResponseIsSuccessful();
+        $publishedPage = $this->responseData();
+        self::assertIsArray($publishedPage['blocks']);
+        self::assertIsArray($publishedPage['blocks'][1]);
+        self::assertSame(['showImages' => false], $publishedPage['blocks'][1]['extensionOptions']);
     }
 
     /**

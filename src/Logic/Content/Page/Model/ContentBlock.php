@@ -36,6 +36,8 @@ readonly class ContentBlock
         /** @var list<ActionButton> */
         public array $actionButtons = [],
         public ?string $extensionKey = null,
+        /** @var array<string, bool> */
+        public array $extensionOptions = [],
         public ?int $collectionColumns = null,
         /** @var list<ContentCollectionItem> */
         public array $collectionItems = [],
@@ -149,8 +151,22 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Ein Call-to-Action benötigt Link und Beschriftung.');
         }
 
-        if ($this->type === ContentBlockType::Extension && ($this->extensionKey === null || PageExtension::tryFrom($this->extensionKey) === null)) {
+        $extension = $this->extensionKey === null ? null : PageExtension::tryFrom($this->extensionKey);
+        if ($this->type === ContentBlockType::Extension && $extension === null) {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
+        }
+
+        if ($this->type !== ContentBlockType::Extension && $this->extensionOptions !== []) {
+            throw new BusinessRuleViolationException('Erweiterungsoptionen sind nur bei Seitenerweiterungen erlaubt.');
+        }
+
+        if ($extension !== null) {
+            $supportedOptions = $extension->optionDefaults();
+            foreach (array_keys($this->extensionOptions) as $key) {
+                if (!array_key_exists($key, $supportedOptions)) {
+                    throw new BusinessRuleViolationException(sprintf('Die Option "%s" ist für diese Seitenerweiterung ungültig.', $key));
+                }
+            }
         }
 
         if ($this->type === ContentBlockType::FeatureCollection
@@ -250,6 +266,7 @@ readonly class ContentBlock
             eventCallToActions: $this->eventCallToActions,
             actionButtons: $this->actionButtons,
             extensionKey: $this->extensionKey,
+            extensionOptions: $this->extensionOptions,
             collectionColumns: $this->collectionColumns,
             collectionItems: $collectionItems,
         );

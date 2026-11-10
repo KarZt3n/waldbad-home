@@ -37,6 +37,7 @@ class PageEntity
      *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     actionButtons?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey?: string|null,
+     *     extensionOptions?: array<string, bool>,
      *     collectionColumns?: int|null,
      *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
@@ -131,6 +132,7 @@ class PageEntity
      *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     actionButtons?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey?: string|null,
+     *     extensionOptions?: array<string, bool>,
      *     collectionColumns?: int|null,
      *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
@@ -165,6 +167,7 @@ class PageEntity
      *     eventCallToActions?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     actionButtons?: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey?: string|null,
+     *     extensionOptions?: array<string, bool>,
      *     collectionColumns?: int|null,
      *     collectionItems?: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }> $blocks

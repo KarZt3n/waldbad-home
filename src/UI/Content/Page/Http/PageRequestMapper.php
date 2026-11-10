@@ -99,6 +99,7 @@ readonly class PageRequestMapper
             $eventCallToActions = $block['eventCallToActions'] ?? [];
             $actionButtons = $block['actionButtons'] ?? [];
             $extensionKey = $block['extensionKey'] ?? null;
+            $extensionOptions = $block['extensionOptions'] ?? [];
             $collectionColumns = $block['collectionColumns'] ?? null;
             $collectionItems = $block['collectionItems'] ?? [];
 
@@ -195,6 +196,14 @@ readonly class PageRequestMapper
             if ($extensionKey !== null && !is_string($extensionKey)) {
                 throw new BadRequestHttpException('Der Erweiterungsschlüssel muss eine Zeichenkette sein.');
             }
+            if (!is_array($extensionOptions) || array_is_list($extensionOptions) && $extensionOptions !== []) {
+                throw new BadRequestHttpException('Die Erweiterungsoptionen müssen als Objekt angegeben werden.');
+            }
+            foreach ($extensionOptions as $optionKey => $optionValue) {
+                if (!is_string($optionKey) || !is_bool($optionValue)) {
+                    throw new BadRequestHttpException('Jede Erweiterungsoption benötigt einen Schlüssel und einen Wahrheitswert.');
+                }
+            }
             if ($collectionColumns !== null && !is_int($collectionColumns)) {
                 throw new BadRequestHttpException('Die Spaltenzahl der Collection muss eine ganze Zahl sein.');
             }
@@ -255,6 +264,7 @@ readonly class PageRequestMapper
                 eventCallToActions: $mappedEventCallToActions,
                 actionButtons: $mappedActionButtons,
                 extensionKey: $extensionKey === null || trim($extensionKey) === '' ? null : trim($extensionKey),
+                extensionOptions: $extensionOptions,
                 collectionColumns: $collectionColumns,
                 collectionItems: $this->collectionItems($collectionItems),
             );

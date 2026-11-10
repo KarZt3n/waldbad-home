@@ -352,12 +352,12 @@ const openEventHelpDialog = async (block) => {
 const renderImageSource = (source) => source
     ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
     : null;
-const eventScheduleToBlockShape = (item) => ({
+const eventScheduleToBlockShape = (item, showImages) => ({
     type: 'event',
     content: item.content,
-    mediaUrl: item.mediaUrl,
-    mediaAlt: item.mediaAlt,
-    mediaSource: item.mediaSource,
+    mediaUrl: showImages ? item.mediaUrl : null,
+    mediaAlt: showImages ? item.mediaAlt : null,
+    mediaSource: showImages ? item.mediaSource : null,
     layout: item.layout,
     imageWidthPercent: item.imageWidthPercent,
     verticalAlignment: item.verticalAlignment,
@@ -371,7 +371,7 @@ const eventScheduleToBlockShape = (item) => ({
     eventHelpButtonLabel: item.helpButtonLabel,
     eventCallToActions: item.callToActions,
 });
-const renderEventScheduleExtension = (kind, mode, context) => {
+const renderEventScheduleExtension = (kind, mode, extensionOptions, context) => {
     const container = element('section', {className: 'event-schedule-extension', attributes: {'aria-live': 'polite'}});
     const emptyMessage = mode === 'next'
         ? (kind === 'any' ? 'Aktuell ist keine weitere Veranstaltung oder Arbeitseinsatz geplant.'
@@ -391,7 +391,8 @@ const renderEventScheduleExtension = (kind, mode, context) => {
             container.replaceChildren(element('p', {className: 'empty-copy', text: emptyMessage}));
             return;
         }
-        container.replaceChildren(...items.map((item) => renderPublicBlock(eventScheduleToBlockShape(item), context)));
+        const showImages = extensionOptions?.showImages !== false;
+        container.replaceChildren(...items.map((item) => renderPublicBlock(eventScheduleToBlockShape(item, showImages), context)));
     }).catch(() => {
         container.replaceChildren(...(context.showEmbedErrors
             ? [element('p', {className: 'embedded-page-error', text: 'Die Veranstaltungen konnten nicht geladen werden.'})]
@@ -445,7 +446,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         const mode = block.extensionKey.startsWith('next_') ? 'next'
             : (block.extensionKey === 'events_from_current_year' ? 'from_current_year' : 'current_year');
 
-        return renderEventScheduleExtension(kind, mode, context);
+        return renderEventScheduleExtension(kind, mode, block.extensionOptions, context);
     }
     if (block.type === 'page_teaser') {
         const container = element('section', {className: 'page-teaser-loading', attributes: {'aria-live': 'polite'}});

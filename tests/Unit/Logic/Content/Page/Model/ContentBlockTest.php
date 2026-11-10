@@ -172,6 +172,31 @@ final class ContentBlockTest extends TestCase
         );
     }
 
+    public function testEventExtensionKeepsSupportedOptions(): void
+    {
+        $block = new ContentBlock(
+            ContentBlockType::Extension,
+            '',
+            extensionKey: 'events_current_year',
+            extensionOptions: ['showImages' => false],
+        );
+
+        self::assertSame(['showImages' => false], $block->extensionOptions);
+    }
+
+    public function testExtensionRejectsUnsupportedOptions(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('showImages');
+
+        new ContentBlock(
+            ContentBlockType::Extension,
+            '',
+            extensionKey: 'membership_application',
+            extensionOptions: ['showImages' => false],
+        );
+    }
+
     public function testActionButtonRejectsUnsafeUrlScheme(): void
     {
         $this->expectException(BusinessRuleViolationException::class);

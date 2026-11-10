@@ -57,6 +57,7 @@ readonly class PageMapper
                         $block['actionButtons'] ?? [],
                     ),
                     extensionKey: $block['extensionKey'] ?? null,
+                    extensionOptions: $block['extensionOptions'] ?? [],
                     collectionColumns: $block['collectionColumns'] ?? null,
                     collectionItems: array_map(
                         static fn (array $item): ContentCollectionItem => new ContentCollectionItem(
@@ -149,6 +150,7 @@ readonly class PageMapper
                         $block['actionButtons'] ?? [],
                     ),
                     extensionKey: $block['extensionKey'] ?? null,
+                    extensionOptions: $block['extensionOptions'] ?? [],
                     collectionColumns: $block['collectionColumns'] ?? null,
                     collectionItems: array_map(
                         static fn (array $item): ContentCollectionItem => new ContentCollectionItem(
@@ -270,6 +272,7 @@ readonly class PageMapper
      *     eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
      *     actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *     extensionKey: string|null,
+     *     extensionOptions: array<string, bool>,
      *     collectionColumns: int|null,
      *     collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      * }>
@@ -310,6 +313,7 @@ readonly class PageMapper
                     $block->actionButtons,
                 ),
                 'extensionKey' => $block->extensionKey,
+                'extensionOptions' => $block->extensionOptions,
                 'collectionColumns' => $block->collectionColumns,
                 'collectionItems' => array_map(
                     static fn (ContentCollectionItem $item): array => [

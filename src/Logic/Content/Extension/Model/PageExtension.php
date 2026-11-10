@@ -48,6 +48,22 @@ enum PageExtension: string
     }
 
     /**
+     * @return array<string, bool>
+     */
+    public function optionDefaults(): array
+    {
+        return match ($this) {
+            self::EventsCurrentYear,
+            self::EventsFromCurrentYear,
+            self::WorkAssignmentsCurrentYear,
+            self::NextEvent,
+            self::NextWorkAssignment,
+            self::NextEventOrWorkAssignment => ['showImages' => true],
+            default => [],
+        };
+    }
+
+    /**
      * @return list<PageExtensionTextField>
      */
     public function textFields(): array

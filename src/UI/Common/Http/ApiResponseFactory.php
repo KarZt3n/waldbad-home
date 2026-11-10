@@ -81,6 +81,7 @@ readonly class ApiResponseFactory
      *         eventCallToActions: list<array{label: string, url: string|null, pageId: string|null}>,
      *         actionButtons: list<array{label: string, url: string|null, pageId: string|null}>,
      *         extensionKey: string|null,
+     *         extensionOptions: array<string, bool>,
      *         collectionColumns: int|null,
      *         collectionItems: list<array{title: string, content: string, mediaUrl: string|null, mediaAlt: string|null, mediaSource: string|null}>
      *     }>,
@@ -138,6 +139,7 @@ readonly class ApiResponseFactory
                         $block->actionButtons,
                     ),
                     'extensionKey' => $block->extensionKey,
+                    'extensionOptions' => $block->extensionOptions,
                     'collectionColumns' => $block->collectionColumns,
                     'collectionItems' => array_map(
                         fn (\App\Logic\Content\Page\Model\ContentCollectionItem $item): array => [

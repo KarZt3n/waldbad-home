@@ -26,6 +26,14 @@ const BLOCK_TYPES = {
     event_reference: 'Veranstaltung einbetten',
     extension: 'Erweiterung',
 };
+const EVENT_EXTENSION_KEYS = new Set([
+    'events_current_year',
+    'events_from_current_year',
+    'work_assignments_current_year',
+    'next_event',
+    'next_work_assignment',
+    'next_event_or_work_assignment',
+]);
 const createCollectionItem = (title = '') => ({
     title,
     content: '',
@@ -58,6 +66,7 @@ const createBlock = (type) => ({
     eventCallToActions: [],
     actionButtons: [],
     extensionKey: type === 'extension' ? 'membership_application' : null,
+    extensionOptions: {},
     collectionColumns: type === 'feature_collection' ? 3 : null,
     collectionItems: [],
 });
@@ -936,12 +945,37 @@ const blockEditor = (block, index, handlers) => {
         ]});
         select.value = block.extensionKey || 'membership_application';
         block.extensionKey = select.value;
-        select.addEventListener('change', () => block.extensionKey = select.value);
+        const options = element('div', {className: 'extension-options'});
+        const renderOptions = () => {
+            block.extensionOptions = block.extensionOptions && typeof block.extensionOptions === 'object'
+                ? block.extensionOptions
+                : {};
+            if (!EVENT_EXTENSION_KEYS.has(block.extensionKey)) {
+                block.extensionOptions = {};
+                options.replaceChildren();
+                return;
+            }
+
+            const showImages = element('input', {attributes: {type: 'checkbox', id: 'block-extension-show-images-' + index}});
+            showImages.checked = block.extensionOptions.showImages !== false;
+            block.extensionOptions.showImages = showImages.checked;
+            showImages.addEventListener('change', () => block.extensionOptions.showImages = showImages.checked);
+            options.replaceChildren(element('label', {className: 'check-field', children: [
+                showImages,
+                element('span', {text: 'Bilder der Veranstaltungen anzeigen'}),
+            ]}));
+        };
+        select.addEventListener('change', () => {
+            block.extensionKey = select.value;
+            block.extensionOptions = {};
+            renderOptions();
+        });
         card.append(element('label', {className: 'field', children: [
             element('span', {text: 'Seitenerweiterung'}),
             select,
-            element('small', {text: 'Rendert das Beitrittsformular im Frontend. Eingegangene Anträge erscheinen im Bereich „Mitgliedsanträge“.'}),
-        ]}));
+            element('small', {text: 'Die verfügbaren Optionen richten sich nach der ausgewählten Erweiterung.'}),
+        ]}), options);
+        renderOptions();
     } else if (block.type === 'image') {
         block.content = '';
     } else {

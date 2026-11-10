@@ -180,6 +180,7 @@ Die Seite „Unterstützer“ ist Bestandteil der Hauptnavigation. Sie stellt Ko
 ### 6.4 Veranstaltungen
 
 - zukünftige Veranstaltungen chronologisch anzeigen
+- Seitenerweiterungen für Veranstaltungs- und Arbeitseinsatzlisten können pro Einbindung festlegen, ob die hinterlegten Veranstaltungsbilder angezeigt werden; weitere einbindungsspezifische Optionen können ergänzt werden
 - Detailseite pro Veranstaltung
 - Titel, Kurzbeschreibung und Langtext
 - Start- und Endzeit, ganztägige Termine und Zeitzone
