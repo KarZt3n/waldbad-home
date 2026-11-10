@@ -311,7 +311,7 @@ const openEventHelpDialog = async (block) => {
             element('legend', {text: activityInputs.length ? 'Wobei möchtest du helfen?' : 'Das steht an'}),
             ...activityEntries,
         ]})] : []),
-        field('Nachricht / Wobei möchtest du helfen? (optional)', 'message', '', 'textarea'),
+        field('Möchtest du uns noch etwas mitteilen? (optional)', 'message', '', 'textarea'),
         element('label', {className: 'check-field', children: [privacy, element('span', {text: 'Ich stimme der Verarbeitung meiner Angaben zur Organisation dieser Veranstaltung zu.'})]}),
         message,
         submitButton,
