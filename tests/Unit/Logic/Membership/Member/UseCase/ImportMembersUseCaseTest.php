@@ -31,6 +31,7 @@ final class ImportMembersUseCaseTest extends TestCase
         $orchestrator->expects(self::exactly(2))
             ->method('createFromRequest')
             ->willReturnCallback(function (CreateMemberRequest $request) use (&$createdOrder): Member {
+                self::assertNotNull($request->memberNumber);
                 $createdOrder[] = $request->memberNumber;
 
                 return $this->member($request->memberNumber);
@@ -87,6 +88,8 @@ final class ImportMembersUseCaseTest extends TestCase
         $orchestrator->expects(self::exactly(2))
             ->method('createFromRequest')
             ->willReturnCallback(function (CreateMemberRequest $request): Member {
+                self::assertNotNull($request->memberNumber);
+
                 return $this->member($request->memberNumber);
             });
 

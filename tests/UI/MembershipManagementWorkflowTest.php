@@ -135,28 +135,28 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $csrfToken = $this->loginAsSuperAdmin();
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
-        $payer = $this->responseData();
+        $payerId = $this->string($this->responseData(), 'id');
 
         $dependent = $this->validMember();
         $dependent['firstName'] = 'Deps';
         $dependent['payerType'] = 'other_member';
-        $dependent['payerMemberId'] = $payer['id'];
+        $dependent['payerMemberId'] = $payerId;
         $dependent['accountHolder'] = null;
         $dependent['iban'] = null;
         $dependent['bankName'] = null;
         $dependent['mandateReference'] = null;
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $dependent, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
-        $dependentId = $this->responseData()['id'];
+        $dependentId = $this->string($this->responseData(), 'id');
 
-        $this->client->request('DELETE', '/api/admin/v1/members/'.$payer['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$payerId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('zahlen über dieses Mitglied', $this->responseData()['error']['message']);
+        self::assertStringContainsString('zahlen über dieses Mitglied', $this->string($this->arrayData($this->responseData(), 'error'), 'message'));
 
         $this->client->request('DELETE', '/api/admin/v1/members/'.$dependentId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(204);
 
-        $this->client->request('DELETE', '/api/admin/v1/members/'.$payer['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$payerId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(204);
 
         $this->client->request('GET', '/api/admin/v1/members', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
@@ -172,6 +172,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $head, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
         $headMember = $this->responseData();
+        $headMemberId = $this->string($headMember, 'id');
 
         // Bewusst als Selbstzahler (statt über den Kopf zahlend): so greift beim Löschversuch des
         // Kopfes ausschließlich die Hauptnummer-Abhängigkeit, nicht zusätzlich die Zahler-Prüfung.
@@ -182,16 +183,16 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $child['primaryMemberNumber'] = $headMember['memberNumber'];
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $child, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
-        $childId = $this->responseData()['id'];
+        $childId = $this->string($this->responseData(), 'id');
 
-        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMember['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMemberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Hauptnummer', $this->responseData()['error']['message']);
+        self::assertStringContainsString('Hauptnummer', $this->string($this->arrayData($this->responseData(), 'error'), 'message'));
 
         $this->client->request('DELETE', '/api/admin/v1/members/'.$childId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(204);
 
-        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMember['id'], server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$headMemberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(204);
     }
 
@@ -356,7 +357,9 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $result = $this->responseData();
         self::assertSame(1, $result['total']);
-        self::assertSame('Musterfrau', $this->arrayList($result, 'items')[0]['lastName']);
+        $firstItem = $this->arrayList($result, 'items')[0];
+        self::assertIsArray($firstItem);
+        self::assertSame('Musterfrau', $firstItem['lastName']);
 
         $this->client->request('GET', '/api/admin/v1/members?search='.urlencode('Hans Beispiel'), server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
@@ -803,20 +806,22 @@ final class MembershipManagementWorkflowTest extends WebTestCase
     {
         $csrfToken = $this->loginAsSuperAdmin();
 
-        // Wird am 01.03.2026 21 Jahre alt — für das Beitragsjahr 2025 also noch 20
-        // (individual_junior), für 2026 laut Stichtag 31.12. bereits 21 (individual_senior).
-        $member = array_replace($this->validMember(), ['birthDate' => '2005-03-01']);
+        // Zulässig sind nur das laufende und das folgende Beitragsjahr. Das Mitglied wird am 01.03.
+        // des Folgejahres 21 — im laufenden Beitragsjahr also noch 20 (individual_junior), im
+        // folgenden laut Stichtag 31.12. bereits 21 (individual_senior).
+        $currentYear = (int) date('Y');
+        $member = array_replace($this->validMember(), ['birthDate' => sprintf('%d-03-01', $currentYear - 20)]);
         $this->client->jsonRequest('POST', '/api/admin/v1/members', $member, ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(201);
         $memberId = $this->string($this->responseData(), 'id');
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => '2025'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => (string) $currentYear], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertSame('individual_junior', $this->responseData()['contributionCategory']);
         self::assertSame(3000, $this->responseData()['contributionAmountCents']);
 
-        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => '2026'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => (string) ($currentYear + 1)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertSame('individual_senior', $this->responseData()['contributionCategory']);
@@ -829,6 +834,14 @@ final class MembershipManagementWorkflowTest extends WebTestCase
 
         $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => 'not-a-year'], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(400);
+    }
+
+    public function testRecalculateAllRejectsAYearOutsideCurrentAndNext(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => (string) ((int) date('Y') - 1)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseStatusCodeSame(422);
     }
 
     public function testDirectDebitPreviewAndExportForAPayer(): void

@@ -1473,6 +1473,25 @@ const openRecalculationErrorsDialog = (errors) => {
     dialog.showModal();
 };
 
+// Beitragsjahr für die Sammel-Neuberechnung: nur laufendes und folgendes Jahr, wie in
+// `RecalculateAllMemberContributionsUseCase`. `error()` liefert die Meldung bei ungültiger Eingabe.
+const contributionYearField = (name) => {
+    const currentYear = new Date().getFullYear();
+    const wrapper = field('Beitragsjahr', name, String(currentYear), 'number');
+    const input = wrapper.querySelector('input');
+    input.min = String(currentYear);
+    input.max = String(currentYear + 1);
+    input.step = '1';
+    const error = () => {
+        const year = Number(input.value.trim());
+        return /^\d{4}$/.test(input.value.trim()) && year >= currentYear && year <= currentYear + 1
+            ? null
+            : `Bitte ${currentYear} oder ${currentYear + 1} als Beitragsjahr angeben.`;
+    };
+
+    return {field: wrapper, input, error};
+};
+
 // Sammel-Neuberechnung aller Beiträge für ein Beitragsjahr (`YYYY`). Übersprungene Mitglieder
 // werden samt Grund angezeigt, statt wie bei `actionButton` ungelesen zu verfallen. Liefert, ob
 // der Lauf durchgelaufen ist.
@@ -1742,11 +1761,7 @@ const sumAmounts = (entries) => entries.reduce((total, entry) => total + entry.a
 // das eingegebene Jahr neu berechnen (Beitragsalter zum Stichtag 31.12.).
 const directDebitOverviewPanel = () => {
     const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Lastschriften werden geladen …')]});
-    const yearField = field('Beitragsjahr', 'direct-debit-recalculate-year', String(new Date().getFullYear()), 'number');
-    const yearInput = yearField.querySelector('input');
-    yearInput.min = '1900';
-    yearInput.max = '2999';
-    yearInput.step = '1';
+    const year = contributionYearField('direct-debit-recalculate-year');
     const recalculate = element('button', {className: 'secondary-button', text: 'Beiträge neu berechnen', attributes: {type: 'button'}});
     const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
     exportAll.disabled = true;
@@ -1799,21 +1814,22 @@ const directDebitOverviewPanel = () => {
     }
 
     recalculate.addEventListener('click', async () => {
-        const year = yearInput.value.trim();
-        if (!/^\d{4}$/.test(year)) {
-            toast('Bitte ein Beitragsjahr angeben.', 'error');
-            yearInput.focus();
+        const yearError = year.error();
+        if (yearError) {
+            toast(yearError, 'error');
+            year.input.focus();
             return;
         }
+        const selectedYear = year.input.value.trim();
         const confirmed = await confirmAction(
-            `Beiträge für ${year} neu berechnen?`,
-            `Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Alter und Kategorie gelten zum Stichtag 31.12.${year}. Das kann nicht rückgängig gemacht werden.`,
+            `Beiträge für ${selectedYear} neu berechnen?`,
+            `Der Beitrag wird für alle Mitglieder anhand der aktuellen Beitragssätze und Altersspannen neu berechnet. Alter und Kategorie gelten zum Stichtag 31.12.${selectedYear}. Das kann nicht rückgängig gemacht werden.`,
             'Neu berechnen',
         );
         if (!confirmed) return;
         recalculate.disabled = true;
         try {
-            if (await recalculateAllContributions(year)) await load();
+            if (await recalculateAllContributions(selectedYear)) await load();
         } finally {
             recalculate.disabled = false;
         }
@@ -1848,7 +1864,7 @@ const directDebitOverviewPanel = () => {
 
     return {
         panel: element('div', {className: 'member-dialog-panel', children: [
-            element('div', {className: 'direct-debit-overview-controls direct-debit-overview-actions', children: [yearField, recalculate, exportAll]}),
+            element('div', {className: 'direct-debit-overview-controls direct-debit-overview-actions', children: [year.field, recalculate, exportAll]}),
             body,
         ]}),
         load,
@@ -2149,11 +2165,7 @@ const renderDirectDebitCreditorCard = (creditor, onSaved) => {
 const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
     const dialog = element('dialog', {className: 'confirm-dialog'});
     const message = formMessage();
-    const yearField = field('Beitragsjahr', 'recalculate-contributions-year', String(new Date().getFullYear()), 'number');
-    const yearInput = yearField.querySelector('input');
-    yearInput.min = '1900';
-    yearInput.max = '2999';
-    yearInput.step = '1';
+    const {field: yearField, input: yearInput, error: yearError} = contributionYearField('recalculate-contributions-year');
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const submit = element('button', {className: 'button', text: 'Neu berechnen', attributes: {type: 'submit'}});
     let answered = false;
@@ -2182,11 +2194,12 @@ const openRecalculateAllContributionsDialog = () => new Promise((resolve) => {
     });
     form.addEventListener('submit', (event) => {
         event.preventDefault();
-        if (!/^\d{4}$/.test(yearInput.value)) {
-            message.textContent = 'Bitte ein Beitragsjahr angeben.';
+        const error = yearError();
+        if (error) {
+            message.textContent = error;
             return;
         }
-        finish(yearInput.value);
+        finish(yearInput.value.trim());
     });
     dialog.append(form);
     document.body.append(dialog);

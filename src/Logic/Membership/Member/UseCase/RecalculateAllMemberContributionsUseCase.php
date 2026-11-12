@@ -52,11 +52,18 @@ readonly class RecalculateAllMemberContributionsUseCase
      * `MemberContributionCalculator`) — ohne Angabe das laufende Jahr. Ob ein Mitglied bereits
      * ausgetreten ist, wird im laufenden Jahr zum heutigen Tag geprüft, für jedes andere Jahr zu
      * dessen Jahresbeginn (wer bis dahin ausgetreten ist, zahlt für dieses Jahr keinen Beitrag).
+     * Zulässig sind nur das laufende und das folgende Jahr: Ein anderes Jahr würde die
+     * gespeicherten Beiträge aller Mitglieder mit Werten überschreiben, die keine anstehende
+     * Lastschrift mehr braucht.
      */
     public function execute(?int $year = null): RecalculateAllContributionsResponse
     {
         $now = $this->clock->now();
-        if ($year !== null && $year !== (int) $now->format('Y')) {
+        $currentYear = (int) $now->format('Y');
+        if ($year !== null && ($year < $currentYear || $year > $currentYear + 1)) {
+            throw new BusinessRuleViolationException(sprintf('Beiträge können nur für %d oder %d neu berechnet werden.', $currentYear, $currentYear + 1));
+        }
+        if ($year !== null && $year !== $currentYear) {
             $now = $now->setDate($year, 1, 1)->setTime(0, 0);
         }
 

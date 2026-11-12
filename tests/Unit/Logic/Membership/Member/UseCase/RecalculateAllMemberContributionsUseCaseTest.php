@@ -14,6 +14,7 @@ use App\Logic\Membership\Member\Service\BoardFamilyExemptionResolver;
 use App\Logic\Membership\Member\Service\MemberContributionCalculator;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\PaymentInterval;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
@@ -73,6 +74,29 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         $clock->method('now')->willReturn(new \DateTimeImmutable('2026-09-28 10:15:00'));
 
         (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute(2027);
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function yearsOutsideCurrentAndNext(): iterable
+    {
+        yield 'Vorjahr' => [2025];
+        yield 'übernächstes Jahr' => [2028];
+    }
+
+    #[DataProvider('yearsOutsideCurrentAndNext')]
+    public function testYearOutsideCurrentAndNextIsRejectedWithoutSaving(int $year): void
+    {
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->expects(self::never())->method('search');
+        $members->expects(self::never())->method('saveAll');
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-11-11 10:00:00'));
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Beiträge können nur für 2026 oder 2027 neu berechnet werden.');
+
+        (new RecalculateAllMemberContributionsUseCase($members, $this->createStub(MemberContributionCalculator::class), $clock, new BoardFamilyExemptionResolver()))->execute($year);
     }
 
     public function testCurrentYearIsCalculatedFromToday(): void
@@ -271,10 +295,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         ];
         $manager = $this->createStub(ContributionRateManagerInterface::class);
         $manager->method('findByCategory')->willReturnCallback(
-            static function (ContributionCategory $category) use ($rates): ?ContributionRate {
-                if (!isset($rates[$category->value])) {
-                    return null;
-                }
+            static function (ContributionCategory $category) use ($rates): ContributionRate {
                 [$amountCents, $minAge, $maxAge] = $rates[$category->value];
 
                 return new ContributionRate(
