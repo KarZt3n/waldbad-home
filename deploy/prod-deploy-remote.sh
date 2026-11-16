@@ -96,24 +96,7 @@ printf 'Erstelle datenbanksicherung:'
 mysql_options="$(mktemp)"
 trap 'rm -f "$mysql_options"' EXIT
 chmod 0600 "$mysql_options"
-database_name="$("$php" -r '
-    require "vendor/autoload.php";
-    (new Symfony\Component\Dotenv\Dotenv())->bootEnv(".env");
-    $url = parse_url((string) ($_SERVER["DATABASE_URL"] ?? ""));
-    if ($url === false || !isset($url["host"], $url["user"], $url["path"])) {
-        fwrite(STDERR, "DATABASE_URL ist ungültig.\n");
-        exit(1);
-    }
-    $quote = static fn (string $value): string => "\"".addcslashes($value, "\\\"")."\"";
-    file_put_contents($argv[1], sprintf(
-        "[client]\nhost=%s\nport=%d\nuser=%s\npassword=%s\n",
-        $quote($url["host"]),
-        $url["port"] ?? 3306,
-        $quote(rawurldecode($url["user"])),
-        $quote(rawurldecode($url["pass"] ?? "")),
-    ));
-    echo rawurldecode(ltrim($url["path"], "/"));
-' "$mysql_options")"
+database_name="$("$php" deploy/prod/mysql-options.php "$mysql_options")"
 backup_file="$backup_dir/$release_name.sql.gz"
 mysqldump --defaults-extra-file="$mysql_options" --single-transaction --no-tablespaces --routines "$database_name" | gzip > "$backup_file"
 chmod 0600 "$backup_file"

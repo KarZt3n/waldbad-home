@@ -1,0 +1,57 @@
+name: Prod backup
+
+# Nächtliche Komplettsicherung (Datenbank, Uploads, Konfiguration) auf dem Telekom-Webspace, siehe
+# deploy/prod-backup-remote.sh. Der Webspace hat kein crontab, deshalb startet GitHub Actions den Lauf.
+on:
+  schedule:
+    # 01:30 UTC = 02:30 MEZ / 03:30 MESZ. GitHub kann geplante Läufe um einige Minuten verzögern.
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+# Dieselbe Gruppe wie das Prod-Deployment: Sicherung und Deployment laufen nie gleichzeitig.
+concurrency:
+  group: waldbad-home-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Backup waldbad-home prod
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: production
+    env:
+      PROD_SSH_HOST: ${{ vars.PROD_SSH_HOST }}
+      PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: SSH einrichten
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$PROD_SSH_HOST" ] || [ -z "$PROD_SSH_USER" ]; then
+            echo '::error::Variablen PROD_SSH_HOST und PROD_SSH_USER fehlen im Environment „production“.'
+            exit 1
+          fi
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/prod_deploy
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/prod_deploy ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host prod
+              HostName $PROD_SSH_HOST
+              User $PROD_SSH_USER
+              IdentityFile ~/.ssh/prod_deploy
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+              ServerAliveInterval 30
+              ServerAliveCountMax 10
+          EOF
+
+      - name: Sicherung erstellen
+        run: ssh prod 'BACKUP_RETENTION_DAYS=90 bash -s' < deploy/prod-backup-remote.sh

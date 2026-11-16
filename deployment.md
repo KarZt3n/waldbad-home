@@ -262,6 +262,46 @@ Datenbankmigrationen müssen vor einem Rollback auf Abwärtskompatibilität gepr
 
 ## Backups
 
+### Prod: nächtliche Komplettsicherung
+
+Der Workflow `.github/workflows/backup-prod.yaml` startet jede Nacht um 01:30 UTC (02:30 MEZ /
+03:30 MESZ) per SSH `deploy/prod-backup-remote.sh` auf dem Telekom-Webspace — der Webspace hat kein
+crontab. Er nutzt dieselben Secrets und Variablen wie das Prod-Deployment (Environment `production`)
+und läuft nie gleichzeitig mit einem Deployment. Schlägt er fehl, verschickt GitHub die übliche
+Fehler-Mail. Von Hand: `Actions` → `Prod backup` → `Run workflow`.
+
+Je Tag entsteht `~/waldbad-home/backups/nightly/JJJJ-MM-TT/` mit
+
+| Inhalt | |
+|---|---|
+| `database.sql.gz` | komplette Datenbank (alle Tabellen inkl. Historien) |
+| `uploads/` | alle Uploads; unveränderte Dateien sind Hardlinks auf den Vortag und belegen keinen zusätzlichen Platz |
+| `config/` | `.env.local` und ggf. `prod.decrypt.private.php` |
+| `SHA256SUMS` | Prüfsummen von Datenbank und Konfiguration |
+
+Sicherungen älter als 90 Tage werden beim nächsten Lauf gelöscht. Ein Ordner erscheint erst unter
+seinem Datum, wenn die Sicherung vollständig ist. Voraussetzung: Das aktive Release enthält
+`deploy/prod/mysql-options.php` (ab dem ersten Deploy nach Einführung der Sicherung).
+
+Platzbedarf ungefähr: 90 × gezippte Datenbank + einmal die Uploads + alle in 90 Tagen neu
+hochgeladenen oder geänderten Dateien. Belegung prüfen:
+
+```bash
+ssh "$PROD_SSH_USER@hosting.telekom.de" 'du -sh ~/waldbad-home/backups/nightly ~/public_html/uploads; ls ~/waldbad-home/backups/nightly | tail -3'
+```
+
+Wiederherstellen (vorher wird der aktuelle Datenbankstand unter `backups/database/vor-restore-*.sql.gz`
+gesichert; `database` und/oder `uploads`; die Konfiguration wird bei Bedarf von Hand aus `config/` kopiert):
+
+```bash
+ssh "$PROD_SSH_USER@hosting.telekom.de" 'RESTORE_CONFIRM=ja bash -s' -- 2026-11-16 database uploads < deploy/prod-restore-remote.sh
+```
+
+Die Sicherungen liegen vorerst nur auf dem Webspace selbst. Gegen einen Ausfall oder Verlust des
+Hostings hilft das nicht — dafür ist später eine Kopie an einen zweiten Ort vorgesehen.
+
+### Stage
+
 Vor einem Produktivbetrieb müssen automatisierte, extern gespeicherte und regelmäßig wiederhergestellte Backups für beide Docker-Volumes eingerichtet werden. Ein Proxmox-VM-Backup allein ersetzt keine anwendungskonsistente Datenbanksicherung.
 ## Datenbank sichern und in Stage importieren
 
