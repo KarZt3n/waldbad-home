@@ -1511,8 +1511,11 @@ const openMemberDialog = async (member, onSaved) => {
             ]}),
         ]}),
         tabStrip,
-        element('div', {className: 'member-dialog-body', children: [...tabPanels.map(([, panel]) => panel), message]}),
-        element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), ...(deleteHouseholdButton ? [deleteHouseholdButton] : []), cancel, submit]}),
+        element('div', {className: 'member-dialog-body', children: [
+            ...tabPanels.map(([, panel]) => panel),
+            message,
+            element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), ...(deleteHouseholdButton ? [deleteHouseholdButton] : []), cancel, submit]}),
+        ]}),
     ]});
     [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
         wrapper.querySelector('input').required = true;
@@ -2515,47 +2518,66 @@ const workAssignmentRefundPanel = () => {
     };
 };
 
-// SEPA-Overlay mit Reitern je Lastschrift-Art (Beiträge, Arbeitseinsatz-Pauschale, Einmalgebühren)
-// und Gutschriften (geleistete Arbeitsstunden). Außer den Beiträgen wird jeder Reiter erst beim
-// ersten Öffnen geladen.
+// SEPA-Overlay mit zwei Hauptreitern: Lastschriften (Unterreiter je Art: Mitgliedsbeiträge,
+// Arbeitseinsatz-Pauschale, Einmalgebühren) und Gutschriften (geleistete Arbeitsstunden). Außer den
+// Mitgliedsbeiträgen wird jeder Bereich erst beim ersten Öffnen geladen. Das Overlay hat immer volle
+// Höhe; Kopf und Reiter bleiben stehen, nur der Inhalt scrollt.
 const openDirectDebitOverviewDialog = async () => {
     const dialog = element('dialog', {className: 'activity-dialog direct-debit-overview-dialog'});
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
     const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
-    const tabs = [
-        {label: 'Lastschriften: Beiträge', ...directDebitOverviewPanel('contribution'), loaded: true},
-        {label: 'Lastschriften: Arbeitseinsatz-Pauschale', ...directDebitOverviewPanel('work_assignment_surcharge'), loaded: false},
-        {label: 'Lastschriften: Einmalgebühren', ...directDebitOverviewPanel('one_time_charge'), loaded: false},
-        {label: 'Gutschriften (Arbeitsstunden)', ...workAssignmentRefundPanel(), loaded: false},
+    const scrollArea = element('div', {className: 'direct-debit-overview-scroll'});
+    const debitAreas = DIRECT_DEBIT_KINDS.map(([kind, label]) => ({label, ...directDebitOverviewPanel(kind), loaded: kind === 'contribution'}));
+    const sections = [
+        {label: 'Lastschriften', areas: debitAreas, active: debitAreas[0]},
+        {label: 'Gutschriften', areas: [{label: 'Gutschriften (Arbeitsstunden)', ...workAssignmentRefundPanel(), loaded: false}]},
     ];
+    sections[1].active = sections[1].areas[0];
+    let activeSection = sections[0];
     const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'SEPA-Bereiche'}});
-    const select = (active) => {
-        strip.replaceChildren(...tabs.map((tab) => {
-            const button = element('button', {className: `sub-tab${tab === active ? ' active' : ''}`, text: tab.label, attributes: {type: 'button', 'aria-pressed': String(tab === active)}});
-            button.addEventListener('click', () => select(tab));
+    const subStrip = element('nav', {className: 'member-dialog-tab-strip direct-debit-sub-tab-strip', attributes: {'aria-label': 'Art der Lastschrift'}});
+    const tabButton = (label, isActive, onClick) => {
+        const button = element('button', {className: `sub-tab${isActive ? ' active' : ''}`, text: label, attributes: {type: 'button', 'aria-pressed': String(isActive)}});
+        button.addEventListener('click', onClick);
 
-            return button;
-        }));
-        tabs.forEach((tab) => { tab.panel.hidden = tab !== active; });
-        if (!active.loaded) {
-            active.loaded = true;
-            active.load();
+        return button;
+    };
+    const render = () => {
+        strip.replaceChildren(...sections.map((section) => tabButton(section.label, section === activeSection, () => {
+            activeSection = section;
+            render();
+        })));
+        subStrip.hidden = activeSection.areas.length < 2;
+        subStrip.replaceChildren(...activeSection.areas.map((area) => tabButton(area.label, area === activeSection.active, () => {
+            activeSection.active = area;
+            render();
+        })));
+        sections.forEach((section) => section.areas.forEach((area) => { area.panel.hidden = !(section === activeSection && area === section.active); }));
+        scrollArea.scrollTop = 0;
+        const area = activeSection.active;
+        if (!area.loaded) {
+            area.loaded = true;
+            area.load();
         }
     };
-    select(tabs[0]);
+    scrollArea.replaceChildren(...sections.flatMap((section) => section.areas.map((area) => area.panel)));
+    render();
 
     closeButton.addEventListener('click', () => dialog.close());
     close.addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => dialog.remove());
-    dialog.append(close, element('div', {className: 'activity-dialog-content', children: [
-        element('p', {className: 'eyebrow', text: 'SEPA'}),
-        element('div', {className: 'direct-debit-overview-heading', children: [element('h2', {text: 'Lastschriften und Gutschriften'}), closeButton]}),
-        strip,
-        ...tabs.map((tab) => tab.panel),
+    dialog.append(close, element('div', {className: 'activity-dialog-content direct-debit-overview-content', children: [
+        element('div', {className: 'direct-debit-overview-header', children: [
+            element('p', {className: 'eyebrow', text: 'SEPA'}),
+            element('div', {className: 'direct-debit-overview-heading', children: [element('h2', {text: 'Lastschriften und Gutschriften'}), closeButton]}),
+            strip,
+            subStrip,
+        ]}),
+        scrollArea,
     ]}));
     document.body.append(dialog);
     dialog.showModal();
-    await tabs[0].load();
+    await debitAreas[0].load();
 };
 
 /** SEPA-Gläubigerdaten des Vereins (siehe `DirectDebitCreditor`) — Voraussetzung für jeden Lastschrift-Export. */
