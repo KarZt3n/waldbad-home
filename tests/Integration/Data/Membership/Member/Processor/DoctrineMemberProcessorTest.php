@@ -83,6 +83,30 @@ final class DoctrineMemberProcessorTest extends KernelTestCase
         $processor->delete($member->id);
     }
 
+    public function testDeleteAllMarksEveryMemberOrNoneWhenOneIsMissing(): void
+    {
+        $processor = $this->service(DoctrineMemberProcessor::class);
+        $first = $processor->save($this->member('11111111-1111-4111-8111-111111111111', 'M-0001'));
+        $second = $processor->save($this->member('22222222-2222-4222-8222-222222222222', 'M-0002'));
+        $third = $processor->save($this->member('33333333-3333-4333-8333-333333333333', 'M-0003'));
+
+        try {
+            $processor->deleteAll([$first->id, '44444444-4444-4444-8444-444444444444']);
+            self::fail('Ein unbekanntes Mitglied muss den Sammel-Löschvorgang abbrechen.');
+        } catch (MemberNotFoundException) {
+        }
+        $this->entityManager->clear();
+        $provider = $this->service(DoctrineMemberProvider::class);
+        self::assertNotNull($provider->find($first->id));
+
+        $processor->deleteAll([$first->id, $second->id]);
+        $this->entityManager->clear();
+        self::assertNull($provider->find($first->id));
+        self::assertNull($provider->find($second->id));
+        self::assertNotNull($provider->find($third->id));
+        self::assertNotNull($this->entityManager->find(MemberEntity::class, $second->id)?->getDeletedAt());
+    }
+
     public function testSaveAllWritesNothingWhenOneMemberWasChangedInTheMeantime(): void
     {
         $processor = $this->service(DoctrineMemberProcessor::class);

@@ -82,7 +82,8 @@ readonly class MemberContributionCalculator
             $householdMembers,
             static fn (Member $member): bool => !$member->hasLeft($at),
         ));
-        $category = $this->resolveCategory($candidate, $activeHouseholdMembers, $at);
+        $pricedHousehold = $this->withMinorsAsChildren([$candidate, ...$activeHouseholdMembers], $at);
+        $category = $this->resolveCategory($pricedHousehold[0], array_slice($pricedHousehold, 1), $at);
         $rate = $this->rates->findByCategory($category)
             ?? throw new BusinessRuleViolationException(sprintf(
                 'Für die Kategorie "%s" ist kein Beitragssatz hinterlegt. Bitte lege ihn unter „Beitragssätze“ neu an.',
@@ -168,6 +169,35 @@ readonly class MemberContributionCalculator
         }
 
         return $candidate->familyRole;
+    }
+
+    /**
+     * Ein noch in der Kinder-Altersspanne liegendes Hauptmitglied bzw. Familienangehöriger wird für
+     * die Beitragsberechnung wie ein Kind behandelt, wenn im (aktiven) Haushalt ein erwachsener
+     * Elternteil (Head/Partner) geführt wird. Das kommt z. B. vor, wenn nach dem Austritt eines
+     * Elternteils ein Kind die Hauptnummer übernommen hat, der andere Elternteil aber noch Mitglied
+     * ist. Nur für die Preisfindung — die gespeicherte `familyRole` bleibt unverändert, da sie
+     * zusammen mit der Hauptnummer bestimmt, wer die Familie führt.
+     *
+     * @param non-empty-list<Member> $household aktive Mitglieder, Kandidat an erster Stelle
+     * @return non-empty-list<Member>
+     */
+    private function withMinorsAsChildren(array $household, \DateTimeImmutable $at): array
+    {
+        $childExemptMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildExempt)?->maxAge;
+        $childPayingMaxAge = $this->rates->findByCategory(ContributionCategory::FamilyChildPaying)?->maxAge;
+        $year = (int) $at->format('Y');
+
+        $result = [];
+        foreach ($household as $member) {
+            $isMinorAdultRole = ($member->familyRole === FamilyRole::Head || $member->familyRole === FamilyRole::Partner)
+                && $this->isWithinChildPricing($member->contributionAge($year), $childExemptMaxAge, $childPayingMaxAge);
+            $result[] = $isMinorAdultRole && $this->hasQualifyingParent($this->others($household, $member), $at)
+                ? $member->withFamilyRole(FamilyRole::Child)
+                : $member;
+        }
+
+        return $result;
     }
 
     /**

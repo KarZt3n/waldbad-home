@@ -23,9 +23,11 @@ import {adminPath, setAdminPath, workspace} from './shell.js';
  */
 // `successor`: beim Löschen eines Zahlers bzw. Hauptmitglieds der Nachfolger aus der Familie
 // (`{successorMemberId, keepSuccessorPaymentDetails}`, siehe `openPayerTransferDialog`).
-const deleteMemberWithOptionalPin = async (id, successor = {}) => {
+const deleteMemberWithOptionalPin = (id, successor = {}) => deleteWithOptionalPin(`/api/admin/v1/members/${id}`, successor, 'Mitglied löschen');
+const deleteHouseholdWithOptionalPin = (id) => deleteWithOptionalPin(`/api/admin/v1/members/${id}/household`, {}, 'Familie löschen');
+const deleteWithOptionalPin = async (url, body, title) => {
     try {
-        await request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify(successor)});
+        await request(url, {method: 'DELETE', body: JSON.stringify(body)});
 
         return true;
     } catch (error) {
@@ -33,9 +35,9 @@ const deleteMemberWithOptionalPin = async (id, successor = {}) => {
     }
 
     return promptForPin(
-        'Mitglied löschen',
+        title,
         'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
-        (pin) => request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify({...successor, pin})}),
+        (pin) => request(url, {method: 'DELETE', body: JSON.stringify({...body, pin})}),
     );
 };
 // Offene Nachrichten (neu, bzw. aus der Zeit vor dem Wegfall von „In Bearbeitung“ noch in
@@ -476,12 +478,15 @@ const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCe
         openButton.addEventListener('click', () => openOther(entry.id));
     }
 
+    const exitStatus = memberExitStatus(entry.leftAt);
+
     return element('li', {children: [
-        element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}`, children: [
+        element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}${exitStatus ? ` ${exitStatus.className}` : ''}`, children: [
             element('span', {className: 'member-list-card-label', children: [
                 element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
                 element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
             ]}),
+            ...memberExitBadge(entry.leftAt),
             // Nur bei Zahlern gesetzt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
             // ganzen von ihnen bezahlten Personenkreis, rechtsbündig neben Name/Rolle/Nummer.
             ...(totalCents !== null ? [element('span', {className: 'member-list-card-total', text: formatEuro(totalCents)})] : []),
@@ -542,6 +547,21 @@ const householdTreeItem = (group, currentId, openOther) => {
 // Ist das Austrittsdatum erreicht (heute oder in der Vergangenheit), gilt das Mitglied als
 // ausgetreten — unabhängig von „Beitragspflichtig“, das dann seine Bedeutung verliert.
 const hasMemberLeft = (leftAt) => !!leftAt && leftAt <= new Date().toISOString().slice(0, 10);
+
+// Austrittsstatus für Familienzugehörigkeit und Dialogkopf: rot, wenn bereits ausgetreten, gelb,
+// wenn ein Austrittsdatum in der Zukunft eingetragen ist.
+const memberExitStatus = (leftAt) => {
+    if (!leftAt) return null;
+
+    return hasMemberLeft(leftAt)
+        ? {className: 'is-left', text: `Ausgetreten am ${formatDateDE(leftAt)}`}
+        : {className: 'is-leaving', text: `Austritt zum ${formatDateDE(leftAt)}`};
+};
+const memberExitBadge = (leftAt) => {
+    const status = memberExitStatus(leftAt);
+
+    return status ? [element('span', {className: `status-badge member-exit-badge ${status.className}`, text: status.text})] : [];
+};
 
 // Grund, warum für ein Mitglied kein Beitrag anfällt (falls zutreffend). Ausgetreten hat
 // Vorrang vor Vorstand, da die Vorstandsfunktion nach dem Austritt keine Rolle mehr spielt.
@@ -1093,7 +1113,7 @@ const openMemberDialog = async (member, onSaved) => {
             }
             const confirmed = await confirmAction(
                 'Mitglied löschen',
-                `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird endgültig gelöscht, inklusive Bemerkungen und Beitragshistorie. Das kann nicht rückgängig gemacht werden.`,
+                `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird gelöscht und erscheint danach nirgends mehr in der Mitgliederverwaltung.`,
                 'Löschen',
             );
             if (!confirmed) return;
@@ -1109,6 +1129,44 @@ const openMemberDialog = async (member, onSaved) => {
             } catch (error) {
                 toast(error.message, 'error');
                 deleteButton.disabled = false;
+            }
+        });
+    }
+
+    // Nur sinnvoll, wenn außer diesem Mitglied noch jemand zur Familie gehört; sonst reicht „Mitglied löschen“.
+    const deleteHouseholdButton = member && canEditModule('members') && household.householdMembers.length > 1
+        ? element('button', {className: 'secondary-button danger-button', text: 'Familie löschen', attributes: {type: 'button'}})
+        : null;
+    if (deleteHouseholdButton) {
+        deleteHouseholdButton.addEventListener('click', async () => {
+            let currentHousehold;
+            try {
+                currentHousehold = await request(`/api/admin/v1/members/${member.id}/household`);
+            } catch (error) {
+                toast(error.message, 'error');
+                return;
+            }
+            const names = currentHousehold.householdMembers
+                .map((entry) => `${entry.firstName} ${entry.lastName} (${entry.memberNumber})`)
+                .join(', ');
+            const confirmed = await confirmAction(
+                'Familie löschen',
+                `Alle ${currentHousehold.householdMembers.length} Mitglieder der Familie ${member.primaryMemberNumber} werden gelöscht: ${names}. Sie erscheinen danach nirgends mehr in der Mitgliederverwaltung.`,
+                'Familie löschen',
+            );
+            if (!confirmed) return;
+            deleteHouseholdButton.disabled = true;
+            try {
+                if (!(await deleteHouseholdWithOptionalPin(member.id))) {
+                    deleteHouseholdButton.disabled = false;
+                    return;
+                }
+                toast(`Die Familie wurde gelöscht (${currentHousehold.householdMembers.length} Mitglieder).`);
+                dialog.close();
+                await onSaved();
+            } catch (error) {
+                toast(error.message, 'error');
+                deleteHouseholdButton.disabled = false;
             }
         });
     }
@@ -1432,12 +1490,13 @@ const openMemberDialog = async (member, onSaved) => {
             element('div', {children: [
                 element('p', {className: 'eyebrow', text: member ? 'Mitglied bearbeiten' : 'Neues Mitglied'}),
                 element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'}),
+                ...(member ? memberExitBadge(member.leftAt) : []),
             ]}),
         ]}),
         tabStrip,
         ...tabPanels.map(([, panel]) => panel),
         message,
-        element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), cancel, submit]}),
+        element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), ...(deleteHouseholdButton ? [deleteHouseholdButton] : []), cancel, submit]}),
     ]});
     [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
         wrapper.querySelector('input').required = true;

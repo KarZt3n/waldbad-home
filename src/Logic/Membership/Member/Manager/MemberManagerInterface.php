@@ -46,4 +46,12 @@ interface MemberManagerInterface
      * Mitglieder liefert keine der Lesemethoden mehr; ihre Mitgliedsnummer bleibt vergeben.
      */
     public function delete(string $id): void;
+
+    /**
+     * Soft-Delete mehrerer Mitglieder (siehe `delete()`) in einem gemeinsamen Schreibvorgang —
+     * entweder alle oder keines.
+     *
+     * @param list<string> $ids
+     */
+    public function deleteAll(array $ids): void;
 }

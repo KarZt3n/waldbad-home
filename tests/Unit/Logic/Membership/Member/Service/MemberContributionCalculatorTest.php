@@ -189,6 +189,30 @@ final class MemberContributionCalculatorTest extends TestCase
         self::assertSame(ContributionCategory::FamilyChildPaying, $outcome->category);
     }
 
+    public function testMinorHeadIsPricedAsChildWhileAnAdultParentIsStillAMember(): void
+    {
+        $calculator = $this->calculator();
+        $mother = $this->member(birthDate: '1987-01-01', familyRole: FamilyRole::Partner, id: 'mother', leftAt: '2026-12-31');
+        $minorHead = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Head, id: 'head');
+
+        $headOutcome = $calculator->calculate($minorHead, [$mother], new \DateTimeImmutable('2026-06-01'));
+        $motherOutcome = $calculator->calculate($mother, [$minorHead], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::FamilyChildPaying, $headOutcome->category);
+        self::assertSame(ContributionCategory::FamilyAdult, $motherOutcome->category);
+    }
+
+    public function testMinorHeadPaysIndividualRateOnceTheAdultParentHasLeft(): void
+    {
+        $calculator = $this->calculator();
+        $mother = $this->member(birthDate: '1987-01-01', familyRole: FamilyRole::Partner, id: 'mother', leftAt: '2026-03-31');
+        $minorHead = $this->member(birthDate: '2015-01-01', familyRole: FamilyRole::Head, id: 'head');
+
+        $outcome = $calculator->calculate($minorHead, [$mother], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::IndividualJunior, $outcome->category);
+    }
+
     public function testParentLosesFamilyDiscountWhenTheOnlyChildHasLeft(): void
     {
         $calculator = $this->calculator();

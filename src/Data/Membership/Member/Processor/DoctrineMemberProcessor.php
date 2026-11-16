@@ -59,6 +59,24 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         $this->entityManager->flush();
     }
 
+    public function deleteAll(array $ids): void
+    {
+        $now = $this->clock->now();
+        // Erst alle prüfen, dann markieren und einmal flushen: Fehlt eines, bleibt nichts halb gelöscht.
+        $entities = [];
+        foreach ($ids as $id) {
+            $entity = $this->entityManager->find(MemberEntity::class, $id);
+            if ($entity === null || $entity->isDeleted()) {
+                throw new MemberNotFoundException($id);
+            }
+            $entities[] = $entity;
+        }
+        foreach ($entities as $entity) {
+            $entity->markDeleted($now);
+        }
+        $this->entityManager->flush();
+    }
+
     private function stage(Member $member): MemberEntity
     {
         if ($member->version === 0) {

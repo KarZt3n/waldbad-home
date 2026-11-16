@@ -12,6 +12,7 @@ use App\Logic\Membership\Member\EmailConsent\UseCase\SendMemberEmailConsentReque
 use App\Logic\Membership\Member\UseCase\AddMemberRemarkUseCase;
 use App\Logic\Membership\Member\UseCase\CreateMemberMandateUseCase;
 use App\Logic\Membership\Member\UseCase\CreateMemberUseCase;
+use App\Logic\Membership\Member\UseCase\DeleteHouseholdUseCase;
 use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
 use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
@@ -256,6 +257,18 @@ class AdminMemberController extends AbstractController
         $useCase->execute($id, $successor['successorMemberId'], $successor['keepSuccessorPaymentDetails']);
 
         return new Response(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /** Löscht alle Mitglieder der Familie (gleiche Hauptnummer), siehe `DeleteHouseholdUseCase`. */
+    #[Route('/{id}/household', name: 'api_admin_member_delete_household', methods: ['DELETE'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function deleteHousehold(string $id, Request $request, DeleteHouseholdUseCase $useCase, VerifyPinUseCase $verifyPin): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+        // Gleicher PIN-Schutz wie „Mitglied löschen“.
+        $submittedPin = $request->getPayload()->getString('pin', '');
+        $verifyPin->execute(ProtectedAction::MembersDelete, $submittedPin === '' ? null : $submittedPin);
+
+        return new JsonResponse(['deletedCount' => $useCase->execute($id)]);
     }
 
     /**

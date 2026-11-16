@@ -59,4 +59,9 @@ readonly class MemberManager implements MemberManagerInterface
     {
         $this->processor->delete($id);
     }
+
+    public function deleteAll(array $ids): void
+    {
+        $this->processor->deleteAll($ids);
+    }
 }

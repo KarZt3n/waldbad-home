@@ -16,4 +16,11 @@ interface MemberProcessorInterface
     public function saveAll(array $members): void;
 
     public function delete(string $id): void;
+
+    /**
+     * Markiert alle Mitglieder in einem gemeinsamen Schreibvorgang als gelöscht — entweder alle oder keines.
+     *
+     * @param list<string> $ids
+     */
+    public function deleteAll(array $ids): void;
 }

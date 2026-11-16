@@ -970,6 +970,35 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame($headNumber, $deleted->getMemberNumber());
     }
 
+    public function testWholeFamilyCanBeDeletedAtOnce(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['familyRole' => 'head']), $headers);
+        $headId = $this->string($this->responseData(), 'id');
+        $headNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'firstName' => 'Kind', 'birthDate' => '2015-01-01', 'familyRole' => 'child', 'primaryMemberNumber' => $headNumber,
+            'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'accountHolder' => null, 'iban' => null, 'bankName' => null, 'paymentMethod' => 'not_specified',
+        ]), $headers);
+        $childId = $this->string($this->responseData(), 'id');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['firstName' => 'Fremd']), $headers);
+        $otherId = $this->string($this->responseData(), 'id');
+
+        // Ein einzelnes Löschen des Hauptmitglieds verlangt einen Nachfolger, das Löschen der Familie nicht.
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/members/'.$childId.'/household', [], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(2, $this->int($this->responseData(), 'deletedCount'));
+
+        foreach ([$headId, $childId] as $deletedId) {
+            $this->client->request('GET', '/api/admin/v1/members/'.$deletedId, server: $headers);
+            self::assertResponseStatusCodeSame(404);
+        }
+        $this->client->request('GET', '/api/admin/v1/members/'.$otherId, server: $headers);
+        self::assertResponseIsSuccessful();
+    }
+
     public function testDirectDebitPreviewAndExportForAPayer(): void
     {
         $csrfToken = $this->loginAsSuperAdmin();
