@@ -4,6 +4,7 @@ namespace App\Logic\Membership\DirectDebit\Query;
 
 use App\Logic\Common\ClockInterface;
 use App\Logic\Membership\DirectDebit\Dto\PayerDirectDebitPreviewResponse;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 
 /** Vorschau der Lastschrift für den Zahler des angefragten Mitglieds (siehe `PayerDirectDebitPlanner`). */
@@ -15,8 +16,8 @@ readonly class GetPayerDirectDebitPreviewQuery
     ) {
     }
 
-    public function execute(string $memberId): PayerDirectDebitPreviewResponse
+    public function execute(string $memberId, DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution): PayerDirectDebitPreviewResponse
     {
-        return PayerDirectDebitPreviewResponse::fromDraft($this->planner->plan($memberId, $this->clock->now()));
+        return PayerDirectDebitPreviewResponse::fromDraft($this->planner->plan($memberId, $this->clock->now(), $kind));
     }
 }

@@ -34,7 +34,7 @@ readonly class ExportPayerDirectDebitUseCase
     public function execute(ExportPayerDirectDebitRequest $request): DirectDebitFileResponse
     {
         $now = $this->clock->now();
-        $draft = $this->planner->plan($request->memberId, $now);
+        $draft = $this->planner->plan($request->memberId, $now, $request->kind);
         if ($draft->blockers !== []) {
             throw new BusinessRuleViolationException(implode(' ', array_map(static fn (DirectDebitObstacle $blocker): string => $blocker->message, $draft->blockers)));
         }
@@ -65,13 +65,13 @@ readonly class ExportPayerDirectDebitUseCase
             throw new \LogicException('Zahler ohne Mandatsreferenz oder IBAN hätte blockiert werden müssen.');
         }
         $batch = new DirectDebitBatch(
-            messageId: sprintf('WB-%s-%s', $now->format('YmdHis'), $payer->memberNumber),
+            messageId: sprintf('WB-%s-%s-%s', $now->format('YmdHis'), $request->kind->code(), $payer->memberNumber),
             createdAt: $now,
             creditor: $draft->creditor,
             collectionDate: $request->collectionDate,
             sequenceType: $request->sequenceType,
             transactions: [new DirectDebitTransaction(
-                endToEndId: sprintf('%s-%s', $payer->memberNumber, $request->collectionDate->format('Ymd')),
+                endToEndId: sprintf('%s-%s-%s', $payer->memberNumber, $request->kind->code(), $request->collectionDate->format('Ymd')),
                 amountCents: $totalCents,
                 mandateReference: $payer->mandateReference,
                 mandateSignedOn: $draft->mandateSignedOn,
@@ -82,10 +82,10 @@ readonly class ExportPayerDirectDebitUseCase
         );
 
         $content = $this->writer->write($batch);
-        $this->bookkeeper->book($draft, $batch);
+        $this->bookkeeper->book($draft, $batch, $selected);
 
         return new DirectDebitFileResponse(
-            fileName: sprintf('sepa-lastschrift-%s-%s.xml', $payer->memberNumber, $request->collectionDate->format('Ymd')),
+            fileName: sprintf('sepa-lastschrift-%s-%s-%s.xml', $request->kind->fileSuffix(), $payer->memberNumber, $request->collectionDate->format('Ymd')),
             content: $content,
         );
     }

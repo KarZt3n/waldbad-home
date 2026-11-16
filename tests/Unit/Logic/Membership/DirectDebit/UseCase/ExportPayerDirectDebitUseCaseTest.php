@@ -14,12 +14,14 @@ use App\Logic\Membership\DirectDebit\Manager\DirectDebitRecordManagerInterface;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitBatch;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitCreditor;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\DirectDebit\Service\DirectDebitBookkeeper;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 use App\Logic\Membership\DirectDebit\UseCase\ExportPayerDirectDebitUseCase;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
+use App\Logic\Membership\Member\Model\ContributionCharge;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\Member\Model\MemberFunction;
@@ -36,6 +38,8 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
     private array $savedRecords = [];
     /** @var list<Member> */
     private array $savedMembers = [];
+    /** @var list<string> Export-ID:Gebühren-ID */
+    private array $collectedCharges = [];
 
     public function testRegularDebitIsRecordedAndAdvancesTheNextBooking(): void
     {
@@ -76,15 +80,46 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         $file = $this->useCase($writer)->execute($this->request(['payer:contribution']));
 
         self::assertSame('<xml/>', $file->content);
-        self::assertSame('sepa-lastschrift-Bad-01000-20261001.xml', $file->fileName);
+        self::assertSame('sepa-lastschrift-beitraege-Bad-01000-20261001.xml', $file->fileName);
         self::assertInstanceOf(DirectDebitBatch::class, $captured);
         self::assertCount(1, $captured->transactions);
         $transaction = $captured->transactions[0];
         self::assertSame(5000, $transaction->amountCents);
         self::assertSame('MANDAT-1', $transaction->mandateReference);
         self::assertSame('Erika Musterfrau', $transaction->debtorName);
-        self::assertSame('Bad-01000-20261001', $transaction->endToEndId);
+        self::assertSame('Bad-01000-B-20261001', $transaction->endToEndId);
         self::assertSame(SequenceType::Recurring, $captured->sequenceType);
+    }
+
+    public function testSurchargeExportIsRecordedByKindWithoutAdvancingTheNextBooking(): void
+    {
+        $file = $this->useCase($this->createStub(DirectDebitFileWriterInterface::class))
+            ->execute($this->request(['payer:work_assignment_surcharge'], kind: DirectDebitPositionKind::WorkAssignmentSurcharge));
+
+        self::assertSame('sepa-lastschrift-arbeitseinsatz-Bad-01000-20261001.xml', $file->fileName);
+        self::assertCount(1, $this->savedRecords);
+        self::assertSame(DirectDebitPositionKind::WorkAssignmentSurcharge, $this->savedRecords[0]->kind);
+        self::assertSame(2026, $this->savedRecords[0]->contributionYear);
+        self::assertSame(1500, $this->savedRecords[0]->amountCents);
+        self::assertSame([], $this->savedMembers);
+    }
+
+    public function testChargeExportMarksTheExportedChargesAsCollected(): void
+    {
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class))
+            ->execute($this->request(['payer:charge:charge-1'], kind: DirectDebitPositionKind::OneTimeCharge));
+
+        self::assertSame(['record-1:charge-1'], $this->collectedCharges);
+        self::assertSame(DirectDebitPositionKind::OneTimeCharge, $this->savedRecords[0]->kind);
+        self::assertSame(2000, $this->savedRecords[0]->amountCents);
+        self::assertSame([], $this->savedMembers);
+    }
+
+    public function testPositionsOfAnotherKindAreRejected(): void
+    {
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Vorschau neu öffnen');
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class))->execute($this->request(['payer:contribution', 'payer:work_assignment_surcharge']));
     }
 
     public function testRejectsUnknownPositions(): void
@@ -120,9 +155,9 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
     /**
      * @param list<string> $positionIds
      */
-    private function request(array $positionIds, string $collectionDate = '2026-10-01'): ExportPayerDirectDebitRequest
+    private function request(array $positionIds, string $collectionDate = '2026-10-01', DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution): ExportPayerDirectDebitRequest
     {
-        return new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable($collectionDate), SequenceType::Recurring, 'Mitgliedsbeitrag 2026', $positionIds);
+        return new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable($collectionDate), SequenceType::Recurring, 'Mitgliedsbeitrag 2026', $positionIds, $kind);
     }
 
     private function useCase(DirectDebitFileWriterInterface $writer, ?DirectDebitCreditor $creditor = null, string $joinedAt = '2020-01-01'): ExportPayerDirectDebitUseCase
@@ -159,7 +194,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
             contributionAmountCents: 5000,
             workAssignmentSurchargeCents: 1500,
             remarks: [],
-            oneTimeCharges: [],
+            oneTimeCharges: [new ContributionCharge('charge-1', 'Beitrittsgebühr', 2000, new \DateTimeImmutable('2026-08-14'))],
             version: 0,
             mandateValidFrom: new \DateTimeImmutable('2020-03-01'),
         );
@@ -173,6 +208,12 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         });
         $records = $this->createStub(DirectDebitRecordManagerInterface::class);
         $records->method('findByPayerMemberId')->willReturn([]);
+        $records->method('findCollectedChargeIds')->willReturn([]);
+        $records->method('markChargesCollected')->willReturnCallback(function (array $chargeIds, string $recordId): void {
+            foreach ($chargeIds as $chargeId) {
+                $this->collectedCharges[] = sprintf('%s:%s', $recordId, is_string($chargeId) ? $chargeId : '?');
+            }
+        });
         $records->method('save')->willReturnCallback(function (DirectDebitRecord $record): DirectDebitRecord {
             $this->savedRecords[] = $record;
 

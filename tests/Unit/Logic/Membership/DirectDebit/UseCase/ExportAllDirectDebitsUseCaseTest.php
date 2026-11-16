@@ -61,8 +61,8 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
         self::assertSame('<xml/>', $file->content);
         self::assertSame(
             [
-                ['2027-03-01', ['Bad-first-20270301', 'Bad-family-20270301'], [6500, 8500]],
-                ['2027-03-15', ['Bad-fifteenth-20270315'], [6500]],
+                ['2027-03-01', ['Bad-first-B-20270301', 'Bad-family-B-20270301'], [5000, 7000]],
+                ['2027-03-15', ['Bad-fifteenth-B-20270315'], [5000]],
             ],
             array_map(static fn (DirectDebitBatch $batch): array => [
                 $batch->collectionDate->format('Y-m-d'),
@@ -71,7 +71,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
             ], $batches),
         );
         self::assertSame(
-            ['first' => 6500, 'family' => 8500, 'fifteenth' => 6500],
+            ['first' => 5000, 'family' => 7000, 'fifteenth' => 5000],
             array_column(array_map(static fn (DirectDebitRecord $record): array => [$record->payerMemberId, $record->amountCents], $this->savedRecords), 1, 0),
         );
         self::assertSame([2028, 2028, 2028], array_map(static fn (Member $member): ?int => $member->nextBookingYear, $this->savedMembers));
@@ -94,7 +94,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
         self::assertSame([['kind' => 'missing_bank_account', 'message' => 'Für den Zahler ist keine echte Bankverbindung hinterlegt.']], $overview->invalid[0]->obstacles);
         self::assertSame([['kind' => 'missing_bank_account', 'label' => 'Ohne Bankverbindung', 'count' => 1]], $overview->obstacleCategories);
         self::assertSame(['first', 'fifteenth', 'family'], array_map(static fn (DirectDebitOverviewEntryResponse $entry): string => $entry->payerId, $overview->valid));
-        self::assertSame(8500, $overview->valid[2]->amountCents);
+        self::assertSame(7000, $overview->valid[2]->amountCents);
         self::assertSame(['exempt'], array_map(static fn (DirectDebitOverviewEntryResponse $entry): string => $entry->payerId, $overview->withoutAmount));
     }
 

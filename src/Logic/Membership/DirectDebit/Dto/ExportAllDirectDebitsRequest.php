@@ -2,6 +2,8 @@
 
 namespace App\Logic\Membership\DirectDebit\Dto;
 
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
+
 readonly class ExportAllDirectDebitsRequest
 {
     /**
@@ -11,6 +13,7 @@ readonly class ExportAllDirectDebitsRequest
      */
     public function __construct(
         public array $payerIds,
+        public DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution,
     ) {
     }
 }

@@ -11,4 +11,7 @@ interface DirectDebitRecordProviderInterface
 
     /** @return list<DirectDebitRecord> neueste zuerst */
     public function findAll(): array;
+
+    /** @return list<string> IDs aller bereits per Lastschrift eingezogenen Einmalgebühren */
+    public function findCollectedChargeIds(): array;
 }

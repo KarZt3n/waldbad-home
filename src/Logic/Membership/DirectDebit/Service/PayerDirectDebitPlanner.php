@@ -36,9 +36,18 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  * Mandat, siehe `CreateMemberMandateUseCase`) — aus Sage übernommene Mandate wurden dort bereits
  * genutzt und laufen als Folgelastschrift (RCUR) weiter.
  *
- * Laufende Positionen werden auf das Zahlintervall des Zahlers umgelegt (z. B. ein Viertel des
- * Jahresbetrags bei vierteljährlicher Zahlung). Einmalige Gebühren sind nur vorausgewählt, wenn sie
- * im laufenden Jahr berechnet wurden — ältere wurden vermutlich schon eingezogen.
+ * Mitgliedsbeiträge, Arbeitseinsatz-Pauschale und Einmalgebühren werden getrennt exportiert
+ * (`DirectDebitPositionKind`); jeder Entwurf enthält nur die Positionen einer Art:
+ *
+ * - Beiträge: wie oben beschrieben, auf das Zahlintervall umgelegt (z. B. ein Viertel des
+ *   Jahresbetrags bei vierteljährlicher Zahlung); nur dieser Export rückt die „Nächste Buchung“ vor.
+ * - Arbeitseinsatz-Pauschale: einmal je Kalenderjahr in voller Höhe, fällig zum nächsten Zahltag —
+ *   unabhängig von der „Nächsten Buchung“, die ein vorheriger Beitragsexport schon vorgerückt hat.
+ * - Einmalgebühren: alle noch nicht eingezogenen Gebühren, fällig zum nächsten Zahltag. Nach dem
+ *   Export gelten sie als eingezogen (siehe `DirectDebitBookkeeper`).
+ *
+ * „Bereits eingezogen“ und Eintrittsjahr beziehen sich nur auf die Historie derselben Art
+ * (`DirectDebitRecord::covers()`); ob das Mandat schon genutzt wurde (FRST/RCUR), auf alle Exporte.
  */
 readonly class PayerDirectDebitPlanner
 {
@@ -50,7 +59,7 @@ readonly class PayerDirectDebitPlanner
     ) {
     }
 
-    public function plan(string $memberId, \DateTimeImmutable $now): PayerDirectDebitDraft
+    public function plan(string $memberId, \DateTimeImmutable $now, DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution): PayerDirectDebitDraft
     {
         $member = $this->members->get($memberId);
         $payer = $member->payerType === PayerType::OtherMember && $member->payerMemberId !== null
@@ -65,6 +74,8 @@ readonly class PayerDirectDebitPlanner
             $this->records->findByPayerMemberId($payer->id),
             fn (ContributionCategory $category): ?string => $this->rates->findByCategory($category)?->label,
             $payer->payerType === PayerType::OtherMember && $payer->payerMemberId === null,
+            $kind,
+            $kind === DirectDebitPositionKind::OneTimeCharge ? $this->records->findCollectedChargeIds() : [],
         );
     }
 
@@ -78,7 +89,7 @@ readonly class PayerDirectDebitPlanner
      *
      * @return list<PayerDirectDebitDraft>
      */
-    public function planAll(\DateTimeImmutable $now): array
+    public function planAll(\DateTimeImmutable $now, DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution): array
     {
         $allMembers = $this->members->search(null);
         $membersById = [];
@@ -100,6 +111,7 @@ readonly class PayerDirectDebitPlanner
             $recordsByPayerId[$record->payerMemberId][] = $record;
         }
         $creditor = $this->creditors->get();
+        $collectedChargeIds = $kind === DirectDebitPositionKind::OneTimeCharge ? $this->records->findCollectedChargeIds() : [];
 
         $drafts = [];
         foreach ($allMembers as $member) {
@@ -116,6 +128,8 @@ readonly class PayerDirectDebitPlanner
                 $recordsByPayerId[$member->id] ?? [],
                 static fn (ContributionCategory $category): ?string => $rateLabels[$category->value] ?? null,
                 $withoutPayer,
+                $kind,
+                $collectedChargeIds,
             );
             // Ein ausgetretener Zahler ohne weitere aktive Mitglieder ist kein Zahler mehr — er taucht
             // gar nicht auf. Zahlt er noch für aktive Mitglieder, bleibt er als blockierter Eintrag
@@ -138,9 +152,19 @@ readonly class PayerDirectDebitPlanner
      *                                                               Zahler — es würde sonst stillschweigend
      *                                                               nie eingezogen und wird deshalb als
      *                                                               eigener, blockierter Zahler geführt.
+     * @param list<string>                             $collectedChargeIds bereits eingezogene Einmalgebühren
      */
-    private function planPayer(Member $payer, array $paidByPayer, \DateTimeImmutable $now, DirectDebitCreditor $creditor, array $records, callable $rateLabel, bool $withoutPayer): PayerDirectDebitDraft
-    {
+    private function planPayer(
+        Member $payer,
+        array $paidByPayer,
+        \DateTimeImmutable $now,
+        DirectDebitCreditor $creditor,
+        array $records,
+        callable $rateLabel,
+        bool $withoutPayer,
+        DirectDebitPositionKind $kind,
+        array $collectedChargeIds,
+    ): PayerDirectDebitDraft {
         // Zahler zuoberst, darunter die übrigen vom ältesten zum jüngsten.
         usort($paidByPayer, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate);
         $entries = $payer->payerType === PayerType::SelfPayer || $withoutPayer ? [$payer, ...$paidByPayer] : $paidByPayer;
@@ -151,10 +175,10 @@ readonly class PayerDirectDebitPlanner
             if ($entry->hasLeft($now) || !$entry->contributionLiable) {
                 continue;
             }
-            if ($entry->contributionCategory === null) {
+            if ($entry->contributionCategory === null && $kind !== DirectDebitPositionKind::OneTimeCharge) {
                 $warnings[] = sprintf('Für %s ist noch kein Beitrag berechnet.', $this->memberName($entry));
             }
-            $positions = [...$positions, ...$this->positionsFor($entry, $payer, $now, $rateLabel)];
+            $positions = [...$positions, ...$this->positionsFor($entry, $payer, $rateLabel, $kind, $collectedChargeIds)];
         }
 
         $mandateSignedOn = $payer->mandateValidFrom ?? $payer->joinedAt;
@@ -163,12 +187,21 @@ readonly class PayerDirectDebitPlanner
         }
 
         $year = (int) $now->format('Y');
-        $joinedThisYear = (int) $payer->joinedAt->format('Y') === $year;
-        $joiningYearDebit = $joinedThisYear && !$this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->contributionYear === $year);
-        $contributionYear = $joiningYearDebit ? $year : ($payer->nextBookingYear ?? $year);
+        $kindRecords = array_values(array_filter($records, static fn (DirectDebitRecord $record): bool => $record->covers($kind)));
         $mandateUsed = $this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->mandateReference === $payer->mandateReference);
+        if ($kind === DirectDebitPositionKind::Contribution) {
+            $joinedThisYear = (int) $payer->joinedAt->format('Y') === $year;
+            $joiningYearDebit = $joinedThisYear && !$this->hasRecordFor($kindRecords, static fn (DirectDebitRecord $record): bool => $record->contributionYear === $year);
+            $contributionYear = $joiningYearDebit ? $year : ($payer->nextBookingYear ?? $year);
+            $collectionDate = $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $now);
+        } else {
+            $joiningYearDebit = false;
+            $contributionYear = $year;
+            $collectionDate = $this->nextPaymentDay($payer, $now);
+        }
         $alreadyCollected = false;
-        foreach ($records as $record) {
+        // Einmalgebühren werden je Gebühr als eingezogen vermerkt, nicht über das Beitragsjahr.
+        foreach ($kind === DirectDebitPositionKind::OneTimeCharge ? [] : $kindRecords as $record) {
             if ($record->contributionYear === $contributionYear) {
                 $alreadyCollected = true;
                 $warnings[] = $record->isLegacyImport()
@@ -177,6 +210,11 @@ readonly class PayerDirectDebitPlanner
                 break;
             }
         }
+        $remittancePrefix = match ($kind) {
+            DirectDebitPositionKind::Contribution => null,
+            DirectDebitPositionKind::WorkAssignmentSurcharge => sprintf('Arbeitseinsatz-Pauschale %d', $contributionYear),
+            DirectDebitPositionKind::OneTimeCharge => 'Einmalgebuehr',
+        };
 
         return new PayerDirectDebitDraft(
             payer: $payer,
@@ -186,17 +224,18 @@ readonly class PayerDirectDebitPlanner
             positions: $positions,
             blockers: $this->blockers($payer, $creditor->isComplete(), $now, $withoutPayer),
             warnings: $warnings,
-            defaultCollectionDate: $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $now),
-            // Mandatsreferenz, Gläubiger-ID und Zahlungsempfänger.
+            defaultCollectionDate: $collectionDate,
+            // Ggf. Art der Lastschrift, dann Mandatsreferenz, Gläubiger-ID und Zahlungsempfänger.
             defaultRemittanceInformation: implode(' ', array_filter(
-                [$payer->mandateReference, $creditor->creditorId, $creditor->name],
+                [$remittancePrefix, $payer->mandateReference, $creditor->creditorId, $creditor->name],
                 static fn (?string $part): bool => $part !== null && trim($part) !== '',
             )),
             defaultSequenceType: !$mandateUsed && (int) $mandateSignedOn->format('Y') >= $year ? SequenceType::First : SequenceType::Recurring,
             contributionYear: $contributionYear,
             joiningYearDebit: $joiningYearDebit,
-            lastRecord: $records[0] ?? null,
+            lastRecord: $kindRecords[0] ?? null,
             alreadyCollected: $alreadyCollected,
+            kind: $kind,
         );
     }
 
@@ -217,14 +256,15 @@ readonly class PayerDirectDebitPlanner
 
     /**
      * @param callable(ContributionCategory): ?string $rateLabel
+     * @param list<string>                             $collectedChargeIds
      *
      * @return list<DirectDebitPosition>
      */
-    private function positionsFor(Member $entry, Member $payer, \DateTimeImmutable $now, callable $rateLabel): array
+    private function positionsFor(Member $entry, Member $payer, callable $rateLabel, DirectDebitPositionKind $kind, array $collectedChargeIds): array
     {
         $occurrences = $payer->paymentInterval->occurrencesPerYear();
         $positions = [];
-        if ($entry->contributionCategory !== null && ($entry->contributionAmountCents ?? 0) > 0) {
+        if ($kind === DirectDebitPositionKind::Contribution && $entry->contributionCategory !== null && ($entry->contributionAmountCents ?? 0) > 0) {
             $annual = $entry->contributionAmountCents ?? 0;
             $positions[] = new DirectDebitPosition(
                 id: $entry->id.':contribution',
@@ -238,7 +278,8 @@ readonly class PayerDirectDebitPlanner
                 selectedByDefault: true,
             );
         }
-        if (($entry->workAssignmentSurchargeCents ?? 0) > 0) {
+        // Die Pauschale wird einmal im Jahr in voller Höhe eingezogen, unabhängig vom Zahlintervall.
+        if ($kind === DirectDebitPositionKind::WorkAssignmentSurcharge && ($entry->workAssignmentSurchargeCents ?? 0) > 0) {
             $annual = $entry->workAssignmentSurchargeCents ?? 0;
             $positions[] = new DirectDebitPosition(
                 id: $entry->id.':work_assignment_surcharge',
@@ -246,14 +287,14 @@ readonly class PayerDirectDebitPlanner
                 memberNumber: $entry->memberNumber,
                 memberName: $this->memberName($entry),
                 kind: DirectDebitPositionKind::WorkAssignmentSurcharge,
-                label: 'Arbeitseinsatz-Zuschlag',
-                amountCents: (int) round($annual / $occurrences),
+                label: 'Arbeitseinsatz-Pauschale',
+                amountCents: $annual,
                 annualAmountCents: $annual,
                 selectedByDefault: true,
             );
         }
-        foreach ($entry->oneTimeCharges as $charge) {
-            if ($charge->amountCents <= 0) {
+        foreach ($kind === DirectDebitPositionKind::OneTimeCharge ? $entry->oneTimeCharges : [] as $charge) {
+            if ($charge->amountCents <= 0 || in_array($charge->id, $collectedChargeIds, true)) {
                 continue;
             }
             $positions[] = new DirectDebitPosition(
@@ -265,7 +306,8 @@ readonly class PayerDirectDebitPlanner
                 label: sprintf('%s (berechnet am %s)', $charge->label, $charge->chargedAt->format('d.m.Y')),
                 amountCents: $charge->amountCents,
                 annualAmountCents: null,
-                selectedByDefault: $charge->chargedAt->format('Y') === $now->format('Y'),
+                selectedByDefault: true,
+                chargeId: $charge->id,
             );
         }
 

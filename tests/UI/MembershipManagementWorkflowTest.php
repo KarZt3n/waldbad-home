@@ -1051,10 +1051,9 @@ final class MembershipManagementWorkflowTest extends WebTestCase
             self::assertIsArray($position);
             $positionIds[] = $this->string($position, 'id');
         }
-        // Beitrag, Arbeitseinsatz-Zuschlag und die bei der Anlage berechnete Beitrittsgebühr.
-        self::assertCount(3, $positionIds);
-        self::assertSame([$memberId.':contribution', $memberId.':work_assignment_surcharge'], array_slice($positionIds, 0, 2));
-        self::assertStringStartsWith($memberId.':charge:', $positionIds[2]);
+        // Der Beitragsexport enthält nur den Beitrag; Pauschale und Beitrittsgebühr haben eigene Exporte.
+        self::assertSame('contribution', $preview['kind']);
+        self::assertSame([$memberId.':contribution'], $positionIds);
 
         $collectionDate = (new \DateTimeImmutable('+10 days'))->format('Y-m-d');
         $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
@@ -1066,7 +1065,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         self::assertResponseHeaderSame('Content-Type', 'application/xml; charset=UTF-8');
         $xml = (string) $this->client->getResponse()->getContent();
-        self::assertStringContainsString('<InstdAmt Ccy="EUR">75.00</InstdAmt>', $xml);
+        self::assertStringContainsString('<InstdAmt Ccy="EUR">50.00</InstdAmt>', $xml);
         self::assertStringContainsString('<ReqdColltnDt>'.$collectionDate.'</ReqdColltnDt>', $xml);
         self::assertStringContainsString('<IBAN>DE89370400440532013000</IBAN>', $xml);
         self::assertStringContainsString('<SeqTp>FRST</SeqTp>', $xml);
@@ -1079,10 +1078,49 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame('RCUR', $afterFirst['defaultSequenceType']);
         $lastDebit = $this->arrayData($afterFirst, 'lastDebit');
         self::assertSame('FRST', $lastDebit['sequenceType']);
-        self::assertSame(7500, $lastDebit['amountCents']);
+        self::assertSame(5000, $lastDebit['amountCents']);
         // Die Lastschrift für das Eintrittsjahr lässt die nächste Buchung unverändert.
         $this->client->request('GET', '/api/admin/v1/members/'.$memberId, server: $headers);
         self::assertSame($nextBookingYear, $this->responseData()['nextBookingYear']);
+
+        // Arbeitseinsatz-Pauschale: eigener Export, Mandat ist bereits genutzt (RCUR).
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview?kind=work_assignment_surcharge', server: $headers);
+        $surcharge = $this->responseData();
+        self::assertSame('RCUR', $surcharge['defaultSequenceType']);
+        self::assertNull($surcharge['lastDebit']);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
+            'collectionDate' => $collectionDate,
+            'sequenceType' => 'RCUR',
+            'remittanceInformation' => 'Arbeitseinsatz-Pauschale',
+            'positionIds' => [$memberId.':work_assignment_surcharge'],
+            'kind' => 'work_assignment_surcharge',
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('<InstdAmt Ccy="EUR">15.00</InstdAmt>', (string) $this->client->getResponse()->getContent());
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview?kind=work_assignment_surcharge', server: $headers);
+        // Danach gilt die Pauschale für dieses Jahr als eingezogen.
+        $warnings = $this->arrayList($this->responseData(), 'warnings');
+        self::assertCount(1, $warnings);
+        self::assertIsString($warnings[0]);
+        self::assertStringContainsString('bereits', $warnings[0]);
+
+        // Einmalgebühren: die Beitrittsgebühr wird nach dem Export nicht erneut angeboten.
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview?kind=one_time_charge', server: $headers);
+        $chargePositions = $this->arrayList($this->responseData(), 'positions');
+        self::assertCount(1, $chargePositions);
+        self::assertIsArray($chargePositions[0]);
+        $chargePositionId = $this->string($chargePositions[0], 'id');
+        self::assertStringStartsWith($memberId.':charge:', $chargePositionId);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
+            'collectionDate' => $collectionDate,
+            'sequenceType' => 'RCUR',
+            'remittanceInformation' => 'Beitrittsgebuehr',
+            'positionIds' => [$chargePositionId],
+            'kind' => 'one_time_charge',
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/members/'.$memberId.'/direct-debit-preview?kind=one_time_charge', server: $headers);
+        self::assertSame([], $this->arrayList($this->responseData(), 'positions'));
 
         $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$memberId.'/direct-debit-export', [
             'collectionDate' => (new \DateTimeImmutable('yesterday'))->format('Y-m-d'),
@@ -1132,7 +1170,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertIsArray($valid[0]);
         self::assertSame($withMandateId, $valid[0]['payerId']);
         self::assertSame('Musterfrau', $valid[0]['lastName']);
-        self::assertSame(7500, $valid[0]['amountCents']);
+        self::assertSame(5000, $valid[0]['amountCents']);
 
         // Veraltete Auswahl wird abgelehnt.
         $this->client->jsonRequest('POST', '/api/admin/v1/direct-debits/export', ['payerIds' => [$withMandateId, $withoutMandateId]], $headers);
@@ -1143,12 +1181,32 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertResponseHeaderSame('Content-Type', 'application/xml; charset=UTF-8');
         $xml = (string) $this->client->getResponse()->getContent();
         self::assertStringContainsString('<NbOfTxs>1</NbOfTxs>', $xml);
-        self::assertStringContainsString('<InstdAmt Ccy="EUR">75.00</InstdAmt>', $xml);
+        self::assertStringContainsString('<InstdAmt Ccy="EUR">50.00</InstdAmt>', $xml);
         self::assertStringContainsString('<SeqTp>FRST</SeqTp>', $xml);
+        self::assertStringContainsString('sepa-lastschrift-sammel-beitraege-', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
 
         $this->client->request('GET', '/api/admin/v1/members/'.$withMandateId.'/direct-debit-preview', server: $headers);
         $lastDebit = $this->arrayData($this->responseData(), 'lastDebit');
-        self::assertSame(7500, $lastDebit['amountCents']);
+        self::assertSame(5000, $lastDebit['amountCents']);
+
+        // Pauschale und Einmalgebühren haben je eine eigene Übersicht und einen eigenen Sammelexport.
+        foreach (['work_assignment_surcharge' => ['15.00', 'arbeitseinsatz'], 'one_time_charge' => ['10.00', 'einmalgebuehren']] as $kind => [$amount, $suffix]) {
+            $this->client->request('GET', '/api/admin/v1/direct-debits?kind='.$kind, server: $headers);
+            self::assertResponseIsSuccessful();
+            $kindValid = $this->arrayList($this->responseData(), 'valid');
+            self::assertCount(1, $kindValid, $kind);
+            self::assertIsArray($kindValid[0]);
+            self::assertSame($withMandateId, $kindValid[0]['payerId']);
+            $this->client->jsonRequest('POST', '/api/admin/v1/direct-debits/export', ['payerIds' => [$withMandateId], 'kind' => $kind], $headers);
+            self::assertResponseIsSuccessful();
+            self::assertStringContainsString('<InstdAmt Ccy="EUR">'.$amount.'</InstdAmt>', (string) $this->client->getResponse()->getContent());
+            self::assertStringContainsString('sepa-lastschrift-sammel-'.$suffix.'-', (string) $this->client->getResponse()->headers->get('Content-Disposition'));
+            $this->client->request('GET', '/api/admin/v1/direct-debits?kind='.$kind, server: $headers);
+            self::assertSame([], $this->arrayList($this->responseData(), 'valid'), $kind);
+        }
+
+        $this->client->request('GET', '/api/admin/v1/direct-debits?kind=unknown', server: $headers);
+        self::assertResponseStatusCodeSame(400);
     }
 
     /**

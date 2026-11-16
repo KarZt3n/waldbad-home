@@ -2,6 +2,7 @@
 
 namespace App\Data\Membership\DirectDebit\Provider;
 
+use App\Data\Membership\DirectDebit\Entity\DirectDebitCollectedChargeEntity;
 use App\Data\Membership\DirectDebit\Entity\DirectDebitRecordEntity;
 use App\Data\Membership\DirectDebit\Mapper\DirectDebitRecordMapper;
 use App\Logic\Membership\DirectDebit\DirectDebitRecordProviderInterface;
@@ -29,5 +30,13 @@ readonly class DoctrineDirectDebitRecordProvider implements DirectDebitRecordPro
             ->findBy([], ['exportedAt' => 'DESC']);
 
         return array_map($this->mapper->toModel(...), $entities);
+    }
+
+    public function findCollectedChargeIds(): array
+    {
+        return array_map(
+            static fn (DirectDebitCollectedChargeEntity $entity): string => $entity->getChargeId(),
+            $this->entityManager->getRepository(DirectDebitCollectedChargeEntity::class)->findAll(),
+        );
     }
 }

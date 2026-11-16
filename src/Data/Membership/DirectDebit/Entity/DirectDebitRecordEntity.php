@@ -31,6 +31,8 @@ class DirectDebitRecordEntity
         private string $messageId,
         #[ORM\Column(name: 'exported_at', type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $exportedAt,
+        #[ORM\Column(name: 'kind', type: Types::STRING, length: 30, nullable: true)]
+        private ?string $kind = null,
     ) {
     }
 
@@ -43,4 +45,5 @@ class DirectDebitRecordEntity
     public function getAmountCents(): int { return $this->amountCents; }
     public function getMessageId(): string { return $this->messageId; }
     public function getExportedAt(): \DateTimeImmutable { return $this->exportedAt; }
+    public function getKind(): ?string { return $this->kind; }
 }

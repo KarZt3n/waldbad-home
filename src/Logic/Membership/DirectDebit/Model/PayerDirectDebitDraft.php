@@ -13,7 +13,8 @@ use App\Logic\Membership\Member\Model\Member;
  * Zahlers, für das noch nichts eingezogen wurde — sie wird sofort fällig und rückt die „Nächste
  * Buchung“ nicht vor. `$contributionYear` ist das Beitragsjahr, für das abgebucht wird.
  * `$alreadyCollected`: für `$contributionYear` gibt es bereits einen Eintrag in der
- * Lastschrift-Historie (Export über die App oder Sage-Übernahme).
+ * Lastschrift-Historie (Export über die App oder Sage-Übernahme). `$kind`: welche Art von Positionen
+ * dieser Entwurf abbucht (Beiträge, Arbeitseinsatz-Pauschale oder Einmalgebühren).
  */
 readonly class PayerDirectDebitDraft
 {
@@ -37,6 +38,7 @@ readonly class PayerDirectDebitDraft
         public bool $joiningYearDebit,
         public ?DirectDebitRecord $lastRecord,
         public bool $alreadyCollected = false,
+        public DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution,
     ) {
     }
 

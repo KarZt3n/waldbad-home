@@ -3,6 +3,7 @@
 namespace App\Data\Membership\DirectDebit\Mapper;
 
 use App\Data\Membership\DirectDebit\Entity\DirectDebitRecordEntity;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 
@@ -20,6 +21,7 @@ readonly class DirectDebitRecordMapper
             amountCents: $entity->getAmountCents(),
             messageId: $entity->getMessageId(),
             exportedAt: $entity->getExportedAt(),
+            kind: $entity->getKind() === null ? null : DirectDebitPositionKind::from($entity->getKind()),
         );
     }
 
@@ -35,6 +37,7 @@ readonly class DirectDebitRecordMapper
             amountCents: $record->amountCents,
             messageId: $record->messageId,
             exportedAt: $record->exportedAt,
+            kind: $record->kind?->value,
         );
     }
 }

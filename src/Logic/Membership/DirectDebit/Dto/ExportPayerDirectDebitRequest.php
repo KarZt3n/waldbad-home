@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\DirectDebit\Dto;
 
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 
 readonly class ExportPayerDirectDebitRequest
@@ -15,6 +16,7 @@ readonly class ExportPayerDirectDebitRequest
         public SequenceType $sequenceType,
         public string $remittanceInformation,
         public array $positionIds,
+        public DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution,
     ) {
     }
 }

@@ -10,6 +10,7 @@ use App\Logic\Membership\DirectDebit\Dto\DirectDebitPositionResponse;
 use App\Logic\Membership\DirectDebit\Dto\ExportPayerDirectDebitRequest;
 use App\Logic\Membership\DirectDebit\Dto\PayerDirectDebitPreviewResponse;
 use App\Logic\Membership\DirectDebit\Dto\UpdateDirectDebitCreditorRequest;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\SequenceType;
 use App\Logic\Membership\DirectDebit\Query\GetDirectDebitCreditorQuery;
 use App\Logic\Membership\DirectDebit\Query\GetDirectDebitOverviewQuery;
@@ -57,11 +58,11 @@ final class AdminDirectDebitController extends AbstractController
     }
 
     #[Route('/api/admin/v1/members/{id}/direct-debit-preview', name: 'api_admin_member_direct_debit_preview', methods: ['GET'])]
-    public function preview(string $id, GetPayerDirectDebitPreviewQuery $query): JsonResponse
+    public function preview(string $id, Request $request, GetPayerDirectDebitPreviewQuery $query): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
 
-        return new JsonResponse($this->previewToArray($query->execute($id)));
+        return new JsonResponse($this->previewToArray($query->execute($id, $this->kind($request->query->getString('kind')))));
     }
 
     // POST statt GET: der optionale PIN landet im JSON-Body statt in der Query-String.
@@ -93,16 +94,17 @@ final class AdminDirectDebitController extends AbstractController
             sequenceType: $sequenceType,
             remittanceInformation: $payload->getString('remittanceInformation'),
             positionIds: $positionIds,
+            kind: $this->kind($payload->getString('kind')),
         ));
 
         return $this->fileResponse($file);
     }
 
     #[Route('/api/admin/v1/direct-debits', name: 'api_admin_direct_debit_overview', methods: ['GET'])]
-    public function overview(GetDirectDebitOverviewQuery $query): JsonResponse
+    public function overview(Request $request, GetDirectDebitOverviewQuery $query): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
-        $overview = $query->execute();
+        $overview = $query->execute($this->kind($request->query->getString('kind')));
 
         return new JsonResponse([
             'invalid' => array_map($this->overviewEntryToArray(...), $overview->invalid),
@@ -129,7 +131,7 @@ final class AdminDirectDebitController extends AbstractController
             $payerIds[] = $payerId;
         }
 
-        return $this->fileResponse($useCase->execute(new ExportAllDirectDebitsRequest($payerIds)));
+        return $this->fileResponse($useCase->execute(new ExportAllDirectDebitsRequest($payerIds, $this->kind($payload->getString('kind')))));
     }
 
     private function fileResponse(DirectDebitFileResponse $file): Response
@@ -158,6 +160,16 @@ final class AdminDirectDebitController extends AbstractController
             'sequenceType' => $entry->sequenceType,
             'obstacles' => $entry->obstacles,
         ];
+    }
+
+    /** Art des Exports; ohne Angabe die Mitgliedsbeiträge. */
+    private function kind(string $value): DirectDebitPositionKind
+    {
+        if ($value === '') {
+            return DirectDebitPositionKind::Contribution;
+        }
+
+        return DirectDebitPositionKind::tryFrom($value) ?? throw new BadRequestHttpException('Die Art der Lastschrift ist ungültig.');
     }
 
     private function optionalString(string $value): ?string
@@ -214,6 +226,7 @@ final class AdminDirectDebitController extends AbstractController
             'sequenceTypes' => $preview->sequenceTypes,
             'contributionYear' => $preview->contributionYear,
             'joiningYearDebit' => $preview->joiningYearDebit,
+            'kind' => $preview->kind,
             'lastDebit' => $preview->lastDebit === null ? null : [
                 'contributionYear' => $preview->lastDebit->contributionYear,
                 'sequenceType' => $preview->lastDebit->sequenceType,

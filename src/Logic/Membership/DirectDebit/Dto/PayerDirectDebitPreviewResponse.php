@@ -36,6 +36,7 @@ readonly class PayerDirectDebitPreviewResponse
         public int $contributionYear,
         public bool $joiningYearDebit,
         public ?DirectDebitRecordResponse $lastDebit,
+        public string $kind,
     ) {
     }
 
@@ -67,6 +68,7 @@ readonly class PayerDirectDebitPreviewResponse
             contributionYear: $draft->contributionYear,
             joiningYearDebit: $draft->joiningYearDebit,
             lastDebit: $draft->lastRecord === null ? null : DirectDebitRecordResponse::fromRecord($draft->lastRecord),
+            kind: $draft->kind->value,
         );
     }
 }

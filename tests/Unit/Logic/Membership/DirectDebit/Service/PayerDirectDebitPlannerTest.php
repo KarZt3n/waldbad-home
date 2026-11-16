@@ -13,6 +13,7 @@ use App\Logic\Membership\DirectDebit\Model\DirectDebitCreditor;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacle;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacleKind;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Model\PayerDirectDebitDraft;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
@@ -41,24 +42,86 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $left = $this->member('left', payerId: 'payer', leftAt: '2026-06-30');
         $board = $this->member('board', payerId: 'payer', liable: false);
 
-        $draft = $this->planner([$payer, $child, $left, $board])->plan('child', new \DateTimeImmutable(self::NOW));
+        $planner = $this->planner([$payer, $child, $left, $board]);
+        $now = new \DateTimeImmutable(self::NOW);
+        $positions = static fn (PayerDirectDebitDraft $draft): array => array_map(
+            static fn (DirectDebitPosition $position): array => [$position->id, $position->label, $position->amountCents, $position->selectedByDefault],
+            $draft->positions,
+        );
 
+        $draft = $planner->plan('child', $now);
         self::assertSame('payer', $draft->payer->id);
+        self::assertSame(DirectDebitPositionKind::Contribution, $draft->kind);
         self::assertSame([], $draft->blockers);
         self::assertSame([], $draft->warnings);
         self::assertSame(
             [
                 ['payer:contribution', 'Familie: Elternteil', 4000, true],
-                ['payer:work_assignment_surcharge', 'Arbeitseinsatz-Zuschlag', 1500, true],
-                ['payer:charge:charge-new', 'Beitrittsgebühr Familie (berechnet am 14.08.2026)', 2000, true],
-                ['payer:charge:charge-old', 'Altgebühr (berechnet am 10.01.2024)', 500, false],
                 ['child:contribution', 'Familie: Kind (zahlend)', 3000, true],
             ],
-            array_map(static fn (DirectDebitPosition $position): array => [$position->id, $position->label, $position->amountCents, $position->selectedByDefault], $draft->positions),
+            $positions($draft),
         );
         self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $draft->defaultRemittanceInformation);
         // Nächste Buchung 03/2027, Zahltag 01. — der 01.03.2027 ist ein Montag.
         self::assertSame('2027-03-01', $draft->defaultCollectionDate->format('Y-m-d'));
+
+        $surcharge = $planner->plan('child', $now, DirectDebitPositionKind::WorkAssignmentSurcharge);
+        self::assertSame([['payer:work_assignment_surcharge', 'Arbeitseinsatz-Pauschale', 1500, true]], $positions($surcharge));
+        self::assertSame('Arbeitseinsatz-Pauschale 2026 MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $surcharge->defaultRemittanceInformation);
+
+        // Noch nicht eingezogene Einmalgebühren sind alle vorausgewählt, unabhängig vom Jahr.
+        $charges = $planner->plan('child', $now, DirectDebitPositionKind::OneTimeCharge);
+        self::assertSame(
+            [
+                ['payer:charge:charge-new', 'Beitrittsgebühr Familie (berechnet am 14.08.2026)', 2000, true],
+                ['payer:charge:charge-old', 'Altgebühr (berechnet am 10.01.2024)', 500, true],
+            ],
+            $positions($charges),
+        );
+        self::assertSame('charge-new', $charges->positions[0]->chargeId);
+    }
+
+    public function testWorkAssignmentSurchargeIsCollectedOnceAYearInFullAtTheNextPaymentDay(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01', interval: PaymentInterval::Quarterly, nextBookingYear: 2028);
+        $now = new \DateTimeImmutable(self::NOW);
+
+        $draft = $this->planner([$payer], records: [$this->record(2026, SequenceType::Recurring, DirectDebitPositionKind::Contribution)])
+            ->plan('payer', $now, DirectDebitPositionKind::WorkAssignmentSurcharge);
+
+        // Voller Jahresbetrag trotz vierteljährlicher Zahlung; Jahr und Fälligkeit unabhängig von der „Nächsten Buchung“.
+        self::assertSame(1500, $draft->defaultAmountCents());
+        self::assertSame(2026, $draft->contributionYear);
+        self::assertSame('2026-10-01', $draft->defaultCollectionDate->format('Y-m-d'));
+        self::assertFalse($draft->alreadyCollected, 'Ein Beitragsexport zieht die Pauschale nicht mit ein.');
+        self::assertSame(SequenceType::Recurring, $draft->defaultSequenceType);
+    }
+
+    public function testEarlierCombinedExportCountsForContributionAndSurchargeButNotForCharges(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01', nextBookingYear: 2026, charges: [
+            new ContributionCharge('charge-1', 'Beitrittsgebühr', 2000, new \DateTimeImmutable('2026-08-14')),
+        ]);
+        $planner = $this->planner([$payer], records: [$this->record(2026, SequenceType::Recurring)]);
+        $now = new \DateTimeImmutable(self::NOW);
+
+        self::assertTrue($planner->plan('payer', $now)->alreadyCollected);
+        self::assertTrue($planner->plan('payer', $now, DirectDebitPositionKind::WorkAssignmentSurcharge)->alreadyCollected);
+        self::assertFalse($planner->plan('payer', $now, DirectDebitPositionKind::OneTimeCharge)->alreadyCollected);
+    }
+
+    public function testCollectedChargesAreNoLongerOffered(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01', charges: [
+            new ContributionCharge('charge-1', 'Beitrittsgebühr', 2000, new \DateTimeImmutable('2026-08-14')),
+            new ContributionCharge('charge-2', 'Schlüsselpfand', 1000, new \DateTimeImmutable('2026-09-01')),
+        ]);
+
+        $drafts = $this->planner([$payer], collectedChargeIds: ['charge-1'])->planAll(new \DateTimeImmutable(self::NOW), DirectDebitPositionKind::OneTimeCharge);
+
+        self::assertCount(1, $drafts);
+        self::assertSame(['charge-2'], array_map(static fn (DirectDebitPosition $position): ?string => $position->chargeId, $drafts[0]->positions));
+        self::assertSame(1000, $drafts[0]->defaultAmountCents());
     }
 
     public function testPayerComesFirstFollowedByTheOthersFromOldestToYoungest(): void
@@ -208,7 +271,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
 
         self::assertTrue($draft->alreadyCollected);
         self::assertEquals([new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, 'Für das Beitragsjahr 2027 wurde bereits eingezogen.')], $draft->bulkExportObstacles());
-        self::assertSame(5500, $draft->defaultAmountCents());
+        self::assertSame(4000, $draft->defaultAmountCents());
     }
 
     /**
@@ -261,16 +324,17 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertSame(['payer'], array_map(static fn (PayerDirectDebitDraft $each): string => $each->payer->id, $planner->planAll($now)));
     }
 
-    private function record(int $contributionYear, SequenceType $sequenceType): DirectDebitRecord
+    private function record(int $contributionYear, SequenceType $sequenceType, ?DirectDebitPositionKind $kind = null): DirectDebitRecord
     {
-        return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'));
+        return new DirectDebitRecord('record', 'payer', 'MANDAT-1', $contributionYear, $sequenceType, new \DateTimeImmutable('2026-10-15'), 7500, 'WB-1', new \DateTimeImmutable('2026-09-20 10:00:00'), $kind);
     }
 
     /**
      * @param list<Member>            $members
      * @param list<DirectDebitRecord> $records
+     * @param list<string>            $collectedChargeIds
      */
-    private function planner(array $members, ?DirectDebitCreditor $creditor = null, array $records = []): PayerDirectDebitPlanner
+    private function planner(array $members, ?DirectDebitCreditor $creditor = null, array $records = [], array $collectedChargeIds = []): PayerDirectDebitPlanner
     {
         $byId = [];
         foreach ($members as $member) {
@@ -305,6 +369,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $recordManager = $this->createStub(DirectDebitRecordManagerInterface::class);
         $recordManager->method('findByPayerMemberId')->willReturn($records);
         $recordManager->method('findAll')->willReturn($records);
+        $recordManager->method('findCollectedChargeIds')->willReturn($collectedChargeIds);
 
         return new PayerDirectDebitPlanner($memberManager, $rates, $creditors, $recordManager);
     }

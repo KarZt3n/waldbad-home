@@ -8,6 +8,7 @@ use App\Logic\Membership\DirectDebit\DirectDebitFileWriterInterface;
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitFileResponse;
 use App\Logic\Membership\DirectDebit\Dto\ExportAllDirectDebitsRequest;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitBatch;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPosition;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitTransaction;
 use App\Logic\Membership\DirectDebit\Service\DirectDebitBookkeeper;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
@@ -18,7 +19,8 @@ use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
  * vorschlägt — vorausgewählte Positionen, Fälligkeitsdatum, Lastschrifttyp und Verwendungszweck.
  * Da Fälligkeit (Zahltag 01./15., Eintrittsjahr) und Sequenz (FRST/RCUR) je Zahler abweichen können,
  * enthält die Datei je Kombination einen eigenen Zahlungsblock. Alle Zahler werden gemeinsam in der
- * Lastschrift-Historie festgehalten (siehe `DirectDebitBookkeeper::bookAll()`).
+ * Lastschrift-Historie festgehalten (siehe `DirectDebitBookkeeper::bookAll()`). Je Art
+ * (`DirectDebitPositionKind`: Beiträge, Arbeitseinsatz-Pauschale, Einmalgebühren) entsteht eine eigene Datei.
  */
 readonly class ExportAllDirectDebitsUseCase
 {
@@ -34,7 +36,7 @@ readonly class ExportAllDirectDebitsUseCase
     {
         $now = $this->clock->now();
         $exportable = [];
-        foreach ($this->planner->planAll($now) as $draft) {
+        foreach ($this->planner->planAll($now, $request->kind) as $draft) {
             if ($draft->defaultAmountCents() > 0 && $draft->bulkExportObstacles() === []) {
                 $exportable[$draft->payer->id] = $draft;
             }
@@ -60,7 +62,7 @@ readonly class ExportAllDirectDebitsUseCase
             $groups[$key][] = [
                 'draft' => $draft,
                 'transaction' => new DirectDebitTransaction(
-                    endToEndId: sprintf('%s-%s', $payer->memberNumber, $draft->defaultCollectionDate->format('Ymd')),
+                    endToEndId: sprintf('%s-%s-%s', $payer->memberNumber, $request->kind->code(), $draft->defaultCollectionDate->format('Ymd')),
                     amountCents: $draft->defaultAmountCents(),
                     mandateReference: $payer->mandateReference,
                     mandateSignedOn: $draft->mandateSignedOn,
@@ -77,7 +79,7 @@ readonly class ExportAllDirectDebitsUseCase
         foreach (array_values($groups) as $index => $entries) {
             $first = $entries[0]['draft'];
             $batch = new DirectDebitBatch(
-                messageId: sprintf('WB-%s-S%d', $now->format('YmdHis'), $index + 1),
+                messageId: sprintf('WB-%s-%s%d', $now->format('YmdHis'), $request->kind->code(), $index + 1),
                 createdAt: $now,
                 creditor: $first->creditor,
                 collectionDate: $first->defaultCollectionDate,
@@ -86,7 +88,12 @@ readonly class ExportAllDirectDebitsUseCase
             );
             $batches[] = $batch;
             foreach ($entries as ['draft' => $draft, 'transaction' => $transaction]) {
-                $bookings[] = ['draft' => $draft, 'batch' => $batch, 'amountCents' => $transaction->amountCents];
+                $bookings[] = [
+                    'draft' => $draft,
+                    'batch' => $batch,
+                    'amountCents' => $transaction->amountCents,
+                    'positions' => array_values(array_filter($draft->positions, static fn (DirectDebitPosition $position): bool => $position->selectedByDefault)),
+                ];
             }
         }
 
@@ -94,7 +101,7 @@ readonly class ExportAllDirectDebitsUseCase
         $this->bookkeeper->bookAll($bookings);
 
         return new DirectDebitFileResponse(
-            fileName: sprintf('sepa-lastschrift-sammel-%s.xml', $now->format('Ymd-His')),
+            fileName: sprintf('sepa-lastschrift-sammel-%s-%s.xml', $request->kind->fileSuffix(), $now->format('Ymd-His')),
             content: $content,
         );
     }

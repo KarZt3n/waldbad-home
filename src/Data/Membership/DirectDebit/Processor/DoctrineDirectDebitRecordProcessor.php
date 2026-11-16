@@ -5,6 +5,7 @@ namespace App\Data\Membership\DirectDebit\Processor;
 use App\Data\Membership\DirectDebit\Mapper\DirectDebitRecordMapper;
 use App\Logic\Membership\DirectDebit\DirectDebitRecordProcessorInterface;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitRecord;
+use App\Data\Membership\DirectDebit\Entity\DirectDebitCollectedChargeEntity;
 use App\Data\Membership\DirectDebit\Entity\DirectDebitRecordEntity;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -36,5 +37,13 @@ readonly class DoctrineDirectDebitRecordProcessor implements DirectDebitRecordPr
             ->setParameter('from', $fromPayerMemberId)
             ->getQuery()
             ->execute();
+    }
+
+    public function markChargesCollected(array $chargeIds, string $recordId, \DateTimeImmutable $collectedAt): void
+    {
+        foreach (array_unique($chargeIds) as $chargeId) {
+            $this->entityManager->persist(new DirectDebitCollectedChargeEntity($chargeId, $recordId, $collectedAt));
+        }
+        $this->entityManager->flush();
     }
 }

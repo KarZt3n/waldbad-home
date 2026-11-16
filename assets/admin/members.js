@@ -1983,10 +1983,27 @@ const directDebitDataRow = (label, value) => element('div', {className: 'member-
     element('span', {className: 'member-data-value', text: value || '–'}),
 ]});
 
-const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
+// Beiträge, Arbeitseinsatz-Pauschale und Einmalgebühren werden getrennt exportiert (siehe
+// `DirectDebitPositionKind`); jede Art hat eigene Historie, Fälligkeit und Datei.
+const DIRECT_DEBIT_KINDS = [
+    ['contribution', 'Mitgliedsbeiträge'],
+    ['work_assignment_surcharge', 'Arbeitseinsatz-Pauschale'],
+    ['one_time_charge', 'Einmalgebühren'],
+];
+const directDebitKindLabel = (kind) => DIRECT_DEBIT_KINDS.find(([value]) => value === kind)?.[1] || kind;
+const directDebitKindHint = (preview) => {
+    if (preview.kind === 'work_assignment_surcharge') return `Arbeitseinsatz-Pauschale ${preview.contributionYear}: einmal im Jahr in voller Höhe, „Nächste Buchung“ bleibt unverändert.`;
+    if (preview.kind === 'one_time_charge') return 'Einmalgebühren: Exportierte Gebühren gelten danach als eingezogen und werden nicht erneut angeboten. „Nächste Buchung“ bleibt unverändert.';
+
+    return preview.joiningYearDebit
+        ? `Beitragsjahr ${preview.contributionYear} (Eintrittsjahr): sofort fällig, „Nächste Buchung“ bleibt unverändert.`
+        : `Beitragsjahr ${preview.contributionYear}: Nach dem Export rückt „Nächste Buchung“ um ein Jahr vor.`;
+};
+
+const openDirectDebitDialog = async (memberId, onExported = async () => {}, kind = 'contribution') => {
     let preview;
     try {
-        preview = await request(`/api/admin/v1/members/${memberId}/direct-debit-preview`);
+        preview = await request(`/api/admin/v1/members/${memberId}/direct-debit-preview?kind=${encodeURIComponent(kind)}`);
     } catch (error) {
         toast(error.message, 'error');
         return;
@@ -2045,12 +2062,21 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
     const submit = element('button', {className: 'button', text: 'XML exportieren', attributes: {type: 'submit'}});
     submit.disabled = blocked;
+    const kindStrip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'Art der Lastschrift'}, children: DIRECT_DEBIT_KINDS.map(([value, label]) => {
+        const button = element('button', {className: `sub-tab${value === preview.kind ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
+        button.addEventListener('click', () => {
+            if (value === preview.kind) return;
+            dialog.close();
+            openDirectDebitDialog(memberId, onExported, value);
+        });
+
+        return button;
+    })});
     const form = element('form', {className: 'confirm-dialog-content', children: [
-        element('p', {className: 'eyebrow', text: 'SEPA-Lastschrift'}),
+        element('p', {className: 'eyebrow', text: `SEPA-Lastschrift · ${directDebitKindLabel(preview.kind)}`}),
         element('h2', {text: `Lastschrift für ${preview.payerName} (${preview.payerMemberNumber})`}),
-        element('p', {className: 'field-hint', text: preview.joiningYearDebit
-            ? `Beitragsjahr ${preview.contributionYear} (Eintrittsjahr): sofort fällig, „Nächste Buchung“ bleibt unverändert.`
-            : `Beitragsjahr ${preview.contributionYear}: Nach dem Export rückt „Nächste Buchung“ um ein Jahr vor.`}),
+        kindStrip,
+        element('p', {className: 'field-hint', text: directDebitKindHint(preview)}),
         ...preview.blockers.map((text) => element('p', {className: 'failure-message', text})),
         ...preview.warnings.map((text) => element('p', {className: 'field-hint', text: `⚠ ${text}`})),
         element('div', {className: 'direct-debit-columns', children: [
@@ -2097,10 +2123,11 @@ const openDirectDebitDialog = async (memberId, onExported = async () => {}) => {
                 sequenceType: sequenceType.querySelector('select').value,
                 remittanceInformation: remittanceInput.value,
                 positionIds: selectedIds(),
+                kind: preview.kind,
             });
             if (!file) return;
             downloadFile(file);
-            toast('Die SEPA-Lastschriftdatei wurde erstellt.');
+            toast(`Die SEPA-Lastschriftdatei (${directDebitKindLabel(preview.kind)}) wurde erstellt.`);
             dialog.close();
             await onExported();
         } catch (error) {
@@ -2167,9 +2194,9 @@ const sumAmounts = (entries) => entries.reduce((total, entry) => total + entry.a
 // exportierbaren Zahler mit den Vorgaben ihrer jeweiligen Einzelvorschau. Die Beträge stammen aus
 // den gespeicherten Beiträgen; vor dem Einzug für ein neues Beitragsjahr lassen sich diese hier für
 // das eingegebene Jahr neu berechnen (Beitragsalter zum Stichtag 31.12.).
-const directDebitOverviewPanel = () => {
+const directDebitOverviewPanel = (kind = 'contribution') => {
     const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Lastschriften werden geladen …')]});
-    const year = contributionYearField('direct-debit-recalculate-year');
+    const year = contributionYearField(`direct-debit-recalculate-year-${kind}`);
     const recalculate = element('button', {className: 'secondary-button', text: 'Beiträge neu berechnen', attributes: {type: 'button'}});
     const exportAll = element('button', {className: 'button', text: 'Alle exportieren', attributes: {type: 'button'}});
     exportAll.disabled = true;
@@ -2186,7 +2213,7 @@ const directDebitOverviewPanel = () => {
                 element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
                 ...(withObstacles ? [element('td', {className: 'direct-debit-obstacles', text: entry.obstacles.map((obstacle) => obstacle.message).join(' ')})] : []),
             ]});
-            const open = () => openDirectDebitDialog(entry.payerId, load);
+            const open = () => openDirectDebitDialog(entry.payerId, load, kind);
             row.addEventListener('click', open);
             row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
 
@@ -2196,7 +2223,7 @@ const directDebitOverviewPanel = () => {
 
     async function load() {
         try {
-            overview = await request('/api/admin/v1/direct-debits');
+            overview = await request(`/api/admin/v1/direct-debits?kind=${encodeURIComponent(kind)}`);
         } catch (error) {
             body.replaceChildren(emptyState('Die Lastschriften konnten nicht geladen werden.'));
             toast(error.message, 'error');
@@ -2249,9 +2276,14 @@ const directDebitOverviewPanel = () => {
         overview.valid.forEach((entry) => dueDates.set(entry.collectionDate, (dueDates.get(entry.collectionDate) || 0) + 1));
         const dueSummary = [...dueDates.entries()].sort(([left], [right]) => left.localeCompare(right))
             .map(([date, count]) => `${formatDateDE(date)} (${count})`).join(', ');
+        const bookingNote = {
+            contribution: 'Der Export wird in der Lastschrift-Historie festgehalten und rückt die „Nächste Buchung“ der Zahler vor.',
+            work_assignment_surcharge: 'Der Export wird in der Lastschrift-Historie festgehalten; die Pauschale gilt damit für dieses Jahr als eingezogen.',
+            one_time_charge: 'Der Export wird in der Lastschrift-Historie festgehalten; die Gebühren gelten danach als eingezogen.',
+        }[kind];
         const confirmed = await confirmAction(
-            'Alle Lastschriften exportieren?',
-            `${overview.valid.length} Lastschriften über insgesamt ${formatEuro(sumAmounts(overview.valid))} werden in eine XML-Datei exportiert — jeweils mit Positionen, Fälligkeit und Verwendungszweck der Einzelvorschau. Fälligkeiten: ${dueSummary}. Der Export wird in der Lastschrift-Historie festgehalten und rückt die „Nächste Buchung“ der Zahler vor.`,
+            `${directDebitKindLabel(kind)}: alle Lastschriften exportieren?`,
+            `${overview.valid.length} Lastschriften (${directDebitKindLabel(kind)}) über insgesamt ${formatEuro(sumAmounts(overview.valid))} werden in eine XML-Datei exportiert — jeweils mit Positionen, Fälligkeit und Verwendungszweck der Einzelvorschau. Fälligkeiten: ${dueSummary}. ${bookingNote}`,
             'Exportieren',
         );
         if (!confirmed) return;
@@ -2259,10 +2291,11 @@ const directDebitOverviewPanel = () => {
         try {
             const file = await exportDirectDebitWithOptionalPin('/api/admin/v1/direct-debits/export', {
                 payerIds: overview.valid.map((entry) => entry.payerId),
+                kind,
             });
             if (!file) return;
             downloadFile(file);
-            toast('Die SEPA-Sammellastschriftdatei wurde erstellt.');
+            toast(`Die SEPA-Sammellastschriftdatei (${directDebitKindLabel(kind)}) wurde erstellt.`);
         } catch (error) {
             toast(error.message, 'error');
         } finally {
@@ -2272,7 +2305,8 @@ const directDebitOverviewPanel = () => {
 
     return {
         panel: element('div', {className: 'member-dialog-panel', children: [
-            element('div', {className: 'direct-debit-overview-controls direct-debit-overview-actions', children: [year.field, recalculate, exportAll]}),
+            // Neu berechnen betrifft Beitrag und Pauschale, nicht die Einmalgebühren.
+            element('div', {className: 'direct-debit-overview-controls direct-debit-overview-actions', children: kind === 'one_time_charge' ? [exportAll] : [year.field, recalculate, exportAll]}),
             body,
         ]}),
         load,
@@ -2481,14 +2515,17 @@ const workAssignmentRefundPanel = () => {
     };
 };
 
-// SEPA-Overlay mit zwei Reitern: Lastschriften (Mitgliedsbeiträge) und Gutschriften (geleistete
-// Arbeitsstunden). Die Gutschriften werden erst beim ersten Öffnen ihres Reiters geladen.
+// SEPA-Overlay mit Reitern je Lastschrift-Art (Beiträge, Arbeitseinsatz-Pauschale, Einmalgebühren)
+// und Gutschriften (geleistete Arbeitsstunden). Außer den Beiträgen wird jeder Reiter erst beim
+// ersten Öffnen geladen.
 const openDirectDebitOverviewDialog = async () => {
     const dialog = element('dialog', {className: 'activity-dialog direct-debit-overview-dialog'});
     const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
     const closeButton = element('button', {className: 'secondary-button', text: 'Schließen', attributes: {type: 'button'}});
     const tabs = [
-        {label: 'Lastschriften (Beiträge)', ...directDebitOverviewPanel(), loaded: true},
+        {label: 'Lastschriften: Beiträge', ...directDebitOverviewPanel('contribution'), loaded: true},
+        {label: 'Lastschriften: Arbeitseinsatz-Pauschale', ...directDebitOverviewPanel('work_assignment_surcharge'), loaded: false},
+        {label: 'Lastschriften: Einmalgebühren', ...directDebitOverviewPanel('one_time_charge'), loaded: false},
         {label: 'Gutschriften (Arbeitsstunden)', ...workAssignmentRefundPanel(), loaded: false},
     ];
     const strip = element('nav', {className: 'member-dialog-tab-strip', attributes: {'aria-label': 'SEPA-Bereiche'}});

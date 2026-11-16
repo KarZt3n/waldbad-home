@@ -6,6 +6,7 @@ use App\Logic\Common\ClockInterface;
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitOverviewEntryResponse;
 use App\Logic\Membership\DirectDebit\Dto\DirectDebitOverviewResponse;
 use App\Logic\Membership\DirectDebit\Model\DirectDebitObstacleKind;
+use App\Logic\Membership\DirectDebit\Model\DirectDebitPositionKind;
 use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
 
 /**
@@ -22,12 +23,12 @@ readonly class GetDirectDebitOverviewQuery
     ) {
     }
 
-    public function execute(): DirectDebitOverviewResponse
+    public function execute(DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution): DirectDebitOverviewResponse
     {
         $invalid = [];
         $valid = [];
         $withoutAmount = [];
-        foreach ($this->planner->planAll($this->clock->now()) as $draft) {
+        foreach ($this->planner->planAll($this->clock->now(), $kind) as $draft) {
             $entry = DirectDebitOverviewEntryResponse::fromDraft($draft);
             if ($draft->defaultAmountCents() <= 0) {
                 $withoutAmount[] = $entry;
@@ -39,13 +40,13 @@ readonly class GetDirectDebitOverviewQuery
         }
 
         $categories = [];
-        foreach (DirectDebitObstacleKind::cases() as $kind) {
+        foreach (DirectDebitObstacleKind::cases() as $obstacleKind) {
             $count = count(array_filter(
                 $invalid,
-                static fn (DirectDebitOverviewEntryResponse $entry): bool => in_array($kind->value, array_column($entry->obstacles, 'kind'), true),
+                static fn (DirectDebitOverviewEntryResponse $entry): bool => in_array($obstacleKind->value, array_column($entry->obstacles, 'kind'), true),
             ));
             if ($count > 0) {
-                $categories[] = ['kind' => $kind->value, 'label' => $kind->label(), 'count' => $count];
+                $categories[] = ['kind' => $obstacleKind->value, 'label' => $obstacleKind->label(), 'count' => $count];
             }
         }
 

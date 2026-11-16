@@ -24,6 +24,16 @@ readonly class DirectDebitRecordManager implements DirectDebitRecordManagerInter
         return $this->provider->findAll();
     }
 
+    public function findCollectedChargeIds(): array
+    {
+        return $this->provider->findCollectedChargeIds();
+    }
+
+    public function markChargesCollected(array $chargeIds, string $recordId, \DateTimeImmutable $collectedAt): void
+    {
+        $this->processor->markChargesCollected($chargeIds, $recordId, $collectedAt);
+    }
+
     public function save(DirectDebitRecord $record): DirectDebitRecord
     {
         return $this->processor->save($record);
