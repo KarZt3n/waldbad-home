@@ -11,6 +11,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'member')]
 #[ORM\UniqueConstraint(name: 'uniq_member_number', columns: ['member_number'])]
 #[ORM\Index(name: 'idx_member_primary_member_number', columns: ['primary_member_number'])]
+#[ORM\Index(name: 'idx_member_deleted_at', columns: ['deleted_at'])]
 class MemberEntity
 {
     /**
@@ -30,6 +31,13 @@ class MemberEntity
     #[ORM\Version]
     #[ORM\Column(type: Types::INTEGER)]
     private int $version = 1;
+
+    /**
+     * Soft-Delete: Gelöschte Mitglieder bleiben als Datensatz erhalten, werden aber von
+     * `DoctrineMemberProvider` nirgends mehr geliefert (siehe `DoctrineMemberProcessor::delete()`).
+     */
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $deletedAt = null;
 
     public function __construct(
         #[ORM\Id]
@@ -172,6 +180,13 @@ class MemberEntity
     public function getWorkAssignmentSurchargeCents(): ?int { return $this->workAssignmentSurchargeCents; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
+    public function getDeletedAt(): ?\DateTimeImmutable { return $this->deletedAt; }
+    public function isDeleted(): bool { return $this->deletedAt !== null; }
+
+    public function markDeleted(\DateTimeImmutable $deletedAt): void
+    {
+        $this->deletedAt = $deletedAt;
+    }
     public function getVersion(): int { return $this->version; }
 
     public function update(

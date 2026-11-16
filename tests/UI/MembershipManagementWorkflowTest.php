@@ -3,6 +3,7 @@
 namespace App\Tests\UI;
 
 use App\Data\Membership\ContributionRate\Entity\ContributionRateEntity;
+use App\Data\Membership\Member\Entity\MemberEntity;
 use App\Data\Membership\Member\Entity\MemberNumberSequenceEntity;
 use App\Logic\Content\Extension\Model\PageExtension;
 use App\Logic\Content\Extension\Model\PageExtensionTexts;
@@ -958,6 +959,15 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertNotNull($partner['contributionCategory']);
         $this->client->request('GET', '/api/admin/v1/members/'.$headId, server: $headers);
         self::assertResponseStatusCodeSame(404);
+
+        // Soft-Delete: Der Datensatz bleibt erhalten, nur als gelöscht markiert.
+        $entityManager = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $entityManager->clear();
+        $deleted = $entityManager->find(MemberEntity::class, $headId);
+        self::assertNotNull($deleted);
+        self::assertNotNull($deleted->getDeletedAt());
+        self::assertSame($headNumber, $deleted->getMemberNumber());
     }
 
     public function testDirectDebitPreviewAndExportForAPayer(): void

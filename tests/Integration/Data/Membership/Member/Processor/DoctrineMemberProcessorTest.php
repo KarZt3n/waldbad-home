@@ -2,10 +2,12 @@
 
 namespace App\Tests\Integration\Data\Membership\Member\Processor;
 
+use App\Data\Membership\Member\Entity\MemberEntity;
 use App\Data\Membership\Member\Processor\DoctrineMemberProcessor;
 use App\Data\Membership\Member\Provider\DoctrineMemberProvider;
 use App\Logic\Common\Exception\ConcurrencyException;
 use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
+use App\Logic\Membership\Member\Exception\MemberNotFoundException;
 use App\Logic\Membership\Member\Model\{FamilyRole, Member, MemberFunction, PayerType, PaymentDay, PaymentMethod, Salutation};
 use App\Logic\Membership\PaymentInterval;
 use Doctrine\ORM\EntityManagerInterface;
@@ -45,6 +47,40 @@ final class DoctrineMemberProcessorTest extends KernelTestCase
         $provider = $this->service(DoctrineMemberProvider::class);
         self::assertSame(5000, $provider->find($first->id)?->contributionAmountCents);
         self::assertSame(6000, $provider->find($second->id)?->contributionAmountCents);
+    }
+
+    public function testDeleteOnlyMarksTheMemberAsDeletedAndHidesItFromEveryLookup(): void
+    {
+        $processor = $this->service(DoctrineMemberProcessor::class);
+        $member = $processor->save($this->member('11111111-1111-4111-8111-111111111111', 'M-0001'));
+        $other = $processor->save($this->member('22222222-2222-4222-8222-222222222222', 'M-0002'));
+
+        $processor->delete($member->id);
+        $this->entityManager->clear();
+
+        $entity = $this->entityManager->find(MemberEntity::class, $member->id);
+        self::assertNotNull($entity, 'Der Datensatz bleibt in der Datenbank erhalten.');
+        self::assertNotNull($entity->getDeletedAt());
+
+        $provider = $this->service(DoctrineMemberProvider::class);
+        self::assertNull($provider->find($member->id));
+        self::assertNull($provider->findByMemberNumber('M-0001'));
+        self::assertSame([], $provider->findByPrimaryMemberNumber('M-0001'));
+        self::assertSame([$other->id], array_map(static fn (Member $found): string => $found->id, $provider->search(null)));
+        self::assertSame([$other->id], array_map(static fn (Member $found): string => $found->id, $provider->search('M-000')));
+
+        $this->expectException(MemberNotFoundException::class);
+        $processor->save($member->withContribution(ContributionCategory::IndividualSenior, 5000, null));
+    }
+
+    public function testDeletingAnAlreadyDeletedMemberFails(): void
+    {
+        $processor = $this->service(DoctrineMemberProcessor::class);
+        $member = $processor->save($this->member('11111111-1111-4111-8111-111111111111', 'M-0001'));
+        $processor->delete($member->id);
+
+        $this->expectException(MemberNotFoundException::class);
+        $processor->delete($member->id);
     }
 
     public function testSaveAllWritesNothingWhenOneMemberWasChangedInTheMeantime(): void

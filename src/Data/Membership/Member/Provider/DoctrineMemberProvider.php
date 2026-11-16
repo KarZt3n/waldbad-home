@@ -8,6 +8,11 @@ use App\Logic\Membership\Member\MemberProviderInterface;
 use App\Logic\Membership\Member\Model\Member;
 use Doctrine\ORM\EntityManagerInterface;
 
+/**
+ * Liefert ausschließlich nicht gelöschte Mitglieder — als gelöscht markierte Datensätze (Soft-Delete,
+ * siehe `DoctrineMemberProcessor::delete()`) verhalten sich für die übrige Anwendung so, als gäbe es
+ * sie nicht mehr.
+ */
 readonly class DoctrineMemberProvider implements MemberProviderInterface
 {
     public function __construct(
@@ -20,12 +25,12 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
     {
         $entity = $this->entityManager->find(MemberEntity::class, $id);
 
-        return $entity === null ? null : $this->mapper->toModel($entity);
+        return $entity === null || $entity->isDeleted() ? null : $this->mapper->toModel($entity);
     }
 
     public function findByMemberNumber(string $memberNumber): ?Member
     {
-        $entity = $this->entityManager->getRepository(MemberEntity::class)->findOneBy(['memberNumber' => $memberNumber]);
+        $entity = $this->entityManager->getRepository(MemberEntity::class)->findOneBy(['memberNumber' => $memberNumber, 'deletedAt' => null]);
 
         return $entity === null ? null : $this->mapper->toModel($entity);
     }
@@ -35,6 +40,7 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
         // Case-insensitiv unabhängig von der DB-Kollation, statt sich darauf zu verlassen.
         $result = $this->entityManager->getRepository(MemberEntity::class)->createQueryBuilder('m')
             ->where('LOWER(m.email) = LOWER(:email)')
+            ->andWhere('m.deletedAt IS NULL')
             ->setParameter('email', $email)
             ->getQuery()
             ->getResult();
@@ -51,14 +57,14 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
 
     public function findByPrimaryMemberNumber(string $primaryMemberNumber): array
     {
-        $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy(['primaryMemberNumber' => $primaryMemberNumber]);
+        $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy(['primaryMemberNumber' => $primaryMemberNumber, 'deletedAt' => null]);
 
         return array_map($this->mapper->toModel(...), $entities);
     }
 
     public function findByPayerMemberId(string $payerMemberId): array
     {
-        $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy(['payerMemberId' => $payerMemberId]);
+        $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy(['payerMemberId' => $payerMemberId, 'deletedAt' => null]);
 
         return array_map($this->mapper->toModel(...), $entities);
     }
@@ -68,6 +74,7 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
         // "member" ist ein reserviertes DQL-Schlüsselwort (MEMBER OF) und darf nicht als Alias
         // verwendet werden.
         $queryBuilder = $this->entityManager->getRepository(MemberEntity::class)->createQueryBuilder('m')
+            ->where('m.deletedAt IS NULL')
             ->orderBy('m.lastName', 'ASC')
             ->addOrderBy('m.firstName', 'ASC');
 

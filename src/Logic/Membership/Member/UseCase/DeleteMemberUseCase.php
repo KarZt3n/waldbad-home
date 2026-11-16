@@ -10,16 +10,15 @@ use App\Logic\Membership\Member\Service\HouseholdContributionRecalculator;
 use App\Logic\Membership\Member\Service\PayerTransfer;
 
 /**
- * Löscht ein Mitglied. Zwei Abhängigkeiten müssen dabei aufgelöst werden, da ein Löschen sonst
- * andere Mitglieder in einen ungültigen Zustand versetzen würde:
+ * Löscht ein Mitglied — als Soft-Delete: Der Datensatz bleibt in der Datenbank erhalten und wird nur
+ * als gelöscht markiert; danach liefert die Anwendung ihn nirgends mehr (siehe
+ * `MemberManagerInterface::delete()`). Zwei Abhängigkeiten müssen vorher aufgelöst werden, da andere
+ * Mitglieder sonst auf ein nicht mehr sichtbares Mitglied verweisen würden:
  *
- * - Zahlt dieses Mitglied für andere (`payerMemberId` verweist auf dieses Mitglied), würde die
- *   Datenbank-Fremdschlüsselregel (`ON DELETE SET NULL`) deren `payerMemberId` stillschweigend auf
- *   NULL setzen, während `payerType` weiterhin `other_member` bliebe — ein Zustand, den das
- *   `Member`-Modell beim nächsten Laden als Geschäftsregelverletzung ablehnt.
+ * - Zahlt dieses Mitglied für andere (`payerMemberId` verweist auf dieses Mitglied), fänden deren
+ *   Lastschriften keinen Zahler mehr.
  * - Ist dieses Mitglied Hauptmitglied einer Familie (andere Mitglieder tragen seine Mitgliedsnummer
- *   als `primaryMemberNumber`), bliebe deren Hauptnummer auf ein nicht mehr existierendes Mitglied
- *   verweisen.
+ *   als `primaryMemberNumber`), bliebe deren Hauptnummer auf ein gelöschtes Mitglied verweisen.
  *
  * In beiden Fällen ist ein Nachfolger aus derselben Familie anzugeben (`$successorMemberId`): Er
  * übernimmt Zahler-Rolle mit Bankverbindung und SEPA-Mandat sowie ggf. die Hauptnummer (siehe

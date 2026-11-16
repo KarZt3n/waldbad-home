@@ -41,5 +41,9 @@ interface MemberManagerInterface
      */
     public function saveAll(array $members): void;
 
+    /**
+     * Soft-Delete: markiert das Mitglied als gelöscht, statt den Datensatz zu entfernen. Gelöschte
+     * Mitglieder liefert keine der Lesemethoden mehr; ihre Mitgliedsnummer bleibt vergeben.
+     */
     public function delete(string $id): void;
 }

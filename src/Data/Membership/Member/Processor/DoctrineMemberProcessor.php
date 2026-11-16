@@ -45,13 +45,17 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         $this->flush('Eine der Mitgliedsnummern ist bereits vergeben.');
     }
 
+    /**
+     * Soft-Delete: markiert den Datensatz nur als gelöscht. Bemerkungen, Einmalgebühren und die
+     * Mitgliedsnummer bleiben erhalten; die Nummer wird nicht erneut vergeben.
+     */
     public function delete(string $id): void
     {
         $entity = $this->entityManager->find(MemberEntity::class, $id);
-        if ($entity === null) {
+        if ($entity === null || $entity->isDeleted()) {
             throw new MemberNotFoundException($id);
         }
-        $this->entityManager->remove($entity);
+        $entity->markDeleted($this->clock->now());
         $this->entityManager->flush();
     }
 
@@ -65,7 +69,7 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         }
 
         $entity = $this->entityManager->find(MemberEntity::class, $member->id);
-        if ($entity === null) {
+        if ($entity === null || $entity->isDeleted()) {
             throw new MemberNotFoundException($member->id);
         }
         try {
