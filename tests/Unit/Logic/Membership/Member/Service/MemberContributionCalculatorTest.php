@@ -164,6 +164,42 @@ final class MemberContributionCalculatorTest extends TestCase
         self::assertSame(3000, $outcome->amountCents);
     }
 
+    public function testChildWhoseParentsHaveLeftGetsIndividualRateInstead(): void
+    {
+        $calculator = $this->calculator();
+        $head = $this->member(birthDate: '1980-01-01', familyRole: FamilyRole::Head, id: 'head', leftAt: '2026-03-31');
+        $partner = $this->member(birthDate: '1982-01-01', familyRole: FamilyRole::Partner, id: 'partner', leftAt: '2026-03-31');
+        $child = $this->member(birthDate: '2012-01-01', familyRole: FamilyRole::Child, id: 'child');
+
+        $outcome = $calculator->calculate($child, [$head, $partner], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::IndividualJunior, $outcome->category);
+        self::assertSame(3000, $outcome->amountCents);
+    }
+
+    public function testChildKeepsFamilyRateWhileOneParentIsStillAMember(): void
+    {
+        $calculator = $this->calculator();
+        $head = $this->member(birthDate: '1980-01-01', familyRole: FamilyRole::Head, id: 'head', leftAt: '2026-03-31');
+        $partner = $this->member(birthDate: '1982-01-01', familyRole: FamilyRole::Partner, id: 'partner');
+        $child = $this->member(birthDate: '2012-01-01', familyRole: FamilyRole::Child, id: 'child');
+
+        $outcome = $calculator->calculate($child, [$head, $partner], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::FamilyChildPaying, $outcome->category);
+    }
+
+    public function testParentLosesFamilyDiscountWhenTheOnlyChildHasLeft(): void
+    {
+        $calculator = $this->calculator();
+        $head = $this->member(birthDate: '1980-01-01', familyRole: FamilyRole::Head, id: 'head');
+        $child = $this->member(birthDate: '2012-01-01', familyRole: FamilyRole::Child, id: 'child', leftAt: '2026-03-31');
+
+        $outcome = $calculator->calculate($head, [$child], new \DateTimeImmutable('2026-06-01'));
+
+        self::assertSame(ContributionCategory::IndividualSenior, $outcome->category);
+    }
+
     /**
      * Ein selbst noch minderjähriges „Hauptmitglied" (z. B. weil kein echter Elternteil im System
      * hinterlegt ist) darf nicht allein deshalb den Erwachsenen-Familienrabatt erhalten, weil der

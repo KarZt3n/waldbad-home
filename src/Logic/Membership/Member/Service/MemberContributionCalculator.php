@@ -73,7 +73,16 @@ readonly class MemberContributionCalculator
             return new ContributionOutcome(null, 0, null);
         }
 
-        $category = $this->resolveCategory($candidate, $householdMembers, $at);
+        // Ausgetretene Haushaltsmitglieder begründen keinen Familienrabatt mehr: Sind z. B. beide
+        // Eltern ausgetreten, zahlen die verbleibenden Kinder den regulären Einzelpersonen-Satz,
+        // und ein ausgetretenes Kind zählt weder für den Elternrabatt noch für die
+        // Geburtsreihenfolge mit. Die Familienrollen selbst (`resolveHouseholdRoles()`) bleiben
+        // davon bewusst unberührt.
+        $activeHouseholdMembers = array_values(array_filter(
+            $householdMembers,
+            static fn (Member $member): bool => !$member->hasLeft($at),
+        ));
+        $category = $this->resolveCategory($candidate, $activeHouseholdMembers, $at);
         $rate = $this->rates->findByCategory($category)
             ?? throw new BusinessRuleViolationException(sprintf(
                 'Für die Kategorie "%s" ist kein Beitragssatz hinterlegt. Bitte lege ihn unter „Beitragssätze“ neu an.',
