@@ -3,6 +3,7 @@
 namespace App\Logic\Membership\Member\Manager;
 
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberSnapshot;
 
 interface MemberManagerInterface
 {
@@ -54,4 +55,19 @@ interface MemberManagerInterface
      * @param list<string> $ids
      */
     public function deleteAll(array $ids): void;
+
+    /**
+     * Alle Mitglieder einschließlich gelöschter, mit Zeitstempeln — nur für den vollständigen
+     * Export und dessen Wiederherstellung.
+     *
+     * @return list<MemberSnapshot>
+     */
+    public function findAllSnapshots(): array;
+
+    /**
+     * Schreibt die Mitglieder exakt so, wie übergeben — entweder alle oder keines.
+     *
+     * @param list<MemberSnapshot> $snapshots
+     */
+    public function restoreAll(array $snapshots): void;
 }

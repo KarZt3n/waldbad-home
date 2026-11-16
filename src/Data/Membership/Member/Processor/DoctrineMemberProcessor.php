@@ -77,6 +77,23 @@ readonly class DoctrineMemberProcessor implements MemberProcessorInterface
         $this->entityManager->flush();
     }
 
+    public function restoreAll(array $snapshots): void
+    {
+        if ($snapshots === []) {
+            return;
+        }
+        $this->entityManager->wrapInTransaction(function () use ($snapshots): void {
+            foreach ($snapshots as $snapshot) {
+                $existing = $this->entityManager->find(MemberEntity::class, $snapshot->member->id);
+                $entity = $this->mapper->restoreEntity($snapshot, $existing);
+                if ($existing === null) {
+                    $this->entityManager->persist($entity);
+                }
+            }
+            $this->flush('Eine der Mitgliedsnummern ist bereits vergeben.');
+        });
+    }
+
     private function stage(Member $member): MemberEntity
     {
         if ($member->version === 0) {

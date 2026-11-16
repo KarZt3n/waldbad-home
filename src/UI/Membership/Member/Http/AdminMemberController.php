@@ -5,8 +5,10 @@ namespace App\UI\Membership\Member\Http;
 use App\Logic\Membership\Member\Dto\ImportMembersRequest;
 use App\Logic\Membership\Member\Dto\ImportRowError;
 use App\Logic\Membership\Member\Dto\MemberRecalculationError;
+use App\Logic\Membership\Member\Dto\RestoreMembersRequest;
 use App\Logic\Membership\Member\Query\GetMemberHouseholdQuery;
 use App\Logic\Membership\Member\Query\GetMemberQuery;
+use App\Logic\Membership\Member\Query\ExportMembersQuery;
 use App\Logic\Membership\Member\Query\ListMembersQuery;
 use App\Logic\Membership\Member\EmailConsent\UseCase\SendMemberEmailConsentRequestUseCase;
 use App\Logic\Membership\Member\UseCase\AddMemberRemarkUseCase;
@@ -16,6 +18,7 @@ use App\Logic\Membership\Member\UseCase\DeleteHouseholdUseCase;
 use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
 use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
+use App\Logic\Membership\Member\UseCase\RestoreMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
 use App\Logic\Membership\Member\UseCase\TransferMemberPayerUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
@@ -69,7 +72,7 @@ class AdminMemberController extends AbstractController
     // POST statt GET: der PIN (siehe unten) landet damit im JSON-Body statt in der Query-String
     // (Logs/Browser-Verlauf).
     #[Route('/export', name: 'api_admin_member_export', methods: ['POST'])]
-    public function export(Request $request, ListMembersQuery $query, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): Response
+    public function export(Request $request, ExportMembersQuery $query, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): Response
     {
         $this->denyAccessUnlessGranted(Permission::MembersView->value);
         $payload = $request->getPayload();
@@ -88,7 +91,8 @@ class AdminMemberController extends AbstractController
         $verifyPin->execute(ProtectedAction::MembersExport, $submittedPin);
         $isProtected = $this->memberExportIsPinProtected($pinSettingsQuery);
 
-        $rows = $this->responseFactory->collection($query->execute(null))['items'];
+        // Vollständig inkl. gelöschter Mitglieder, IDs und Zeitstempel — der Import stellt diesen Stand 1:1 wieder her.
+        $rows = array_map($this->responseFactory->exportRow(...), $query->execute());
         $content = match ($format) {
             'csv' => $this->exportFormatter->toCsv($rows),
             'json' => $this->exportFormatter->toJson($rows),
@@ -138,7 +142,7 @@ class AdminMemberController extends AbstractController
     }
 
     #[Route('/import', name: 'api_admin_member_import', methods: ['POST'])]
-    public function import(Request $request, ImportMembersUseCase $useCase, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): JsonResponse
+    public function import(Request $request, ImportMembersUseCase $useCase, RestoreMembersUseCase $restoreUseCase, VerifyPinUseCase $verifyPin, GetPinSettingsQuery $pinSettingsQuery): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
         $file = $request->files->get('file');
@@ -166,6 +170,9 @@ class AdminMemberController extends AbstractController
         }
 
         $rawRows = $this->importFileParser->parse($content, $format);
+        if ($this->requestMapper->isFullExport($rawRows)) {
+            return $this->restore($rawRows, $restoreUseCase);
+        }
         $rows = [];
         $parseErrors = [];
         foreach ($rawRows as $index => $rawRow) {
@@ -184,6 +191,36 @@ class AdminMemberController extends AbstractController
             'errors' => array_map(
                 static fn (ImportRowError $error): array => ['row' => $error->rowNumber, 'message' => $error->message],
                 [...$parseErrors, ...$result->errors],
+            ),
+        ]);
+    }
+
+    /**
+     * Vollständiger Export: alles oder nichts (siehe `RestoreMembersUseCase`). Schon eine syntaktisch
+     * fehlerhafte Zeile verhindert die Wiederherstellung.
+     *
+     * @param list<array<string, mixed>> $rawRows
+     */
+    private function restore(array $rawRows, RestoreMembersUseCase $useCase): JsonResponse
+    {
+        $rows = [];
+        $errors = [];
+        foreach ($rawRows as $index => $rawRow) {
+            try {
+                $rows[] = $this->requestMapper->fromRestoreRow($rawRow);
+            } catch (BadRequestHttpException $exception) {
+                $errors[] = new ImportRowError($index + 1, $exception->getMessage());
+            }
+        }
+        $result = $errors === [] ? $useCase->execute(new RestoreMembersRequest($rows)) : null;
+
+        return new JsonResponse([
+            'created' => $result->created ?? 0,
+            'updated' => $result->updated ?? 0,
+            'restored' => true,
+            'errors' => array_map(
+                static fn (ImportRowError $error): array => ['row' => $error->rowNumber, 'message' => $error->message],
+                [...$errors, ...($result->errors ?? [])],
             ),
         ]);
     }

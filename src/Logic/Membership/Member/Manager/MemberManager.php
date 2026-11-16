@@ -64,4 +64,14 @@ readonly class MemberManager implements MemberManagerInterface
     {
         $this->processor->deleteAll($ids);
     }
+
+    public function findAllSnapshots(): array
+    {
+        return $this->provider->findAllSnapshots();
+    }
+
+    public function restoreAll(array $snapshots): void
+    {
+        $this->processor->restoreAll($snapshots);
+    }
 }

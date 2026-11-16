@@ -30,4 +30,12 @@ class MemberContributionChargeEntity
     public function getLabel(): string { return $this->label; }
     public function getAmountCents(): int { return $this->amountCents; }
     public function getChargedAt(): \DateTimeImmutable { return $this->chargedAt; }
+
+    /** Nur für die Wiederherstellung aus einem vollständigen Export — sonst sind Gebühren unveränderlich. */
+    public function restore(string $label, int $amountCents, \DateTimeImmutable $chargedAt): void
+    {
+        $this->label = $label;
+        $this->amountCents = $amountCents;
+        $this->chargedAt = $chargedAt;
+    }
 }

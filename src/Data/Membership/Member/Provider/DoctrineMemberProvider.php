@@ -6,12 +6,13 @@ use App\Data\Membership\Member\Entity\MemberEntity;
 use App\Data\Membership\Member\Mapper\MemberMapper;
 use App\Logic\Membership\Member\MemberProviderInterface;
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberSnapshot;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Liefert ausschließlich nicht gelöschte Mitglieder — als gelöscht markierte Datensätze (Soft-Delete,
  * siehe `DoctrineMemberProcessor::delete()`) verhalten sich für die übrige Anwendung so, als gäbe es
- * sie nicht mehr.
+ * sie nicht mehr. Einzige Ausnahme ist `findAllSnapshots()` für den vollständigen Export.
  */
 readonly class DoctrineMemberProvider implements MemberProviderInterface
 {
@@ -132,5 +133,20 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
                     ->getResult();
             }
         }
+    }
+
+    public function findAllSnapshots(): array
+    {
+        $entities = $this->entityManager->getRepository(MemberEntity::class)->findBy([], ['memberNumber' => 'ASC']);
+
+        return array_map(
+            fn (MemberEntity $entity): MemberSnapshot => new MemberSnapshot(
+                $this->mapper->toModel($entity),
+                $entity->getCreatedAt(),
+                $entity->getUpdatedAt(),
+                $entity->getDeletedAt(),
+            ),
+            $entities,
+        );
     }
 }

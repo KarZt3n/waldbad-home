@@ -45,6 +45,14 @@ readonly class MemberImportFileParser
             foreach ($header as $index => $key) {
                 $row[(string) $key] = $values[$index] ?? null;
             }
+            // Vollständiger Export: Bemerkungen und Gebühren stehen als JSON in je einer Spalte.
+            foreach (['remarks', 'oneTimeCharges'] as $nested) {
+                $value = $row[$nested] ?? null;
+                if (is_string($value) && str_starts_with(trim($value), '[')) {
+                    $decoded = json_decode($value, true);
+                    $row[$nested] = is_array($decoded) ? $decoded : $value;
+                }
+            }
             $rows[] = $row;
         }
 
@@ -94,9 +102,19 @@ readonly class MemberImportFileParser
         foreach ($document->member ?? [] as $memberNode) {
             $row = [];
             foreach ($memberNode as $field => $value) {
+                if ($field === 'remarks' || $field === 'oneTimeCharges') {
+                    $items = [];
+                    foreach ($value->children() as $itemNode) {
+                        $item = [];
+                        foreach ($itemNode->children() as $itemField => $itemValue) {
+                            $item[(string) $itemField] = (string) $itemValue;
+                        }
+                        $items[] = $item;
+                    }
+                    $row[(string) $field] = $items;
+                    continue;
+                }
                 if ($value->count() > 0) {
-                    // Verschachtelte Elemente (z. B. exportierte Bemerkungen) sind für den Import
-                    // nicht relevant und werden übersprungen.
                     continue;
                 }
                 $row[(string) $field] = (string) $value;

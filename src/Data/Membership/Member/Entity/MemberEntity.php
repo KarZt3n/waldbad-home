@@ -187,6 +187,24 @@ class MemberEntity
     {
         $this->deletedAt = $deletedAt;
     }
+
+    /** Übernimmt Zeitstempel und Soft-Delete-Markierung unverändert aus einem vollständigen Export. */
+    public function restoreTimestamps(\DateTimeImmutable $createdAt, \DateTimeImmutable $updatedAt, ?\DateTimeImmutable $deletedAt): void
+    {
+        $this->createdAt = $createdAt;
+        $this->updatedAt = $updatedAt;
+        $this->deletedAt = $deletedAt;
+    }
+
+    public function removeRemark(MemberRemarkEntity $remark): void
+    {
+        $this->remarks->removeElement($remark);
+    }
+
+    public function removeOneTimeCharge(MemberContributionChargeEntity $charge): void
+    {
+        $this->oneTimeCharges->removeElement($charge);
+    }
     public function getVersion(): int { return $this->version; }
 
     public function update(

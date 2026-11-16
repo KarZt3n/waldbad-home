@@ -4,8 +4,9 @@ namespace App\UI\Membership\Member\Http;
 
 /**
  * Wandelt die bereits über `MemberResponseFactory` aufbereiteten Mitglieder-Zeilen in CSV-, JSON-
- * oder XML-Text um. CSV ist naturgemäß flach — Bemerkungen werden dort zu einer einzelnen Spalte
- * zusammengefasst, JSON und XML behalten die volle, verschachtelte Struktur.
+ * oder XML-Text um — vollständig, damit der Import den Stand 1:1 wiederherstellen kann (siehe
+ * `RestoreMembersUseCase`). CSV ist naturgemäß flach: Bemerkungen und Einmalgebühren stehen dort
+ * als JSON in je einer Spalte; JSON und XML behalten die verschachtelte Struktur.
  */
 readonly class MemberExportFormatter
 {
@@ -13,13 +14,13 @@ readonly class MemberExportFormatter
      * @var list<string>
      */
     private const array COLUMNS = [
-        'memberNumber', 'primaryMemberNumber', 'salutation', 'lastName', 'firstName', 'birthDate',
-        'street', 'postalCode', 'city', 'email', 'phone', 'familyRole', 'joinedAt', 'leftAt',
+        'id', 'memberNumber', 'primaryMemberNumber', 'salutation', 'lastName', 'firstName', 'birthDate',
+        'street', 'postalCode', 'city', 'email', 'phone', 'emailConsent', 'familyRole', 'joinedAt', 'leftAt',
         'function', 'contributionLiable', 'accountHolder', 'iban', 'bankName', 'mandateReference',
         'mandateValidFrom', 'mandateValidUntil',
         'paymentMethod', 'paymentInterval', 'paymentDay', 'payerType', 'payerMemberId',
         'payerMemberNumber', 'payerDisplayName', 'nextBookingMonth', 'nextBookingYear', 'contributionCategory',
-        'contributionAmountCents', 'workAssignmentSurchargeCents',
+        'contributionAmountCents', 'workAssignmentSurchargeCents', 'createdAt', 'updatedAt', 'deletedAt',
     ];
 
     /**
@@ -64,7 +65,7 @@ readonly class MemberExportFormatter
         foreach ($rows as $row) {
             $memberElement = $document->createElement('member');
             foreach (self::COLUMNS as $column) {
-                $memberElement->appendChild($document->createElement($column, $this->xmlScalar($row[$column] ?? null)));
+                $memberElement->appendChild($this->textElement($document, $column, $this->xmlScalar($row[$column] ?? null)));
             }
             $memberElement->appendChild($this->remarksElement($document, $this->extractSubItems($row, 'remarks')));
             $memberElement->appendChild($this->chargesElement($document, $this->extractSubItems($row, 'oneTimeCharges')));
@@ -81,26 +82,8 @@ readonly class MemberExportFormatter
      */
     private function csvValue(array $row, string $column): string
     {
-        if ($column === 'remarks') {
-            return implode(' | ', array_map(
-                static fn (array $remark): string => sprintf(
-                    '%s: %s',
-                    is_scalar($remark['createdAt'] ?? null) ? (string) $remark['createdAt'] : '',
-                    is_scalar($remark['text'] ?? null) ? (string) $remark['text'] : '',
-                ),
-                $this->extractSubItems($row, 'remarks'),
-            ));
-        }
-        if ($column === 'oneTimeCharges') {
-            return implode(' | ', array_map(
-                static fn (array $charge): string => sprintf(
-                    '%s: %s (%s)',
-                    is_scalar($charge['chargedAt'] ?? null) ? (string) $charge['chargedAt'] : '',
-                    is_scalar($charge['label'] ?? null) ? (string) $charge['label'] : '',
-                    is_scalar($charge['amountCents'] ?? null) ? (string) $charge['amountCents'] : '',
-                ),
-                $this->extractSubItems($row, 'oneTimeCharges'),
-            ));
+        if ($column === 'remarks' || $column === 'oneTimeCharges') {
+            return json_encode($this->extractSubItems($row, $column), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         }
 
         return $this->xmlScalar($row[$column] ?? null);
@@ -150,9 +133,10 @@ readonly class MemberExportFormatter
         $remarksElement = $document->createElement('remarks');
         foreach ($remarks as $remark) {
             $remarkElement = $document->createElement('remark');
-            $remarkElement->appendChild($document->createElement('text', $this->xmlScalar($remark['text'] ?? null)));
-            $remarkElement->appendChild($document->createElement('createdAt', $this->xmlScalar($remark['createdAt'] ?? null)));
-            $remarkElement->appendChild($document->createElement('authorDisplayName', $this->xmlScalar($remark['authorDisplayName'] ?? null)));
+            $remarkElement->appendChild($this->textElement($document, 'id', $this->xmlScalar($remark['id'] ?? null)));
+            $remarkElement->appendChild($this->textElement($document, 'text', $this->xmlScalar($remark['text'] ?? null)));
+            $remarkElement->appendChild($this->textElement($document, 'createdAt', $this->xmlScalar($remark['createdAt'] ?? null)));
+            $remarkElement->appendChild($this->textElement($document, 'authorDisplayName', $this->xmlScalar($remark['authorDisplayName'] ?? null)));
             $remarksElement->appendChild($remarkElement);
         }
 
@@ -167,12 +151,22 @@ readonly class MemberExportFormatter
         $chargesElement = $document->createElement('oneTimeCharges');
         foreach ($charges as $charge) {
             $chargeElement = $document->createElement('charge');
-            $chargeElement->appendChild($document->createElement('label', $this->xmlScalar($charge['label'] ?? null)));
-            $chargeElement->appendChild($document->createElement('amountCents', $this->xmlScalar($charge['amountCents'] ?? null)));
-            $chargeElement->appendChild($document->createElement('chargedAt', $this->xmlScalar($charge['chargedAt'] ?? null)));
+            $chargeElement->appendChild($this->textElement($document, 'id', $this->xmlScalar($charge['id'] ?? null)));
+            $chargeElement->appendChild($this->textElement($document, 'label', $this->xmlScalar($charge['label'] ?? null)));
+            $chargeElement->appendChild($this->textElement($document, 'amountCents', $this->xmlScalar($charge['amountCents'] ?? null)));
+            $chargeElement->appendChild($this->textElement($document, 'chargedAt', $this->xmlScalar($charge['chargedAt'] ?? null)));
             $chargesElement->appendChild($chargeElement);
         }
 
         return $chargesElement;
+    }
+
+    /** `createElement()` mit Wert escapt `&` nicht — der Text wird deshalb als eigener Knoten angehängt. */
+    private function textElement(\DOMDocument $document, string $name, string $value): \DOMElement
+    {
+        $element = $document->createElement($name);
+        $element->appendChild($document->createTextNode($value));
+
+        return $element;
     }
 }

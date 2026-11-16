@@ -1717,7 +1717,7 @@ const openMemberImportDialog = (onImported) => {
     const dialog = element('dialog', {className: 'activity-dialog'});
     const fileInput = element('input', {attributes: {type: 'file', accept: '.zip,.json,.csv,.xml'}});
     const fileField = element('label', {className: 'field', children: [element('span', {text: 'Datei'}), fileInput]});
-    const hint = element('small', {text: 'Eine JSON-, CSV- oder XML-Datei oder ein mit "Mitglieder exportieren" erzeugtes ZIP-Archiv. Ein Passwort wird nur bei einem verschlüsselten ZIP abgefragt.'});
+    const hint = element('small', {text: 'Eine JSON-, CSV- oder XML-Datei oder ein mit "Mitglieder exportieren" erzeugtes ZIP-Archiv. Ein Passwort wird nur bei einem verschlüsselten ZIP abgefragt. Ein Export aus „Mitglieder exportieren“ wird 1:1 wiederhergestellt (gleiche IDs, Bemerkungen, Gebühren, gelöschte Mitglieder) – Mitglieder, die nicht in der Datei stehen, bleiben unverändert.'});
     const message = formMessage();
     const submit = element('button', {className: 'button', text: 'Importieren', attributes: {type: 'submit'}});
     const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
@@ -1746,6 +1746,19 @@ const openMemberImportDialog = (onImported) => {
         try {
             const result = await importMembersWithOptionalPin(file);
             if (!result) { submit.disabled = false; return; }
+            // Vollständiger Export: alles oder nichts — bei Fehlern wurde nichts geschrieben.
+            if (result.restored && result.errors.length) {
+                message.textContent = `Nichts wiederhergestellt – bitte die Datei prüfen: ${result.errors.map((error) => `Zeile ${error.row}: ${error.message}`).join(' · ')}`;
+                toast('Die Wiederherstellung wurde abgebrochen, es wurde nichts geändert.', 'error');
+                submit.disabled = false;
+                return;
+            }
+            if (result.restored) {
+                toast(`Wiederhergestellt: ${result.created} Mitglied(er) neu angelegt, ${result.updated} überschrieben.`, 'success');
+                dialog.close();
+                await onImported();
+                return;
+            }
             const errorSuffix = result.errors.length ? `, ${result.errors.length} Zeile(n) mit Fehlern` : '';
             toast(`${result.created} Mitglied(er) angelegt, ${result.updated} aktualisiert${errorSuffix}.`, result.errors.length ? 'info' : 'success');
             dialog.close();

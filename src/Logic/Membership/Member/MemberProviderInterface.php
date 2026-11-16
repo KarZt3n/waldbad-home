@@ -3,6 +3,7 @@
 namespace App\Logic\Membership\Member;
 
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberSnapshot;
 
 interface MemberProviderInterface
 {
@@ -34,4 +35,11 @@ interface MemberProviderInterface
      * @return list<Member>
      */
     public function search(?string $term): array;
+
+    /**
+     * Alle Mitglieder einschließlich gelöschter, mit Zeitstempeln — nur für den vollständigen Export.
+     *
+     * @return list<MemberSnapshot>
+     */
+    public function findAllSnapshots(): array;
 }

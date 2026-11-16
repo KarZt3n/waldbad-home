@@ -9,6 +9,7 @@ use App\Logic\Membership\ContributionRate\Model\ContributionCategory;
 use App\Logic\Membership\Member\Model\ContributionCharge;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberSnapshot;
 use App\Logic\Membership\Member\Model\MemberFunction;
 use App\Logic\Membership\Member\Model\PayerType;
 use App\Logic\Membership\Member\Model\PaymentDay;
@@ -206,5 +207,49 @@ readonly class MemberMapper
                 ));
             }
         }
+    }
+
+    /**
+     * Gleicht eine Entity exakt an einen exportierten Stand an: alle Felder, Zeitstempel und
+     * Soft-Delete; Bemerkungen und Gebühren werden über ihre ID abgeglichen (fehlende entfernt,
+     * vorhandene überschrieben, neue angelegt). Ohne bestehende Entity wird eine neue erzeugt.
+     */
+    public function restoreEntity(MemberSnapshot $snapshot, ?MemberEntity $entity): MemberEntity
+    {
+        $member = $snapshot->member;
+        if ($entity === null) {
+            $entity = $this->createEntity($member, $snapshot->createdAt);
+        } else {
+            $this->updateEntity($member, $entity, $snapshot->updatedAt);
+
+            $remarksById = [];
+            foreach ($member->remarks as $remark) {
+                $remarksById[$remark->id] = $remark;
+            }
+            foreach ($entity->getRemarks() as $remarkEntity) {
+                $remark = $remarksById[$remarkEntity->getId()] ?? null;
+                if ($remark === null) {
+                    $entity->removeRemark($remarkEntity);
+                } else {
+                    $remarkEntity->restore($remark->text, $remark->authorDisplayName, $remark->createdAt);
+                }
+            }
+
+            $chargesById = [];
+            foreach ($member->oneTimeCharges as $charge) {
+                $chargesById[$charge->id] = $charge;
+            }
+            foreach ($entity->getOneTimeCharges() as $chargeEntity) {
+                $charge = $chargesById[$chargeEntity->getId()] ?? null;
+                if ($charge === null) {
+                    $entity->removeOneTimeCharge($chargeEntity);
+                } else {
+                    $chargeEntity->restore($charge->label, $charge->amountCents, $charge->chargedAt);
+                }
+            }
+        }
+        $entity->restoreTimestamps($snapshot->createdAt, $snapshot->updatedAt, $snapshot->deletedAt);
+
+        return $entity;
     }
 }

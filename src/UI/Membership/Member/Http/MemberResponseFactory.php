@@ -4,6 +4,7 @@ namespace App\UI\Membership\Member\Http;
 
 use App\Logic\Membership\Member\Dto\MemberHouseholdResponse;
 use App\Logic\Membership\Member\Dto\MemberResponse;
+use App\Logic\Membership\Member\Dto\MemberSnapshotResponse;
 use App\Logic\Membership\Member\Exception\MemberNotFoundException;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 use App\Logic\Membership\Member\Model\ContributionCharge;
@@ -76,6 +77,21 @@ readonly class MemberResponseFactory
             'remarks' => array_map($this->remark(...), $member->remarks),
             'oneTimeCharges' => array_map($this->oneTimeCharge(...), $member->oneTimeCharges),
             'version' => $member->version,
+        ];
+    }
+
+    /**
+     * Zeile für den vollständigen Export: wie `member()` plus Zeitstempel und Soft-Delete.
+     *
+     * @return array<string, mixed>
+     */
+    public function exportRow(MemberSnapshotResponse $snapshot): array
+    {
+        return [
+            ...$this->member($snapshot->member),
+            'createdAt' => $snapshot->createdAt->format(\DateTimeInterface::ATOM),
+            'updatedAt' => $snapshot->updatedAt->format(\DateTimeInterface::ATOM),
+            'deletedAt' => $snapshot->deletedAt?->format(\DateTimeInterface::ATOM),
         ];
     }
 

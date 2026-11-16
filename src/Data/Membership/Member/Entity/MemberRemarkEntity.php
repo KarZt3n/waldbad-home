@@ -30,4 +30,12 @@ class MemberRemarkEntity
     public function getText(): string { return $this->text; }
     public function getAuthorDisplayName(): ?string { return $this->authorDisplayName; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
+
+    /** Nur für die Wiederherstellung aus einem vollständigen Export — sonst sind Bemerkungen unveränderlich. */
+    public function restore(string $text, ?string $authorDisplayName, \DateTimeImmutable $createdAt): void
+    {
+        $this->text = $text;
+        $this->authorDisplayName = $authorDisplayName;
+        $this->createdAt = $createdAt;
+    }
 }

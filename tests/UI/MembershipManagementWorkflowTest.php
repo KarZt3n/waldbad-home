@@ -314,6 +314,150 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame(1, $secondImport['updated']);
     }
 
+    /**
+     * Ein vollständiger Export lässt sich in jedem Format 1:1 wiederherstellen: gleiche IDs,
+     * Zahler-Verweise, Bemerkungen, Einmalgebühren, Beiträge, Zeitstempel und gelöschte Mitglieder.
+     */
+    public function testFullExportIsRestoredOneToOneInEveryFormat(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['familyRole' => 'head', 'lastName' => 'Müller & Söhne']), $headers);
+        $headId = $this->string($this->responseData(), 'id');
+        $headNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'firstName' => 'Kind', 'birthDate' => '2015-01-01', 'familyRole' => 'child', 'primaryMemberNumber' => $headNumber,
+            'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'accountHolder' => null, 'iban' => null, 'bankName' => null, 'paymentMethod' => 'not_specified',
+        ]), $headers);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$headId.'/remarks', ['text' => "Zeile 1; \"zitiert\"\nZeile 2 <b>&</b>"], $headers);
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), ['firstName' => 'Weg']), $headers);
+        $deletedId = $this->string($this->responseData(), 'id');
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/members/'.$deletedId, [], $headers);
+        self::assertResponseStatusCodeSame(204);
+
+        $original = $this->exportedMembers($headers);
+        self::assertCount(3, $original);
+        self::assertNotNull($this->memberById($original, $deletedId)['deletedAt']);
+        self::assertCount(1, $this->arrayList($this->memberById($original, $headId), 'remarks'));
+        self::assertCount(1, $this->arrayList($this->memberById($original, $headId), 'oneTimeCharges'));
+
+        foreach (['json', 'csv', 'xml'] as $format) {
+            $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => $format], $headers);
+            $zipContent = $this->client->getResponse()->getContent();
+            self::assertIsString($zipContent);
+            $this->wipeMembers();
+
+            $zipPath = $this->buildMemberZip($this->readZipEntry($zipContent, $format), $format);
+            $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($zipPath, 'mitglieder.zip', 'application/zip', null, true)], $headers);
+            self::assertResponseIsSuccessful();
+            $result = $this->responseData();
+            self::assertSame([], $result['errors'], $format);
+            self::assertTrue($result['restored']);
+            self::assertSame(3, $result['created'], $format);
+
+            self::assertSame($this->withoutVersion($original), $this->withoutVersion($this->exportedMembers($headers)), $format);
+        }
+
+        // Erneuter Import überschreibt dieselben Datensätze, statt neue anzulegen.
+        $this->client->jsonRequest('PUT', '/api/admin/v1/members/'.$headId, array_replace($this->memberById($original, $headId), ['version' => $this->int($this->memberById($this->exportedMembers($headers), $headId), 'version'), 'firstName' => 'Geändert']), $headers);
+        self::assertResponseIsSuccessful();
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => 'json'], $headers);
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($this->buildMemberZip((string) json_encode(['members' => $original]), 'json'), 'mitglieder.zip', 'application/zip', null, true)], $headers);
+        self::assertSame(0, $this->responseData()['created']);
+        self::assertSame(3, $this->responseData()['updated']);
+        self::assertSame('Erika', $this->memberById($this->exportedMembers($headers), $headId)['firstName']);
+    }
+
+    public function testFullExportWithAnErrorRestoresNothing(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember(), $headers);
+        $memberId = $this->string($this->responseData(), 'id');
+        $original = $this->exportedMembers($headers);
+        $broken = $original[0];
+        self::assertIsArray($broken);
+        $broken['firstName'] = 'Geändert';
+        $second = array_replace($broken, ['id' => '99999999-9999-4999-8999-999999999999', 'payerType' => 'other_member', 'payerMemberId' => '88888888-8888-4888-8888-888888888888', 'memberNumber' => 'X-1']);
+
+        $this->client->request('POST', '/api/admin/v1/members/import', [], ['file' => new UploadedFile($this->buildMemberZip((string) json_encode(['members' => [$broken, $second]]), 'json'), 'mitglieder.zip', 'application/zip', null, true)], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame(0, $this->responseData()['created']);
+        self::assertSame(0, $this->responseData()['updated']);
+        self::assertNotSame([], $this->responseData()['errors']);
+        self::assertSame('Erika', $this->memberById($this->exportedMembers($headers), $memberId)['firstName']);
+    }
+
+    /**
+     * @param array<string, string> $headers
+     *
+     * @return list<mixed>
+     */
+    private function exportedMembers(array $headers): array
+    {
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/export', ['format' => 'json'], $headers);
+        self::assertResponseIsSuccessful();
+        $zipContent = $this->client->getResponse()->getContent();
+        self::assertIsString($zipContent);
+        $decoded = json_decode($this->readZipEntry($zipContent, 'json'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($decoded);
+
+        return $this->arrayList($decoded, 'members');
+    }
+
+    /**
+     * @param list<mixed> $members
+     *
+     * @return array<string, mixed>
+     */
+    private function memberById(array $members, string $id): array
+    {
+        foreach ($members as $member) {
+            if (is_array($member) && ($member['id'] ?? null) === $id) {
+                $result = [];
+                foreach ($member as $key => $value) {
+                    $result[(string) $key] = $value;
+                }
+
+                return $result;
+            }
+        }
+        self::fail(sprintf('Mitglied %s fehlt im Export.', $id));
+    }
+
+    /**
+     * Die Version ist ein technischer Zähler für das optimistische Sperren und zählt beim Schreiben hoch.
+     *
+     * @param list<mixed> $members
+     *
+     * @return list<mixed>
+     */
+    private function withoutVersion(array $members): array
+    {
+        return array_map(static function (mixed $member): mixed {
+            if (is_array($member)) {
+                unset($member['version']);
+            }
+
+            return $member;
+        }, $members);
+    }
+
+    private function wipeMembers(): void
+    {
+        $entityManager = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $connection = $entityManager->getConnection();
+        $connection->executeStatement('DELETE FROM member_remark');
+        $connection->executeStatement('DELETE FROM member_contribution_charge');
+        $connection->executeStatement('DELETE FROM member');
+        $entityManager->clear();
+        $this->client->request('GET', '/api/admin/v1/members', server: []);
+        self::assertSame([], $this->arrayList($this->responseData(), 'items'));
+    }
+
     private function buildMemberZip(string $content, string $format): string
     {
         $path = tempnam(sys_get_temp_dir(), 'members-import-zip');

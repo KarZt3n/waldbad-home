@@ -3,6 +3,7 @@
 namespace App\Logic\Membership\Member;
 
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberSnapshot;
 
 interface MemberProcessorInterface
 {
@@ -23,4 +24,12 @@ interface MemberProcessorInterface
      * @param list<string> $ids
      */
     public function deleteAll(array $ids): void;
+
+    /**
+     * Schreibt die Mitglieder exakt so, wie übergeben (IDs, Bemerkungen, Gebühren, Zeitstempel,
+     * Soft-Delete) — in einem gemeinsamen Schreibvorgang, entweder alle oder keines.
+     *
+     * @param list<MemberSnapshot> $snapshots
+     */
+    public function restoreAll(array $snapshots): void;
 }
