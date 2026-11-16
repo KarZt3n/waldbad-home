@@ -4,6 +4,7 @@ namespace App\UI\Membership\Member\Http;
 
 use App\Logic\Membership\Member\Dto\AddRemarkRequest;
 use App\Logic\Membership\Member\Dto\CreateMemberRequest;
+use App\Logic\Membership\Member\Dto\TransferMemberPayerRequest;
 use App\Logic\Membership\Member\Dto\UpdateMemberRequest;
 use App\Logic\Membership\Member\Model\FamilyRole;
 use App\Logic\Membership\Member\Model\MemberFunction;
@@ -99,6 +100,34 @@ readonly class MemberRequestMapper
             mandateValidFrom: $this->nullableDate($data, 'mandateValidFrom'),
             mandateValidUntil: $this->nullableDate($data, 'mandateValidUntil'),
         );
+    }
+
+    public function transferPayer(string $memberId, Request $request): TransferMemberPayerRequest
+    {
+        $data = $request->getPayload()->all();
+
+        return new TransferMemberPayerRequest(
+            memberId: $memberId,
+            successorMemberId: $this->requiredString($data, 'successorMemberId', 36),
+            keepSuccessorPaymentDetails: $this->bool($data, 'keepSuccessorPaymentDetails', false),
+            transferPrimaryMembership: $this->bool($data, 'transferPrimaryMembership', true),
+        );
+    }
+
+    /**
+     * Nachfolger beim Löschen eines Zahlers bzw. Hauptmitglieds — optional, da ein Mitglied ohne
+     * Abhängige auch ohne Nachfolger gelöscht werden kann.
+     *
+     * @return array{successorMemberId: ?string, keepSuccessorPaymentDetails: bool}
+     */
+    public function deleteSuccessor(Request $request): array
+    {
+        $data = $request->getPayload()->all();
+
+        return [
+            'successorMemberId' => $this->nullableString($data, 'successorMemberId', 36),
+            'keepSuccessorPaymentDetails' => $this->bool($data, 'keepSuccessorPaymentDetails', false),
+        ];
     }
 
     public function addRemark(string $memberId, Request $request, ?string $authorDisplayName): AddRemarkRequest

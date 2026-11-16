@@ -23,4 +23,14 @@ readonly class WorkAssignmentRefundRecordManager implements WorkAssignmentRefund
     {
         return $this->processor->save($record);
     }
+
+    public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void
+    {
+        $this->processor->reassignPayer($fromPayerMemberId, $toPayerMemberId);
+    }
+
+    public function reassignHousehold(string $fromPrimaryMemberNumber, string $toPrimaryMemberNumber): void
+    {
+        $this->processor->reassignHousehold($fromPrimaryMemberNumber, $toPrimaryMemberNumber);
+    }
 }

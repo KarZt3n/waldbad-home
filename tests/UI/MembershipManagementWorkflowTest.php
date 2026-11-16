@@ -17,6 +17,8 @@ use Doctrine\ORM\Tools\SchemaTool;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use App\Data\Membership\DirectDebit\Entity\DirectDebitRecordEntity;
+use App\Data\Membership\WorkAssignmentRefund\Entity\WorkAssignmentRefundRecordEntity;
 use App\Tests\Support\FixedSecureTokenGenerator;
 
 final class MembershipManagementWorkflowTest extends WebTestCase
@@ -842,6 +844,120 @@ final class MembershipManagementWorkflowTest extends WebTestCase
 
         $this->client->jsonRequest('POST', '/api/admin/v1/members/recalculate-contributions', ['year' => (string) ((int) date('Y') - 1)], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
+     * Beide Eltern ausgetreten, das Kind bleibt: „Zahler übertragen“ macht das Kind zum Zahler und
+     * Hauptmitglied mit Bankverbindung, Mandat und Historie der Eltern. Danach lässt sich der
+     * ausgetretene Elternteil löschen, ohne die Familie in einen ungültigen Zustand zu versetzen.
+     */
+    public function testPayerCanBeTransferredWithBankDataAndHistoryAndThenDeleted(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'familyRole' => 'head', 'mandateReference' => 'BAD-ALT-1', 'leftAt' => '2026-01-31',
+        ]), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $headId = $this->string($this->responseData(), 'id');
+        $headNumber = $this->string($this->responseData(), 'memberNumber');
+
+        $child = array_replace($this->validMember(), [
+            'firstName' => 'Kind', 'birthDate' => '2014-01-01', 'familyRole' => 'child', 'primaryMemberNumber' => $headNumber,
+            'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'accountHolder' => null, 'iban' => null, 'bankName' => null, 'paymentMethod' => 'not_specified',
+        ]);
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $child, $headers);
+        self::assertResponseStatusCodeSame(201);
+        $childId = $this->string($this->responseData(), 'id');
+        $childNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($child, ['firstName' => 'Geschwister', 'birthDate' => '2016-01-01']), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $siblingId = $this->string($this->responseData(), 'id');
+
+        $entityManager = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $exportedAt = new \DateTimeImmutable('2026-03-01 10:00:00');
+        $entityManager->persist(new DirectDebitRecordEntity('dd-1', $headId, 'BAD-ALT-1', 2026, 'RCUR', $exportedAt, 7500, 'MSG-1', $exportedAt));
+        $entityManager->persist(new WorkAssignmentRefundRecordEntity('wa-1', $headNumber, $headId, 2025, 1500, 'MSG-2', $exportedAt));
+        $entityManager->flush();
+        $entityManager->clear();
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$headId.'/payer-transfer', [
+            'successorMemberId' => $siblingId, 'keepSuccessorPaymentDetails' => true,
+        ], $headers);
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('keine eigenen Zahlungsdaten', $this->string($this->arrayData($this->responseData(), 'error'), 'message'));
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/members/'.$headId.'/payer-transfer', [
+            'successorMemberId' => $childId, 'transferPrimaryMembership' => true,
+        ], $headers);
+        self::assertResponseIsSuccessful();
+        $formerHead = $this->responseData();
+        self::assertSame('other_member', $formerHead['payerType']);
+        self::assertSame($childId, $formerHead['payerMemberId']);
+        self::assertNull($formerHead['iban']);
+        self::assertSame($childNumber, $formerHead['primaryMemberNumber']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$childId, server: $headers);
+        $newPayer = $this->responseData();
+        self::assertSame('self_payer', $newPayer['payerType']);
+        self::assertSame('DE89370400440532013000', $newPayer['iban']);
+        self::assertSame('Erika Musterfrau', $newPayer['accountHolder']);
+        self::assertSame('BAD-ALT-1', $newPayer['mandateReference']);
+        self::assertSame('head', $newPayer['familyRole']);
+        self::assertSame($childNumber, $newPayer['primaryMemberNumber']);
+        // Ohne erwachsenen, noch aktiven Elternteil kein Familien-Tarif mehr.
+        self::assertSame('individual_junior', $newPayer['contributionCategory']);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$siblingId, server: $headers);
+        self::assertSame($childId, $this->responseData()['payerMemberId']);
+        self::assertSame($childNumber, $this->responseData()['primaryMemberNumber']);
+
+        $directDebitRecord = $entityManager->find(DirectDebitRecordEntity::class, 'dd-1');
+        self::assertNotNull($directDebitRecord);
+        self::assertSame($childId, $directDebitRecord->getPayerMemberId());
+        $refundRecord = $entityManager->find(WorkAssignmentRefundRecordEntity::class, 'wa-1');
+        self::assertNotNull($refundRecord);
+        self::assertSame($childId, $refundRecord->getPayerMemberId());
+        self::assertSame($childNumber, $refundRecord->getPrimaryMemberNumber());
+
+        $this->client->request('DELETE', '/api/admin/v1/members/'.$headId, server: $headers);
+        self::assertResponseStatusCodeSame(204);
+        $this->client->request('GET', '/api/admin/v1/members/'.$siblingId, server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame($childId, $this->responseData()['payerMemberId']);
+    }
+
+    public function testPayerCanBeDeletedWhenASuccessorTakesOver(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'familyRole' => 'head', 'mandateReference' => 'BAD-ALT-2',
+        ]), $headers);
+        $headId = $this->string($this->responseData(), 'id');
+        $headNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
+            'firstName' => 'Partner', 'birthDate' => '1988-01-01', 'familyRole' => 'partner', 'primaryMemberNumber' => $headNumber,
+            'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'accountHolder' => null, 'iban' => null, 'bankName' => null, 'paymentMethod' => 'not_specified',
+        ]), $headers);
+        $partnerId = $this->string($this->responseData(), 'id');
+        $partnerNumber = $this->string($this->responseData(), 'memberNumber');
+
+        $this->client->jsonRequest('DELETE', '/api/admin/v1/members/'.$headId, ['successorMemberId' => $partnerId], $headers);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$partnerId, server: $headers);
+        $partner = $this->responseData();
+        self::assertSame('self_payer', $partner['payerType']);
+        self::assertSame('BAD-ALT-2', $partner['mandateReference']);
+        self::assertSame('head', $partner['familyRole']);
+        self::assertSame($partnerNumber, $partner['primaryMemberNumber']);
+        self::assertNotNull($partner['contributionCategory']);
+        $this->client->request('GET', '/api/admin/v1/members/'.$headId, server: $headers);
+        self::assertResponseStatusCodeSame(404);
     }
 
     public function testDirectDebitPreviewAndExportForAPayer(): void

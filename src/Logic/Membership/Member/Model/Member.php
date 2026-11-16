@@ -747,6 +747,144 @@ readonly class Member
         );
     }
 
+    /**
+     * Übernimmt die Rolle des Zahlers von `$previousPayer` (siehe `PayerTransfer`): Bankverbindung,
+     * SEPA-Mandat, Zahlart, Zahlintervall, Zahltag und nächste Buchung gehen unverändert über. Das
+     * Mandat bleibt gültig, weil es an Kontoinhaber und Konto hängt, nicht am Mitglied.
+     */
+    public function takingOverPaymentFrom(self $previousPayer): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $previousPayer->accountHolder,
+            iban: $previousPayer->iban,
+            bankName: $previousPayer->bankName,
+            mandateReference: $previousPayer->mandateReference,
+            paymentMethod: $previousPayer->paymentMethod,
+            paymentInterval: $previousPayer->paymentInterval,
+            paymentDay: $previousPayer->paymentDay,
+            payerType: PayerType::SelfPayer,
+            payerMemberId: null,
+            nextBookingMonth: $previousPayer->nextBookingMonth,
+            nextBookingYear: $previousPayer->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $previousPayer->mandateValidFrom,
+            mandateValidUntil: $previousPayer->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    /**
+     * Zahlt künftig über ein anderes Mitglied — eigene Bankverbindung, Mandat und nächste Buchung
+     * entfallen wie beim Speichern mit abweichendem Zahler (siehe `MemberModelFactory`).
+     */
+    public function payingThrough(string $payerMemberId): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $this->primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $this->familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: null,
+            iban: null,
+            bankName: null,
+            mandateReference: null,
+            paymentMethod: PaymentMethod::NotSpecified,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: PayerType::OtherMember,
+            payerMemberId: $payerMemberId,
+            nextBookingMonth: null,
+            nextBookingYear: null,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: null,
+            mandateValidUntil: null,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
+    public function withHousehold(string $primaryMemberNumber, FamilyRole $familyRole): self
+    {
+        return new self(
+            id: $this->id,
+            memberNumber: $this->memberNumber,
+            primaryMemberNumber: $primaryMemberNumber,
+            salutation: $this->salutation,
+            lastName: $this->lastName,
+            firstName: $this->firstName,
+            birthDate: $this->birthDate,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            email: $this->email,
+            phone: $this->phone,
+            familyRole: $familyRole,
+            joinedAt: $this->joinedAt,
+            leftAt: $this->leftAt,
+            function: $this->function,
+            accountHolder: $this->accountHolder,
+            iban: $this->iban,
+            bankName: $this->bankName,
+            mandateReference: $this->mandateReference,
+            paymentMethod: $this->paymentMethod,
+            paymentInterval: $this->paymentInterval,
+            paymentDay: $this->paymentDay,
+            payerType: $this->payerType,
+            payerMemberId: $this->payerMemberId,
+            nextBookingMonth: $this->nextBookingMonth,
+            nextBookingYear: $this->nextBookingYear,
+            contributionCategory: $this->contributionCategory,
+            contributionAmountCents: $this->contributionAmountCents,
+            workAssignmentSurchargeCents: $this->workAssignmentSurchargeCents,
+            remarks: $this->remarks,
+            oneTimeCharges: $this->oneTimeCharges,
+            version: $this->version,
+            contributionLiable: $this->contributionLiable,
+            mandateValidFrom: $this->mandateValidFrom,
+            mandateValidUntil: $this->mandateValidUntil,
+            emailConsent: $this->emailConsent,
+        );
+    }
+
     private function isValidIban(string $iban): bool
     {
         return Iban::isValid($iban);

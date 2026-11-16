@@ -28,4 +28,9 @@ readonly class DirectDebitRecordManager implements DirectDebitRecordManagerInter
     {
         return $this->processor->save($record);
     }
+
+    public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void
+    {
+        $this->processor->reassignPayer($fromPayerMemberId, $toPayerMemberId);
+    }
 }

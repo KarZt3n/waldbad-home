@@ -3,7 +3,7 @@
 // (`/admin/mitglieder/...`).
 
 import {
-    CONTRIBUTION_CATEGORY_LABELS, confirmAction, contributionAge, csrfToken, element, FAMILY_ROLE_LABELS, field,
+    CONTRIBUTION_CATEGORY_LABELS, confirmAction, confirmUnsavedChanges, contributionAge, csrfToken, element, FAMILY_ROLE_LABELS, field,
     fieldRow, formatDateDE, formatEuro, formMessage, MEMBER_FUNCTION_LABELS, PAYER_TYPE_LABELS,
     PAYMENT_DAY_LABELS, PAYMENT_INTERVAL_LABELS, PAYMENT_METHOD_LABELS, PERSON_GROUP_LABELS,
     radioGroup, request, SALUTATION_LABELS, selectField, toast,
@@ -21,9 +21,11 @@ import {adminPath, setAdminPath, workspace} from './shell.js';
  * dann wird der PIN abgefragt — jedes Mal neu, da es sich um eine einzelne, endgültige Aktion
  * handelt. Liefert `true` bei Erfolg (direkt oder nach PIN-Eingabe), `false` bei „Abbrechen“.
  */
-const deleteMemberWithOptionalPin = async (id) => {
+// `successor`: beim Löschen eines Zahlers bzw. Hauptmitglieds der Nachfolger aus der Familie
+// (`{successorMemberId, keepSuccessorPaymentDetails}`, siehe `openPayerTransferDialog`).
+const deleteMemberWithOptionalPin = async (id, successor = {}) => {
     try {
-        await request(`/api/admin/v1/members/${id}`, {method: 'DELETE'});
+        await request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify(successor)});
 
         return true;
     } catch (error) {
@@ -33,7 +35,7 @@ const deleteMemberWithOptionalPin = async (id) => {
     return promptForPin(
         'Mitglied löschen',
         'Für diese Funktion ist zusätzlich ein PIN erforderlich.',
-        (pin) => request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify({pin})}),
+        (pin) => request(`/api/admin/v1/members/${id}`, {method: 'DELETE', body: JSON.stringify({...successor, pin})}),
     );
 };
 // Offene Nachrichten (neu, bzw. aus der Zeit vor dem Wegfall von „In Bearbeitung“ noch in
@@ -688,6 +690,210 @@ const loadPayerCandidates = () => {
     return payerCandidatesCache;
 };
 
+const PAYER_TRANSFER_FIELDS = [
+    ['accountHolder', 'Kontoinhaber'],
+    ['iban', 'IBAN'],
+    ['bankName', 'Bank'],
+    ['mandateReference', 'Mandatsreferenz'],
+    ['mandateValidFrom', 'Mandat gültig von', formatDateDE],
+    ['mandateValidUntil', 'Mandat gültig bis', formatDateDE],
+    ['paymentMethod', 'Zahlart', (value) => PAYMENT_METHOD_LABELS[value] || value],
+    ['paymentInterval', 'Zahlintervall', (value) => PAYMENT_INTERVAL_LABELS[value] || value],
+    ['paymentDay', 'Zahlung am', (value) => PAYMENT_DAY_LABELS[value] || value],
+    ['nextBooking', 'Nächste Buchung'],
+];
+const payerTransferValue = (member, [key, , format]) => {
+    if (key === 'nextBooking') {
+        return member.nextBookingMonth && member.nextBookingYear ? `${String(member.nextBookingMonth).padStart(2, '0')}/${member.nextBookingYear}` : '–';
+    }
+    const value = member[key];
+    if (value === null || value === undefined || value === '') return '–';
+
+    return format ? format(value) : value;
+};
+
+// Ob beim Löschen ein Nachfolger nötig ist: jemand zahlt über dieses Mitglied, oder es ist
+// Hauptmitglied einer Familie mit weiteren Personen (siehe `DeleteMemberUseCase`).
+const payerTransferRequired = (member, household) => {
+    const others = household.householdMembers.filter((other) => other.id !== member.id);
+    const isHead = member.memberNumber === member.primaryMemberNumber;
+
+    return others.some((other) => other.payerMemberId === member.id) || (isHead && others.length > 0);
+};
+
+// Zahler (und ggf. Hauptmitglied) auf ein anderes, noch aktives Mitglied der Familie übertragen —
+// beim Löschen (`mode: 'delete'`) oder als eigene Aktion (`mode: 'transfer'`). Ähnlich dem Abgleich
+// beim Mitgliedsantrag zeigt eine Tabelle, welche Zahlungsdaten der Nachfolger danach hat; zahlt er
+// bereits selbst, kann er seine eigenen behalten. Liefert true, wenn übertragen (und ggf. gelöscht)
+// wurde.
+const openPayerTransferDialog = (member, household, mode) => new Promise((resolve) => {
+    const deleting = mode === 'delete';
+    const isPayer = member.payerType === 'self_payer';
+    const isHead = member.memberNumber === member.primaryMemberNumber;
+    const others = household.householdMembers.filter((other) => other.id !== member.id);
+    const dependents = others.filter((other) => other.payerMemberId === member.id);
+    const candidates = others
+        .filter((other) => !hasMemberLeft(other.leftAt))
+        .sort((left, right) => left.birthDate.localeCompare(right.birthDate));
+    const memberLabel = (person) => `${person.firstName} ${person.lastName} (${person.memberNumber})`;
+
+    const dialog = element('dialog', {className: 'confirm-dialog member-match-dialog'});
+    let done = false;
+    dialog.addEventListener('close', () => {
+        resolve(done);
+        dialog.remove();
+    });
+    const cancel = element('button', {className: 'secondary-button', text: candidates.length ? 'Abbrechen' : 'Schließen', attributes: {type: 'button'}});
+    cancel.addEventListener('click', () => dialog.close());
+
+    const intro = [
+        ...(isPayer ? [element('p', {text: dependents.length
+            ? `${memberLabel(member)} zahlt den Beitrag für ${dependents.map((other) => `${other.firstName} ${other.lastName}`).join(', ')}. Wähle, wer aus der Familie künftig zahlt — Bankverbindung, SEPA-Mandat und Lastschrift-Historie gehen auf diese Person über.`
+            : `Wähle, wer aus der Familie künftig zahlt — Bankverbindung, SEPA-Mandat und Lastschrift-Historie von ${memberLabel(member)} gehen auf diese Person über.`})] : []),
+        ...(isHead && others.length ? [element('p', {text: `${memberLabel(member)} ist Hauptmitglied der Familie ${member.primaryMemberNumber}.`})] : []),
+    ];
+
+    if (!candidates.length) {
+        dialog.append(element('div', {className: 'confirm-dialog-content', children: [
+            element('p', {className: 'eyebrow', text: deleting ? 'Mitglied löschen' : 'Zahler übertragen'}),
+            element('h2', {text: 'Kein Nachfolger in der Familie'}),
+            ...intro,
+            element('p', {className: 'failure-message', text: 'Es gibt kein aktives Familienmitglied, das übernehmen könnte. Bitte zuerst bei den betroffenen Mitgliedern Zahler bzw. Hauptnummer von Hand ändern.'}),
+            element('div', {className: 'confirm-dialog-actions', children: [cancel]}),
+        ]}));
+        document.body.append(dialog);
+        dialog.showModal();
+        return;
+    }
+
+    let successor = candidates.find((candidate) => !hasMemberLeft(candidate.leftAt) && ageInYears(candidate.birthDate) >= 18) || candidates[0];
+    let keepOwn = false;
+    const transferHead = element('input', {attributes: {type: 'checkbox'}});
+    transferHead.checked = true;
+
+    const candidateList = element('ul', {className: 'member-match-missing', children: candidates.map((candidate) => {
+        const radio = element('input', {attributes: {type: 'radio', name: `payer-successor-${member.id}`, value: candidate.id}});
+        radio.checked = candidate.id === successor.id;
+        radio.addEventListener('change', () => {
+            successor = candidate;
+            keepOwn = false;
+            refresh();
+        });
+        const payment = candidate.payerType === 'self_payer'
+            ? 'zahlt selbst'
+            : `zahlt über ${candidate.payerMemberId === member.id ? memberLabel(member) : (candidate.payerDisplayName || 'ein anderes Mitglied')}`;
+
+        return element('li', {children: [element('label', {className: 'check-field', children: [
+            radio,
+            element('span', {children: [
+                element('strong', {text: `${candidate.memberNumber} ${candidate.firstName} ${candidate.lastName}`}),
+                element('span', {text: ` · ${FAMILY_ROLE_LABELS[candidate.familyRole] || candidate.familyRole} · ${ageLabel(candidate.birthDate)} · ${payment}`}),
+            ]}),
+        ]})]});
+    })});
+
+    const paymentSection = element('section', {className: 'member-match-person'});
+    const headSection = element('section', {className: 'member-match-person'});
+    const refresh = () => {
+        if (isPayer) {
+            const successorPaysHimself = successor.payerType === 'self_payer';
+            if (!successorPaysHimself) keepOwn = false;
+            const choice = (label, value) => {
+                const button = element('button', {className: 'member-match-choice', text: label, attributes: {type: 'button', 'aria-pressed': String(keepOwn === value)}});
+                button.addEventListener('click', () => {
+                    keepOwn = value;
+                    refresh();
+                });
+
+                return button;
+            };
+            const result = keepOwn ? successor : member;
+            paymentSection.replaceChildren(
+                element('h3', {text: `Zahlungsdaten von ${successor.firstName} ${successor.lastName} danach`}),
+                ...(successorPaysHimself ? [element('div', {className: 'member-match-choices', attributes: {role: 'group', 'aria-label': 'Zahlungsdaten'}, children: [
+                    choice(`Von ${member.firstName} ${member.lastName} übernehmen`, false),
+                    choice('Eigene beibehalten', true),
+                ]})] : []),
+                element('table', {className: 'data-table member-match-table', children: [
+                    element('thead', {children: [element('tr', {children: ['Feld', `Bisher ${member.firstName}`, `Bisher ${successor.firstName}`, 'Ergebnis'].map((label) => element('th', {text: label}))})]}),
+                    element('tbody', {children: PAYER_TRANSFER_FIELDS.map((field) => element('tr', {children: [
+                        element('th', {text: field[1], attributes: {scope: 'row'}}),
+                        element('td', {text: payerTransferValue(member, field)}),
+                        element('td', {text: successorPaysHimself ? payerTransferValue(successor, field) : '– (zahlt nicht selbst)'}),
+                        element('td', {className: 'member-match-result', text: payerTransferValue(result, field)}),
+                    ]}))}),
+                ]}),
+                element('p', {className: 'field-hint', text: keepOwn
+                    ? 'Die Lastschrift-Historie geht trotzdem mit über, damit eine doppelte Abbuchung im selben Beitragsjahr erkannt wird.'
+                    : 'Das SEPA-Mandat bleibt gültig, da es am Konto und Kontoinhaber hängt — der Kontoinhaber bleibt daher unverändert.'}),
+            );
+        }
+        if (isHead && others.length) {
+            headSection.replaceChildren(
+                element('h3', {text: 'Hauptmitglied'}),
+                deleting
+                    ? element('p', {text: `${successor.firstName} ${successor.lastName} wird neues Hauptmitglied; alle Familienmitglieder erhalten die Hauptnummer ${successor.memberNumber}.`})
+                    : element('label', {className: 'check-field', children: [
+                        transferHead,
+                        element('span', {text: `${successor.firstName} ${successor.lastName} wird auch Hauptmitglied (Hauptnummer der Familie wird ${successor.memberNumber})`}),
+                    ]}),
+            );
+        }
+    };
+    refresh();
+
+    const submit = element('button', {
+        className: deleting ? 'button danger-button' : 'button',
+        text: deleting ? 'Übertragen und löschen' : 'Zahler übertragen',
+        attributes: {type: 'button'},
+    });
+    submit.addEventListener('click', async () => {
+        const confirmed = await confirmAction(
+            deleting ? 'Mitglied löschen' : 'Zahler übertragen',
+            deleting
+                ? `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird endgültig gelöscht, ${successor.firstName} ${successor.lastName} übernimmt. Die Beiträge der Familie werden neu berechnet. Das kann nicht rückgängig gemacht werden.`
+                : `${successor.firstName} ${successor.lastName} übernimmt von ${member.firstName} ${member.lastName}. Die Beiträge der Familie werden neu berechnet.`,
+            deleting ? 'Löschen' : 'Übertragen',
+        );
+        if (!confirmed) return;
+        submit.disabled = true;
+        try {
+            if (deleting) {
+                if (!(await deleteMemberWithOptionalPin(member.id, {successorMemberId: successor.id, keepSuccessorPaymentDetails: keepOwn}))) {
+                    submit.disabled = false;
+                    return;
+                }
+                toast(`Das Mitglied wurde gelöscht, ${successor.firstName} ${successor.lastName} hat übernommen.`);
+            } else {
+                await request(`/api/admin/v1/members/${member.id}/payer-transfer`, {method: 'POST', body: JSON.stringify({
+                    successorMemberId: successor.id,
+                    keepSuccessorPaymentDetails: keepOwn,
+                    transferPrimaryMembership: isHead && transferHead.checked,
+                })});
+                toast(`${successor.firstName} ${successor.lastName} ist jetzt Zahler.`);
+            }
+            done = true;
+            dialog.close();
+        } catch (error) {
+            toast(error.message, 'error');
+            submit.disabled = false;
+        }
+    });
+
+    dialog.append(element('div', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: deleting ? 'Mitglied löschen' : 'Zahler übertragen'}),
+        element('h2', {text: deleting ? `${member.firstName} ${member.lastName} löschen — wer übernimmt?` : 'Wer übernimmt?'}),
+        ...intro,
+        element('section', {className: 'member-match-person', children: [element('h3', {text: 'Nachfolger aus der Familie'}), candidateList]}),
+        ...(isPayer ? [paymentSection] : []),
+        ...(isHead && others.length ? [headSection] : []),
+        element('p', {className: 'field-hint', text: 'Ausgetretene Familienmitglieder können nicht übernehmen. Danach werden die Beiträge der ganzen Familie neu berechnet.'}),
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]}));
+    document.body.append(dialog);
+    dialog.showModal();
+});
+
 const openMemberDialog = async (member, onSaved) => {
     // Die Haushaltsdaten sind serverseitig bereits auf die Hauptnummer dieses einen Mitglieds
     // beschränkt (`GetMemberHouseholdQuery`), laden also ohnehin nur die eigene Familie.
@@ -698,6 +904,7 @@ const openMemberDialog = async (member, onSaved) => {
     const dialog = element('dialog', {className: 'activity-dialog member-dialog'});
     const suffix = member?.id || 'new';
     const openOther = async (id) => {
+        if (!(await confirmLeave())) return;
         dialog.close();
         const other = await request(`/api/admin/v1/members/${id}`);
         await openMemberDialog(other, onSaved);
@@ -838,6 +1045,7 @@ const openMemberDialog = async (member, onSaved) => {
                 mandateReference.querySelector('input').value = updated.mandateReference || '';
                 mandateValidFrom.querySelector('input').value = updated.mandateValidFrom || '';
                 applyContributionLiableState();
+                savedState = {...savedState, mandateReference: updated.mandateReference || null, mandateValidFrom: updated.mandateValidFrom || null};
                 toast('Das SEPA-Mandat wurde erzeugt.');
             } catch (error) {
                 toast(error.message, 'error');
@@ -868,6 +1076,21 @@ const openMemberDialog = async (member, onSaved) => {
         : null;
     if (deleteButton) {
         deleteButton.addEventListener('click', async () => {
+            // Zahler bzw. Hauptmitglied: erst einen Nachfolger wählen, der übernimmt — Löschen
+            // und Übertragung erfolgen dann gemeinsam (siehe `openPayerTransferDialog`).
+            try {
+                household = await request(`/api/admin/v1/members/${member.id}/household`);
+            } catch (error) {
+                toast(error.message, 'error');
+                return;
+            }
+            if (payerTransferRequired(member, household)) {
+                if (await openPayerTransferDialog(member, household, 'delete')) {
+                    dialog.close();
+                    await onSaved();
+                }
+                return;
+            }
             const confirmed = await confirmAction(
                 'Mitglied löschen',
                 `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird endgültig gelöscht, inklusive Bemerkungen und Beitragshistorie. Das kann nicht rückgängig gemacht werden.`,
@@ -926,7 +1149,7 @@ const openMemberDialog = async (member, onSaved) => {
             // umgestellte Funktion), sonst würde die Berechnung mit dem zuletzt gespeicherten
             // Stand aus der Datenbank rechnen statt mit den noch ungespeicherten Änderungen.
             // `reportValidity()` entspricht derselben Pflichtfeld-Prüfung wie beim „Speichern“.
-            if (!form.reportValidity()) return;
+            if (!reportFormValidity()) return;
             recalculate.disabled = true;
             try {
                 member = await persistMember();
@@ -941,6 +1164,7 @@ const openMemberDialog = async (member, onSaved) => {
                 // Haken und davon abhängige gesperrte Felder im offenen Formular nachziehen.
                 contributionLiable.checked = member.contributionLiable !== false;
                 applyContributionLiableState();
+                markSaved();
                 toast('Die Änderungen wurden gespeichert und der Beitrag für die ganze Familie neu berechnet.');
                 await onSaved();
             } catch (error) {
@@ -956,27 +1180,39 @@ const openMemberDialog = async (member, onSaved) => {
         );
     }
 
-    const remarksList = member ? element('ul', {className: 'member-remarks', children: member.remarks.length
-        ? member.remarks.map((remark) => element('li', {children: [
+    const remarksContent = (currentMember) => currentMember.remarks.length
+        ? currentMember.remarks.map((remark) => element('li', {children: [
             element('strong', {text: new Date(remark.createdAt).toLocaleString('de-DE')}),
             remark.authorDisplayName ? element('span', {text: ` · ${remark.authorDisplayName}`}) : null,
             element('p', {text: remark.text}),
         ].filter(Boolean)}))
-        : [element('li', {className: 'empty-copy', text: 'Noch keine Bemerkungen.'})]}) : null;
+        : [element('li', {className: 'empty-copy', text: 'Noch keine Bemerkungen.'})];
+    const remarksList = member ? element('ul', {className: 'member-remarks', children: remarksContent(member)}) : null;
     const newRemark = member ? field('Neue Bemerkung', `member-remark-${suffix}`, '', 'textarea') : null;
+    const newRemarkInput = newRemark?.querySelector('textarea') ?? null;
     const addRemarkButton = member ? element('button', {className: 'secondary-button', text: 'Bemerkung hinzufügen', attributes: {type: 'button'}}) : null;
+    // Speichert die Bemerkung und erhöht dabei die Version des Mitglieds — die wird übernommen,
+    // damit ein späteres „Änderungen speichern“ nicht an der Versionsprüfung scheitert. Der Dialog
+    // bleibt offen, damit noch nicht gespeicherte Formularänderungen nicht verloren gehen.
+    const saveRemark = async () => {
+        const text = newRemarkInput?.value.trim() ?? '';
+        if (!text) return;
+        const updated = await request(`/api/admin/v1/members/${member.id}/remarks`, {method: 'POST', body: JSON.stringify({text})});
+        member = {...member, version: updated.version, remarks: updated.remarks};
+        remarksList.replaceChildren(...remarksContent(member));
+        newRemarkInput.value = '';
+    };
     if (addRemarkButton) {
         addRemarkButton.addEventListener('click', async () => {
-            const text = newRemark.querySelector('textarea').value.trim();
-            if (!text) return;
+            if (!newRemarkInput.value.trim()) return;
             addRemarkButton.disabled = true;
             try {
-                await request(`/api/admin/v1/members/${member.id}/remarks`, {method: 'POST', body: JSON.stringify({text})});
+                await saveRemark();
                 toast('Die Bemerkung wurde hinzugefügt.');
-                dialog.close();
                 await onSaved();
             } catch (error) {
                 toast(error.message, 'error');
+            } finally {
                 addRemarkButton.disabled = false;
             }
         });
@@ -1015,7 +1251,25 @@ const openMemberDialog = async (member, onSaved) => {
             member = {...member, version: fresh.version, nextBookingMonth: fresh.nextBookingMonth, nextBookingYear: fresh.nextBookingYear};
             nextBookingMonthSelect.value = fresh.nextBookingMonth == null ? '' : String(fresh.nextBookingMonth);
             nextBookingYearInput.value = fresh.nextBookingYear == null ? '' : String(fresh.nextBookingYear);
+            savedState = {...savedState, nextBookingMonth: fresh.nextBookingMonth ?? null, nextBookingYear: fresh.nextBookingYear ?? null};
         }));
+
+        return [button];
+    };
+    // „Zahler übertragen…“ ohne Löschen, z. B. wenn der Zahler ausgetreten ist und die Familie
+    // bleibt. Nur für Selbstzahler bzw. Hauptmitglieder mit weiteren Familienmitgliedern.
+    const payerTransferButton = (currentHousehold, currentMember) => {
+        const isHead = currentMember.memberNumber === currentMember.primaryMemberNumber;
+        const hasOthers = currentHousehold.householdMembers.some((other) => other.id !== currentMember.id);
+        if (!canEditModule('members') || !hasOthers || (currentMember.payerType !== 'self_payer' && !isHead)) return [];
+        const button = element('button', {className: 'secondary-button', text: 'Zahler übertragen…', attributes: {type: 'button'}});
+        button.addEventListener('click', async () => {
+            if (!(await confirmLeave())) return;
+            if (!(await openPayerTransferDialog(currentMember, currentHousehold, 'transfer'))) return;
+            dialog.close();
+            await onSaved();
+            await openMemberDialog(await request(`/api/admin/v1/members/${currentMember.id}`), onSaved);
+        });
 
         return [button];
     };
@@ -1024,7 +1278,10 @@ const openMemberDialog = async (member, onSaved) => {
             element('p', {className: 'field-hint', text: currentHousehold.payer.id === currentMember.id
                 ? 'Dieses Mitglied zahlt selbst, zusammen für:'
                 : `Der Beitrag wird gezahlt von ${currentHousehold.payer.firstName} ${currentHousehold.payer.lastName} (${currentHousehold.payer.memberNumber}), zusammen für:`}),
-            ...directDebitButton(currentMember),
+            element('div', {className: 'member-payer-actions', children: [
+                ...payerTransferButton(currentHousehold, currentMember),
+                ...directDebitButton(currentMember),
+            ]}),
         ]}),
         element('ul', {className: 'member-payer-list', children: sortedPayerEntries(currentHousehold).map((entry) => payerListItem(entry, currentMember.id, openOther))}),
         element('div', {className: 'member-payer-total', children: [
@@ -1153,15 +1410,16 @@ const openMemberDialog = async (member, onSaved) => {
     const updatePanels = () => {
         tabPanels.forEach(([key, panel]) => { panel.hidden = key !== activeTab; });
     };
+    const activateTab = (key) => {
+        activeTab = key;
+        updateTabStrip();
+        updatePanels();
+        if (key === 'arbeitseinsaetze') loadWorkAssignments();
+    };
     const updateTabStrip = () => {
         tabStrip.replaceChildren(...tabs.map(([key, label]) => {
             const button = element('button', {className: `sub-tab${key === activeTab ? ' active' : ''}`, text: label, attributes: {type: 'button'}});
-            button.addEventListener('click', () => {
-                activeTab = key;
-                updateTabStrip();
-                updatePanels();
-                if (key === 'arbeitseinsaetze') loadWorkAssignments();
-            });
+            button.addEventListener('click', () => activateTab(key));
 
             return button;
         }));
@@ -1184,8 +1442,15 @@ const openMemberDialog = async (member, onSaved) => {
     [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
         wrapper.querySelector('input').required = true;
     });
-    cancel.addEventListener('click', () => dialog.close());
-    close.addEventListener('click', () => dialog.close());
+    const closeWithConfirmation = async () => {
+        if (await confirmLeave()) dialog.close();
+    };
+    cancel.addEventListener('click', closeWithConfirmation);
+    close.addEventListener('click', closeWithConfirmation);
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeWithConfirmation();
+    });
     // In eine eigene Funktion ausgelagert, damit „Beitrag neu berechnen“ (siehe oben bei
     // `recalculate`) dieselben, gerade im Formular eingetragenen Werte speichern kann, statt
     // die zuletzt gespeicherten Daten aus der Datenbank neu zu berechnen — sonst müsste man vor
@@ -1227,6 +1492,64 @@ const openMemberDialog = async (member, onSaved) => {
             body: JSON.stringify({...buildPayload(), memberNumber: member.memberNumber, version: member.version}),
         })
         : request('/api/admin/v1/members', {method: 'POST', body: JSON.stringify(buildPayload())});
+
+    // Änderungserkennung: Vergleich der aktuellen Formularwerte mit dem zuletzt gespeicherten
+    // Stand (gleiche Form wie der Speicher-Payload). Eine eingetippte, noch nicht hinzugefügte
+    // Bemerkung zählt ebenfalls als Änderung.
+    let savedState = null;
+    const markSaved = () => { savedState = buildPayload(); };
+    const hasUnsavedChanges = () => JSON.stringify(buildPayload()) !== JSON.stringify(savedState)
+        || (newRemarkInput?.value.trim() ?? '') !== '';
+    // Pflichtfelder können auf einem gerade nicht sichtbaren Reiter liegen; deren Hinweis zeigt
+    // der Browser nur an, wenn der Reiter vorher aktiviert wird.
+    const reportFormValidity = () => {
+        const invalid = form.querySelector(':invalid:not(fieldset)');
+        if (!invalid) return true;
+        const panelKey = tabPanels.find(([, panel]) => panel.contains(invalid))?.[0];
+        if (panelKey && panelKey !== activeTab) activateTab(panelKey);
+
+        return form.reportValidity();
+    };
+    const saveBeforeLeaving = async () => {
+        if (!reportFormValidity()) return false;
+        try {
+            if (JSON.stringify(buildPayload()) !== JSON.stringify(savedState)) {
+                member = await persistMember();
+                markSaved();
+            }
+            if (member) await saveRemark();
+            toast('Das Mitglied wurde gespeichert.');
+            await onSaved();
+
+            return true;
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+
+            return false;
+        }
+    };
+    // Vor jedem Verlassen des Datensatzes (Schließen, Escape, Wechsel zu einem anderen Mitglied):
+    // bei ungespeicherten Änderungen Rückfrage Verwerfen / Weiter bearbeiten / Speichern.
+    const confirmLeave = async () => {
+        if (!hasUnsavedChanges()) return true;
+        const choice = await confirmUnsavedChanges(
+            'Änderungen speichern?',
+            `Die Änderungen an ${member ? `„${member.firstName} ${member.lastName}“ (${member.memberNumber})` : 'dem neuen Mitglied'} wurden noch nicht gespeichert.`,
+        );
+        if (choice === 'discard') return true;
+        if (choice === 'save') return saveBeforeLeaving();
+
+        return false;
+    };
+    // Neuladen oder Schließen des Browser-Tabs lässt sich nur mit der browsereigenen Rückfrage
+    // abfangen, ein eigenes Overlay ist dort nicht möglich.
+    const warnBeforeUnload = (event) => {
+        if (!hasUnsavedChanges()) return;
+        event.preventDefault();
+        event.returnValue = '';
+    };
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         submit.disabled = true;
@@ -1237,6 +1560,7 @@ const openMemberDialog = async (member, onSaved) => {
             if (wasNew) {
                 // Ein neu angelegtes Mitglied direkt als bearbeitbaren Datensatz weiter anzeigen
                 // (mit Familie, Beitrag usw.) — dafür wird der Dialog einmal neu aufgebaut.
+                markSaved();
                 toast('Das Mitglied wurde angelegt.');
                 dialog.close();
                 await onSaved();
@@ -1252,6 +1576,7 @@ const openMemberDialog = async (member, onSaved) => {
             contributionLiable.checked = member.contributionLiable !== false;
             applyContributionLiableState();
             familyRole.querySelector('select').value = member.familyRole;
+            markSaved();
             toast('Das Mitglied wurde gespeichert.');
             await onSaved();
         } catch (error) {
@@ -1261,8 +1586,16 @@ const openMemberDialog = async (member, onSaved) => {
             submit.disabled = false;
         }
     });
-    dialog.addEventListener('close', () => dialog.remove());
+    dialog.addEventListener('close', () => {
+        window.removeEventListener('beforeunload', warnBeforeUnload);
+        dialog.remove();
+    });
     dialog.append(close, form);
+    // Erst nach dem Einhängen ins Dialog-Element vergleichbar (`buildPayload()` liest „Zahlung am“
+    // über `dialog.querySelector`); die Vorbelegung aus `applyContributionLiableState()` ist
+    // dann bereits Teil des gespeicherten Stands.
+    markSaved();
+    window.addEventListener('beforeunload', warnBeforeUnload);
     document.body.append(dialog);
     dialog.showModal();
 };

@@ -252,6 +252,40 @@ const confirmAction = (title, description, confirmLabel = 'Entfernen', extra = [
     dialog.showModal();
     cancel.focus();
 });
+// Rückfrage beim Verlassen eines geänderten Datensatzes: liefert 'save', 'discard' oder 'cancel'
+// (Weiter bearbeiten — auch bei Escape). Speichern selbst übernimmt der Aufrufer.
+const confirmUnsavedChanges = (title, description) => new Promise((resolve) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const discard = element('button', {className: 'secondary-button danger-button', text: 'Verwerfen', attributes: {type: 'button'}});
+    const cancel = element('button', {className: 'secondary-button', text: 'Weiter bearbeiten', attributes: {type: 'button'}});
+    const save = element('button', {className: 'button', text: 'Speichern', attributes: {type: 'button'}});
+    let answered = false;
+    const finish = (result) => {
+        answered = true;
+        resolve(result);
+        dialog.close();
+    };
+    discard.addEventListener('click', () => finish('discard'));
+    cancel.addEventListener('click', () => finish('cancel'));
+    save.addEventListener('click', () => finish('save'));
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        finish('cancel');
+    });
+    dialog.addEventListener('close', () => {
+        if (!answered) resolve('cancel');
+        dialog.remove();
+    });
+    dialog.append(element('div', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Ungespeicherte Änderungen'}),
+        element('h2', {text: title}),
+        element('p', {text: description}),
+        element('div', {className: 'confirm-dialog-actions', children: [discard, cancel, save]}),
+    ]}));
+    document.body.append(dialog);
+    dialog.showModal();
+    save.focus();
+});
 const formMessage = () => element('p', {className: 'form-message', attributes: {'aria-live': 'polite'}});
 const renderError = (message) => {
     app.replaceChildren(element('main', {
@@ -311,6 +345,7 @@ export {
     element,
     toast,
     confirmAction,
+    confirmUnsavedChanges,
     formMessage,
     renderError,
     formatDateDE,

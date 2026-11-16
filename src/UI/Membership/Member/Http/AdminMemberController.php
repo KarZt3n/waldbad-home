@@ -16,6 +16,7 @@ use App\Logic\Membership\Member\UseCase\DeleteMemberUseCase;
 use App\Logic\Membership\Member\UseCase\ImportMembersUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateAllMemberContributionsUseCase;
 use App\Logic\Membership\Member\UseCase\RecalculateMemberContributionUseCase;
+use App\Logic\Membership\Member\UseCase\TransferMemberPayerUseCase;
 use App\Logic\Membership\Member\UseCase\UpdateMemberUseCase;
 use App\Logic\Settings\Pin\Exception\PinRequiredException;
 use App\Logic\Settings\Pin\Model\ProtectedAction;
@@ -251,9 +252,23 @@ class AdminMemberController extends AbstractController
         // dieser Aufruf ein No-op.
         $submittedPin = $request->getPayload()->getString('pin', '');
         $verifyPin->execute(ProtectedAction::MembersDelete, $submittedPin === '' ? null : $submittedPin);
-        $useCase->execute($id);
+        $successor = $this->requestMapper->deleteSuccessor($request);
+        $useCase->execute($id, $successor['successorMemberId'], $successor['keepSuccessorPaymentDetails']);
 
         return new Response(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Überträgt Zahler-Rolle (Bankverbindung, SEPA-Mandat, Lastschrift-Historie) und auf Wunsch die
+     * Hauptnummer auf ein anderes Mitglied derselben Familie, ohne das Mitglied zu löschen (siehe
+     * `TransferMemberPayerUseCase`).
+     */
+    #[Route('/{id}/payer-transfer', name: 'api_admin_member_transfer_payer', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function transferPayer(string $id, Request $request, TransferMemberPayerUseCase $useCase): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
+
+        return new JsonResponse($this->responseFactory->member($useCase->execute($this->requestMapper->transferPayer($id, $request))));
     }
 
     #[Route('/{id}/remarks', name: 'api_admin_member_add_remark', methods: ['POST'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]

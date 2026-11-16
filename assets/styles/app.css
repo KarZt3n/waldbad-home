@@ -2056,6 +2056,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 /* Hinweis „Der Beitrag wird gezahlt von …“ links, Button „SEPA-Lastschrift…“ ganz rechts. */
 .member-payer-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
 .member-payer-heading .field-hint { margin-top: 0; }
+.member-payer-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 
 /* Vorschau der SEPA-Lastschrift (siehe `openDirectDebitDialog`). */
 .direct-debit-dialog { width: min(52rem, calc(100vw - 2rem)); }

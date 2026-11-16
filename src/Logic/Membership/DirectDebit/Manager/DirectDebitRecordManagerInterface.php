@@ -13,4 +13,7 @@ interface DirectDebitRecordManagerInterface
     public function findAll(): array;
 
     public function save(DirectDebitRecord $record): DirectDebitRecord;
+
+    /** Schreibt die Historie eines Zahlers auf ein anderes Mitglied um (Zahler-Übertragung, siehe `PayerTransfer`). */
+    public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void;
 }

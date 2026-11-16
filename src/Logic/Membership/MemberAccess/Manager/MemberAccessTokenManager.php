@@ -23,4 +23,9 @@ readonly class MemberAccessTokenManager implements MemberAccessTokenManagerInter
     {
         return $this->processor->save($token);
     }
+
+    public function reassignHousehold(string $fromPrimaryMemberNumber, string $toPrimaryMemberNumber): void
+    {
+        $this->processor->reassignHousehold($fromPrimaryMemberNumber, $toPrimaryMemberNumber);
+    }
 }
