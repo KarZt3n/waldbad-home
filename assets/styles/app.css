@@ -893,6 +893,8 @@ a { color: var(--forest-700); }
 /* Ein Löschen-Button steht immer als erstes Kind in dieser Reihe (Mitglied/Beitragssatz) und wird
    ganz nach links geschoben, während Abbrechen/Speichern rechts zusammenbleiben. */
 .confirm-dialog-actions > .danger-button:first-child { margin-right: auto; }
+/* Mehrere Löschen-Buttons (Familie/Mitglied) stehen gemeinsam links. */
+.confirm-dialog-danger-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-right: auto; }
 .danger-button { border-color: var(--danger); color: var(--white); background: var(--danger); }
 .danger-button:hover { color: var(--white); border-color: var(--danger); background: var(--danger); }
 

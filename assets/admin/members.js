@@ -1148,8 +1148,8 @@ const openMemberDialog = async (member, onSaved) => {
         });
     }
 
-    // Nur sinnvoll, wenn außer diesem Mitglied noch jemand zur Familie gehört; sonst reicht „Mitglied löschen“.
-    const deleteHouseholdButton = member && canEditModule('members') && household.householdMembers.length > 1
+    // Nur beim Zahler und nur, wenn außer ihm noch jemand zur Familie gehört; sonst reicht „Mitglied löschen“.
+    const deleteHouseholdButton = member && canEditModule('members') && member.payerType === 'self_payer' && household.householdMembers.length > 1
         ? element('button', {className: 'secondary-button danger-button', text: 'Familie löschen', attributes: {type: 'button'}})
         : null;
     if (deleteHouseholdButton) {
@@ -1514,7 +1514,11 @@ const openMemberDialog = async (member, onSaved) => {
         element('div', {className: 'member-dialog-body', children: [
             ...tabPanels.map(([, panel]) => panel),
             message,
-            element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), ...(deleteHouseholdButton ? [deleteHouseholdButton] : []), cancel, submit]}),
+            element('div', {className: 'confirm-dialog-actions', children: [
+                ...(deleteButton ? [element('div', {className: 'confirm-dialog-danger-actions', children: [...(deleteHouseholdButton ? [deleteHouseholdButton] : []), deleteButton]})] : []),
+                cancel,
+                submit,
+            ]}),
         ]}),
     ]});
     [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
