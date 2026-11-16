@@ -961,6 +961,21 @@ const openMemberDialog = async (member, onSaved) => {
 
     const joinedAt = field('Eintrittsdatum', `member-joined-at-${suffix}`, member?.joinedAt || new Date().toISOString().slice(0, 10), 'date');
     const leftAt = field('Austrittsdatum (optional)', `member-left-at-${suffix}`, member?.leftAt || '', 'date');
+    // Kündigungen gelten üblicherweise zum Jahresende — ein Klick setzt den 31.12. des laufenden Jahres.
+    const leftAtInput = leftAt.querySelector('input');
+    const leftAtYearEnd = element('button', {
+        className: 'secondary-button member-left-at-year-end',
+        text: 'Austritt',
+        attributes: {type: 'button', title: 'Austritt zum Jahresende eintragen'},
+    });
+    leftAtYearEnd.addEventListener('click', () => {
+        leftAtInput.value = `${new Date().getFullYear()}-12-31`;
+        leftAtInput.dispatchEvent(new Event('input', {bubbles: true}));
+        leftAtInput.dispatchEvent(new Event('change', {bubbles: true}));
+    });
+    const leftAtControl = element('span', {className: 'member-left-at-control'});
+    leftAtInput.before(leftAtControl);
+    leftAtControl.append(leftAtInput, leftAtYearEnd);
     const memberFunction = selectField('Funktion', `member-function-${suffix}`, Object.entries(MEMBER_FUNCTION_LABELS), member?.function || 'member');
 
     const accountHolder = field('Kontoinhaber', `member-account-holder-${suffix}`, member?.accountHolder || '');
@@ -1472,6 +1487,8 @@ const openMemberDialog = async (member, onSaved) => {
         activeTab = key;
         updateTabStrip();
         updatePanels();
+        const body = dialog.querySelector('.member-dialog-body');
+        if (body) body.scrollTop = 0;
         if (key === 'arbeitseinsaetze') loadWorkAssignments();
     };
     const updateTabStrip = () => {
@@ -1494,8 +1511,7 @@ const openMemberDialog = async (member, onSaved) => {
             ]}),
         ]}),
         tabStrip,
-        ...tabPanels.map(([, panel]) => panel),
-        message,
+        element('div', {className: 'member-dialog-body', children: [...tabPanels.map(([, panel]) => panel), message]}),
         element('div', {className: 'confirm-dialog-actions', children: [...(deleteButton ? [deleteButton] : []), ...(deleteHouseholdButton ? [deleteHouseholdButton] : []), cancel, submit]}),
     ]});
     [lastName, firstName, street, postalCode, city].forEach((wrapper) => {
