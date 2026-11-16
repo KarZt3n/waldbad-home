@@ -6,10 +6,12 @@
 #
 # Je Tag ein Ordner ~/waldbad-home/backups/nightly/JJJJ-MM-TT mit
 #   database.sql.gz  – komplette Datenbank (alle Tabellen)
+#   mitglieder/      – Mitglieder-Export (mitglieder-json.zip, mitglieder-csv.zip); jede Datei lässt sich
+#                      im Admin über „Mitglieder importieren“ 1:1 wiederherstellen
 #   uploads/         – alle Uploads (Mediathek, Fotos); unveränderte Dateien sind Hardlinks auf den
 #                      Vortag und belegen keinen zusätzlichen Platz
 #   config/          – .env.local und ggf. der Schlüssel zum Entschlüsseln der Symfony-Secrets
-#   SHA256SUMS       – Prüfsummen von Datenbank und Konfiguration
+#   SHA256SUMS       – Prüfsummen von Datenbank, Mitglieder-Export und Konfiguration
 # Sicherungen älter als BACKUP_RETENTION_DAYS (Standard 90) werden gelöscht.
 
 set -euo pipefail
@@ -56,13 +58,16 @@ trap cleanup EXIT
 previous_dir="$(find "$nightly_dir" -mindepth 1 -maxdepth 1 -type d -name '????-??-??' ! -name "$today" -print | sort | tail -n 1)"
 
 rm -rf -- "$work_dir"
-install -d -m 0700 "$work_dir" "$work_dir/config"
+install -d -m 0700 "$work_dir" "$work_dir/config" "$work_dir/mitglieder"
 
 printf 'Sichere Datenbank …\n'
 database_name="$(cd "$current_dir" && "$php" deploy/prod/mysql-options.php "$mysql_options")"
 mysqldump --defaults-extra-file="$mysql_options" --single-transaction --quick --no-tablespaces --routines \
     "$database_name" | gzip -9 > "$work_dir/database.sql.gz"
 gzip -t "$work_dir/database.sql.gz"
+
+printf 'Sichere Mitglieder-Export …\n'
+(cd "$current_dir" && APP_ENV="${APP_ENV:-prod}" APP_DEBUG=0 "$php" bin/console app:membership:export-members "$work_dir/mitglieder" --no-interaction)
 
 printf 'Sichere Konfiguration …\n'
 cp -p "$shared_dir/.env.local" "$work_dir/config/.env.local"
@@ -77,7 +82,7 @@ if [ -n "$previous_dir" ] && [ -d "$previous_dir/uploads" ]; then
 fi
 rsync -a --delete ${link_dest[@]+"${link_dest[@]}"} "$uploads_dir/" "$work_dir/uploads/"
 
-(cd "$work_dir" && find database.sql.gz config -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+(cd "$work_dir" && find database.sql.gz mitglieder config -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 
 # Erst wenn alles vollständig ist, wird der Ordner unter seinem Datum sichtbar; eine erneute
 # Sicherung desselben Tages ersetzt die vorherige.

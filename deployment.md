@@ -287,9 +287,10 @@ Je Tag entsteht `~/waldbad-home/backups/nightly/JJJJ-MM-TT/` mit
 | Inhalt | |
 |---|---|
 | `database.sql.gz` | komplette Datenbank (alle Tabellen inkl. Historien) |
+| `mitglieder/` | Mitglieder-Export `mitglieder-json.zip` und `mitglieder-csv.zip` (inkl. gelöschter Mitglieder); jede Datei lässt sich im Admin über „Mitglieder importieren“ 1:1 wiederherstellen — ohne Datenbankzugriff |
 | `uploads/` | alle Uploads; unveränderte Dateien sind Hardlinks auf den Vortag und belegen keinen zusätzlichen Platz |
 | `config/` | `.env.local` und ggf. `prod.decrypt.private.php` |
-| `SHA256SUMS` | Prüfsummen von Datenbank und Konfiguration |
+| `SHA256SUMS` | Prüfsummen von Datenbank, Mitglieder-Export und Konfiguration |
 
 Sicherungen älter als 90 Tage werden beim nächsten Lauf gelöscht. Ein Ordner erscheint erst unter
 seinem Datum, wenn die Sicherung vollständig ist. Voraussetzung: Das aktive Release enthält
