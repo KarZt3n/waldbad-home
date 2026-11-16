@@ -266,9 +266,21 @@ Datenbankmigrationen müssen vor einem Rollback auf Abwärtskompatibilität gepr
 
 Der Workflow `.github/workflows/backup-prod.yaml` startet jede Nacht um 01:30 UTC (02:30 MEZ /
 03:30 MESZ) per SSH `deploy/prod-backup-remote.sh` auf dem Telekom-Webspace — der Webspace hat kein
-crontab. Er nutzt dieselben Secrets und Variablen wie das Prod-Deployment (Environment `production`)
-und läuft nie gleichzeitig mit einem Deployment. Schlägt er fehl, verschickt GitHub die übliche
-Fehler-Mail. Von Hand: `Actions` → `Prod backup` → `Run workflow`.
+crontab. Geplante Workflows laufen bei GitHub immer auf `main`; das Skript wird deshalb aus dem aktiven
+Release (`~/waldbad-home/current/deploy/`) ausgeführt, also in der Version des zuletzt deployten Tags. Er läuft nie gleichzeitig mit einem
+Deployment. Schlägt er fehl, verschickt GitHub die übliche Fehler-Mail. Von Hand: `Actions` →
+`Prod backup` → `Run workflow` (Branch `main`).
+
+Das Environment `production` ist dem Deploy von Tags vorbehalten. Die Sicherung nutzt deshalb ein
+eigenes Environment `production-backup` (`Settings` → `Environments`; „Deployment branches and tags“:
+nur `main`) mit den Variablen `PROD_SSH_HOST`, `PROD_SSH_USER` und den Secrets `PROD_SSH_PRIVATE_KEY`,
+`PROD_SSH_KNOWN_HOSTS` — am besten mit einem eigenen Schlüsselpaar nur für die Sicherung. Unterstützt
+der Webspace erzwungene Befehle, beschränkt dieser Eintrag in `~/.ssh/authorized_keys` den Schlüssel
+auf die Sicherung:
+
+```
+command="bash ~/waldbad-home/current/deploy/prod-backup-remote.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA… waldbad-backup
+```
 
 Je Tag entsteht `~/waldbad-home/backups/nightly/JJJJ-MM-TT/` mit
 
@@ -294,7 +306,7 @@ Wiederherstellen (vorher wird der aktuelle Datenbankstand unter `backups/databas
 gesichert; `database` und/oder `uploads`; die Konfiguration wird bei Bedarf von Hand aus `config/` kopiert):
 
 ```bash
-ssh "$PROD_SSH_USER@hosting.telekom.de" 'RESTORE_CONFIRM=ja bash -s' -- 2026-11-16 database uploads < deploy/prod-restore-remote.sh
+ssh "$PROD_SSH_USER@hosting.telekom.de" 'RESTORE_CONFIRM=ja bash ~/waldbad-home/current/deploy/prod-restore-remote.sh 2026-11-16 database uploads'
 ```
 
 Die Sicherungen liegen vorerst nur auf dem Webspace selbst. Gegen einen Ausfall oder Verlust des

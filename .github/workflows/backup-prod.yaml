@@ -21,21 +21,20 @@ jobs:
     name: Backup waldbad-home prod
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    environment: production
+    # Eigenes Environment, das nur `main` nutzen darf: geplante Läufe starten immer auf `main`, und das
+    # Environment „production“ ist dem Deploy von Tags vorbehalten.
+    environment: production-backup
     env:
       PROD_SSH_HOST: ${{ vars.PROD_SSH_HOST }}
       PROD_SSH_USER: ${{ vars.PROD_SSH_USER }}
     steps:
-      - name: Repository auschecken
-        uses: actions/checkout@v4
-
       - name: SSH einrichten
         env:
           PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         run: |
           if [ -z "$PROD_SSH_HOST" ] || [ -z "$PROD_SSH_USER" ]; then
-            echo '::error::Variablen PROD_SSH_HOST und PROD_SSH_USER fehlen im Environment „production“.'
+            echo '::error::Variablen PROD_SSH_HOST und PROD_SSH_USER fehlen im Environment „production-backup“.'
             exit 1
           fi
           install -d -m 0700 ~/.ssh
@@ -53,5 +52,13 @@ jobs:
               ServerAliveCountMax 10
           EOF
 
+      # Geplante Läufe starten immer auf main. Das Skript kommt deshalb nicht aus dem Checkout, sondern aus
+      # dem aktiven Release auf dem Server — so läuft immer die Version des zuletzt deployten Tags.
       - name: Sicherung erstellen
-        run: ssh prod 'BACKUP_RETENTION_DAYS=90 bash -s' < deploy/prod-backup-remote.sh
+        run: |
+          ssh prod 'script="$HOME/waldbad-home/current/deploy/prod-backup-remote.sh"
+            if [ ! -f "$script" ]; then
+              echo "Das aktive Release enthält $script nicht – bitte zuerst einen aktuellen Tag deployen." >&2
+              exit 1
+            fi
+            BACKUP_RETENTION_DAYS=90 bash "$script"'

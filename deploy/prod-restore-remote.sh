@@ -1,9 +1,10 @@
 #!/bin/bash
 # Stellt eine nächtliche Sicherung (siehe deploy/prod-backup-remote.sh) auf dem Telekom-Webspace wieder her.
+# Wird aus dem aktiven Release aufgerufen, damit Skript und Code-Stand zusammenpassen:
 #
-#   ssh prod 'RESTORE_CONFIRM=ja bash -s' -- 2026-11-16 database          < deploy/prod-restore-remote.sh
-#   ssh prod 'RESTORE_CONFIRM=ja bash -s' -- 2026-11-16 uploads           < deploy/prod-restore-remote.sh
-#   ssh prod 'RESTORE_CONFIRM=ja bash -s' -- 2026-11-16 database uploads  < deploy/prod-restore-remote.sh
+#   ssh prod 'RESTORE_CONFIRM=ja bash ~/waldbad-home/current/deploy/prod-restore-remote.sh 2026-11-16 database'
+#   ssh prod 'RESTORE_CONFIRM=ja bash ~/waldbad-home/current/deploy/prod-restore-remote.sh 2026-11-16 uploads'
+#   ssh prod 'RESTORE_CONFIRM=ja bash ~/waldbad-home/current/deploy/prod-restore-remote.sh 2026-11-16 database uploads'
 #
 # Vor dem Einspielen der Datenbank wird der aktuelle Stand unter backups/database/vor-restore-*.sql.gz
 # gesichert. Die Konfiguration (config/) wird bewusst nicht automatisch zurückgespielt.

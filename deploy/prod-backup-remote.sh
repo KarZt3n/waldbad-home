@@ -1,7 +1,8 @@
 #!/bin/bash
 # Nächtliche Komplettsicherung auf dem Telekom-Webspace. Läuft per GitHub Actions
-# (`.github/workflows/backup-prod.yaml`: `ssh prod 'bash -s' < deploy/prod-backup-remote.sh`), da der
-# Webspace kein crontab hat. Kann auch von Hand so gestartet werden.
+# (`.github/workflows/backup-prod.yaml`), da der Webspace kein crontab hat, und zwar aus dem aktiven
+# Release (`~/waldbad-home/current/deploy/prod-backup-remote.sh`), damit immer die Version des deployten
+# Tags läuft. Von Hand: ssh prod 'bash ~/waldbad-home/current/deploy/prod-backup-remote.sh'
 #
 # Je Tag ein Ordner ~/waldbad-home/backups/nightly/JJJJ-MM-TT mit
 #   database.sql.gz  – komplette Datenbank (alle Tabellen)
