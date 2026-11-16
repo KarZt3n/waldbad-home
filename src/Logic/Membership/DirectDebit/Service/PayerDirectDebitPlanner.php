@@ -210,10 +210,10 @@ readonly class PayerDirectDebitPlanner
                 break;
             }
         }
-        $remittancePrefix = match ($kind) {
-            DirectDebitPositionKind::Contribution => null,
-            DirectDebitPositionKind::WorkAssignmentSurcharge => sprintf('Arbeitseinsatz-Pauschale %d', $contributionYear),
-            DirectDebitPositionKind::OneTimeCharge => 'Einmalgebuehr',
+        $remittanceSuffix = match ($kind) {
+            DirectDebitPositionKind::Contribution => 'Mitgliedsbeitrag',
+            DirectDebitPositionKind::WorkAssignmentSurcharge => 'Arbeitseinsatz',
+            DirectDebitPositionKind::OneTimeCharge => 'Einmalgebühren',
         };
 
         return new PayerDirectDebitDraft(
@@ -225,9 +225,9 @@ readonly class PayerDirectDebitPlanner
             blockers: $this->blockers($payer, $creditor->isComplete(), $now, $withoutPayer),
             warnings: $warnings,
             defaultCollectionDate: $collectionDate,
-            // Ggf. Art der Lastschrift, dann Mandatsreferenz, Gläubiger-ID und Zahlungsempfänger.
+            // Mandatsreferenz, Gläubiger-ID, Zahlungsempfänger und Art der Lastschrift.
             defaultRemittanceInformation: implode(' ', array_filter(
-                [$remittancePrefix, $payer->mandateReference, $creditor->creditorId, $creditor->name],
+                [$payer->mandateReference, $creditor->creditorId, $creditor->name, $remittanceSuffix],
                 static fn (?string $part): bool => $part !== null && trim($part) !== '',
             )),
             defaultSequenceType: !$mandateUsed && (int) $mandateSignedOn->format('Y') >= $year ? SequenceType::First : SequenceType::Recurring,

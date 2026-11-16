@@ -61,13 +61,13 @@ final class PayerDirectDebitPlannerTest extends TestCase
             ],
             $positions($draft),
         );
-        self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $draft->defaultRemittanceInformation);
+        self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V. Mitgliedsbeitrag', $draft->defaultRemittanceInformation);
         // Nächste Buchung 03/2027, Zahltag 01. — der 01.03.2027 ist ein Montag.
         self::assertSame('2027-03-01', $draft->defaultCollectionDate->format('Y-m-d'));
 
         $surcharge = $planner->plan('child', $now, DirectDebitPositionKind::WorkAssignmentSurcharge);
         self::assertSame([['payer:work_assignment_surcharge', 'Arbeitseinsatz-Pauschale', 1500, true]], $positions($surcharge));
-        self::assertSame('Arbeitseinsatz-Pauschale 2026 MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V.', $surcharge->defaultRemittanceInformation);
+        self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V. Arbeitseinsatz', $surcharge->defaultRemittanceInformation);
 
         // Noch nicht eingezogene Einmalgebühren sind alle vorausgewählt, unabhängig vom Jahr.
         $charges = $planner->plan('child', $now, DirectDebitPositionKind::OneTimeCharge);
@@ -79,6 +79,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
             $positions($charges),
         );
         self::assertSame('charge-new', $charges->positions[0]->chargeId);
+        self::assertSame('MANDAT-1 DE98ZZZ09999999999 Waldbad Borkheide e.V. Einmalgebühren', $charges->defaultRemittanceInformation);
     }
 
     public function testWorkAssignmentSurchargeIsCollectedOnceAYearInFullAtTheNextPaymentDay(): void
