@@ -11,7 +11,7 @@ use App\Logic\Membership\ContributionRate\Model\PersonGroup;
 use App\Logic\Membership\Dashboard\Dto\ContributionRateCount;
 use App\Logic\Membership\Dashboard\Query\GetMembershipDashboardQuery;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
-use App\Logic\Membership\Member\Model\{FamilyRole, Member, MemberFunction, PayerType, PaymentDay, PaymentMethod, Salutation};
+use App\Logic\Membership\Member\Model\{ContributionCharge, FamilyRole, Member, MemberFunction, PayerType, PaymentDay, PaymentMethod, Salutation};
 use App\Logic\Membership\PaymentInterval;
 use PHPUnit\Framework\TestCase;
 
@@ -41,6 +41,8 @@ final class GetMembershipDashboardQueryTest extends TestCase
         self::assertSame(5, $result->totalMembers);
         self::assertSame(1, $result->leavingAtYearEnd);
         self::assertSame(1, $result->leftLastYearEnd);
+        // Ausgetreten zum 30.06.2026, 31.12.2025 und 31.12.2024; der Austritt zum 31.12.2026 steht noch bevor.
+        self::assertSame(3, $result->inactive);
     }
 
     /**
@@ -110,6 +112,36 @@ final class GetMembershipDashboardQueryTest extends TestCase
         );
     }
 
+    /**
+     * Mitgliedsbeiträge und Arbeitseinsatz getrennt (zusammen der bisherige Gesamtbetrag),
+     * Einmalgebühren nur die im laufenden Jahr berechneten.
+     */
+    public function testSumsContributionsWorkAssignmentAndThisYearsOneTimeCharges(): void
+    {
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('search')->willReturn([
+            $this->member('a', null, contributionCategory: ContributionCategory::FamilyAdult, workAssignmentSurchargeCents: 1500, oneTimeCharges: [
+                new ContributionCharge('c1', 'Beitrittsgebühr', 2500, new \DateTimeImmutable('2026-03-01')),
+                new ContributionCharge('c2', 'Beitrittsgebühr', 9900, new \DateTimeImmutable('2025-03-01')),
+            ]),
+            $this->member('b', null, contributionCategory: ContributionCategory::FamilyChildPaying),
+        ]);
+        $applications = $this->createStub(MembershipApplicationManagerInterface::class);
+        $applications->method('list')->willReturn([]);
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-09-09'));
+
+        $result = (new GetMembershipDashboardQuery($members, $applications, $this->createStub(ContributionRateManagerInterface::class), $clock))->execute();
+
+        self::assertSame(6000, $result->membershipContributionCents);
+        self::assertSame(1500, $result->workAssignmentSurchargeCents);
+        self::assertSame(7500, $result->totalContributionCents);
+        self::assertSame(2500, $result->oneTimeChargeCents);
+    }
+
+    /**
+     * @param list<ContributionCharge> $oneTimeCharges
+     */
     private function member(
         string $id,
         ?\DateTimeImmutable $leftAt,
@@ -120,6 +152,7 @@ final class GetMembershipDashboardQueryTest extends TestCase
         bool $contributionLiable = true,
         FamilyRole $familyRole = FamilyRole::None,
         ?string $payerMemberId = null,
+        array $oneTimeCharges = [],
     ): Member {
         return new Member(
             id: $id,
@@ -153,7 +186,7 @@ final class GetMembershipDashboardQueryTest extends TestCase
             contributionAmountCents: $contributionCategory === null ? null : 3000,
             workAssignmentSurchargeCents: $workAssignmentSurchargeCents,
             remarks: [],
-            oneTimeCharges: [],
+            oneTimeCharges: $oneTimeCharges,
             version: 1,
             contributionLiable: $contributionLiable,
         );

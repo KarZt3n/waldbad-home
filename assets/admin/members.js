@@ -377,7 +377,15 @@ const showMembershipDashboard = async () => {
             tile('Offene Mitgliedsanträge', stats.pendingApplications),
             tile('Austritte zum Jahresende', stats.leavingAtYearEnd),
             tile('Austritte aus Vorjahr', stats.leftLastYearEnd),
+            tile('Inaktive', stats.inactive),
             tile('Beiträge gesamt pro Jahr', formatEuro(stats.totalContributionCents)),
+        ]}),
+        section('Beiträge'),
+        note(`Mitgliedsbeiträge und Arbeitseinsatz: berechnete Jahresbeträge aller Mitglieder. Einmalgebühren: im Jahr ${contributionYear} berechnete Gebühren (z. B. Beitrittsgebühren).`),
+        element('div', {className: 'stat-tile-grid', children: [
+            tile('Mitgliedsbeiträge pro Jahr', formatEuro(stats.membershipContributionCents)),
+            tile('Arbeitseinsatz pro Jahr', formatEuro(stats.workAssignmentSurchargeCents)),
+            tile(`Einmalgebühren ${contributionYear}`, formatEuro(stats.oneTimeChargeCents)),
         ]}),
         section('Mitgliedschaften'),
         element('div', {className: 'stat-tile-grid', children: [

@@ -879,10 +879,15 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame(0, $dashboard['pendingApplications']);
         self::assertSame(1, $dashboard['leavingAtYearEnd']);
         self::assertSame(1, $dashboard['leftLastYearEnd']);
+        self::assertSame(1, $dashboard['inactive']);
         // Je beitragspflichtigem Mitglied: 5000 Beitrag (individual_senior) + 1500
         // Arbeitseinsatz-Zuschlag — das bereits letztes Jahr ausgetretene Mitglied ist laut
         // MemberContributionCalculator (hasLeft()) beitragsfrei und zählt hier mit 0 €.
         self::assertSame(19500, $dashboard['totalContributionCents']);
+        self::assertSame(15000, $dashboard['membershipContributionCents']);
+        self::assertSame(4500, $dashboard['workAssignmentSurchargeCents']);
+        // Beim Anlegen berechnete Beitrittsgebühren (siehe `MemberOnboardingOrchestrator`), alle im laufenden Jahr.
+        self::assertSame(4000, $dashboard['oneTimeChargeCents']);
 
         // Mitgliedschaften und Beitragssätze zählen nur die drei noch aktiven Mitglieder — jedes
         // mit eigener Hauptnummer, also drei Einzelmitgliedschaften.

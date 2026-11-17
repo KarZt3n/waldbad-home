@@ -37,13 +37,25 @@ readonly class GetMembershipDashboardQuery
             static fn (MembershipApplication $application): bool => $application->releasedAt === null && $application->rejectedAt === null,
         );
 
-        $totalContributionCents = (int) array_sum(array_map(
-            static fn (Member $member): int => ($member->contributionAmountCents ?? 0) + ($member->workAssignmentSurchargeCents ?? 0),
+        $membershipContributionCents = (int) array_sum(array_map(
+            static fn (Member $member): int => $member->contributionAmountCents ?? 0,
+            $members,
+        ));
+        $workAssignmentSurchargeCents = (int) array_sum(array_map(
+            static fn (Member $member): int => $member->workAssignmentSurchargeCents ?? 0,
             $members,
         ));
 
         $now = $this->clock->now();
         $currentYear = (int) $now->format('Y');
+        $oneTimeChargeCents = 0;
+        foreach ($members as $member) {
+            foreach ($member->oneTimeCharges as $charge) {
+                if ((int) $charge->chargedAt->format('Y') === $currentYear) {
+                    $oneTimeChargeCents += $charge->amountCents;
+                }
+            }
+        }
         $activeMembers = array_values(array_filter(
             $members,
             static fn (Member $member): bool => $member->isActive($now),
@@ -60,9 +72,13 @@ readonly class GetMembershipDashboardQuery
         return new MembershipDashboardResponse(
             totalMembers: count($members),
             pendingApplications: count($pendingApplications),
-            totalContributionCents: $totalContributionCents,
+            totalContributionCents: $membershipContributionCents + $workAssignmentSurchargeCents,
+            membershipContributionCents: $membershipContributionCents,
+            workAssignmentSurchargeCents: $workAssignmentSurchargeCents,
+            oneTimeChargeCents: $oneTimeChargeCents,
             leavingAtYearEnd: $this->countLeavingAtYearEnd($members, $currentYear),
             leftLastYearEnd: $this->countLeavingAtYearEnd($members, $currentYear - 1),
+            inactive: count($members) - count($activeMembers),
             payers: count(array_filter($members, static fn (Member $member): bool => $member->payerType === PayerType::SelfPayer)),
             families: count(array_filter(
                 $activeMembers,

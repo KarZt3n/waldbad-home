@@ -12,6 +12,12 @@ readonly class MembershipDashboardResponse
         public int $pendingApplications,
         /** Summe aus Mitgliedsbeitrag + Arbeitseinsatz-Zuschlag über alle Mitglieder, in Cent. */
         public int $totalContributionCents,
+        /** Davon die Mitgliedsbeiträge (ohne Arbeitseinsatz), in Cent. */
+        public int $membershipContributionCents,
+        /** Davon die Arbeitseinsatz-Pauschale, in Cent. */
+        public int $workAssignmentSurchargeCents,
+        /** Einmalgebühren (z. B. Beitrittsgebühren), die im laufenden Jahr berechnet wurden, in Cent. */
+        public int $oneTimeChargeCents,
         /**
          * Mitglieder, deren Austrittsdatum auf den 31.12. des laufenden Jahres fällt — laut
          * Beitrags- und Kassenordnung ist eine Kündigung nur fristgemäß zum Jahresende möglich,
@@ -20,6 +26,8 @@ readonly class MembershipDashboardResponse
         public int $leavingAtYearEnd,
         /** Dieselbe Auswertung wie `$leavingAtYearEnd`, aber für den 31.12. des Vorjahres. */
         public int $leftLastYearEnd,
+        /** Mitglieder, deren Austrittsdatum erreicht ist (siehe `Member::isActive()`) — wie der Filter „Inaktiv“ der Mitgliederliste. */
+        public int $inactive,
         /** Alle Mitglieder mit Zahlerart „Selbstzahler“ — bewusst inklusive ausgetretener (Nutzer-Vorgabe). */
         public int $payers,
         /**
