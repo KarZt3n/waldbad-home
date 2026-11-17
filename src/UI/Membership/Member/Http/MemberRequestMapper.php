@@ -120,9 +120,10 @@ readonly class MemberRequestMapper
 
     /**
      * Nachfolger beim Löschen eines Zahlers bzw. Hauptmitglieds — optional, da ein Mitglied ohne
-     * Abhängige auch ohne Nachfolger gelöscht werden kann.
+     * Abhängige auch ohne Nachfolger gelöscht werden kann — sowie optional, wer aus der Familie die
+     * Kontaktdaten übernimmt.
      *
-     * @return array{successorMemberId: ?string, keepSuccessorPaymentDetails: bool}
+     * @return array{successorMemberId: ?string, keepSuccessorPaymentDetails: bool, contactRecipientMemberId: ?string}
      */
     public function deleteSuccessor(Request $request): array
     {
@@ -131,6 +132,7 @@ readonly class MemberRequestMapper
         return [
             'successorMemberId' => $this->nullableString($data, 'successorMemberId', 36),
             'keepSuccessorPaymentDetails' => $this->bool($data, 'keepSuccessorPaymentDetails', false),
+            'contactRecipientMemberId' => $this->nullableString($data, 'contactRecipientMemberId', 36),
         ];
     }
 

@@ -93,24 +93,43 @@ readonly class RequestMemberAccessUseCase
     }
 
     /**
-     * Von allen Mitgliedern mit dieser E-Mail-Adresse (in der Regel ein Haushalt) dasjenige, dessen
-     * Geburtsdatum ebenfalls passt — grenzt so auf die anfragende Person ein. Gibt es mehrere
-     * Treffer (z. B. Zwillinge mit gemeinsamer Adresse), reicht irgendeiner davon, da alle demselben
-     * Haushalt angehören.
+     * Ein Mitglied mit dieser E-Mail-Adresse, in dessen Haushalt (gleiche Hauptnummer) jemand das
+     * angegebene Geburtsdatum hat — nicht zwingend dieselbe Person: Eltern können so mit ihrer
+     * Adresse und dem Geburtsdatum eines Kindes anfragen und umgekehrt. Die Adresse allein reicht
+     * nicht, weil sie i. d. R. einen ganzen Haushalt identifiziert.
      *
-     * Ausgetretene Mitglieder (`Member::isActive()` liefert false) erhalten bewusst keinen Zugang:
-     * eine ausgetretene Person soll weder Zugangslink noch Passwort mehr per Mail bekommen. Da
-     * dieser Endpunkt ohnehin für passende wie nicht passende Kombinationen dieselbe Antwort gibt
-     * (siehe Klassenkommentar), bleibt dieser Unterschied nach außen unsichtbar.
+     * Zugang gibt es nur, solange im Haushalt noch jemand aktiv ist — auch für ein ausgetretenes
+     * Elternteil, das die Mitgliedschaft der Kinder verwaltet; angezeigt werden dann nur die aktiven
+     * Mitglieder (siehe `ResolveMemberAccessSessionUseCase`). Da dieser Endpunkt für passende wie
+     * nicht passende Kombinationen dieselbe Antwort gibt (siehe Klassenkommentar), bleibt der
+     * Unterschied nach außen unsichtbar.
      */
     private function matchingMember(string $email, \DateTimeImmutable $birthDate): ?Member
     {
+        $now = $this->clock->now();
         foreach ($this->members->findByEmail($email) as $member) {
-            if ($member->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d') && $member->isActive($this->clock->now())) {
+            $household = $this->household($member);
+            $birthDateMatches = array_any($household, static fn (Member $candidate): bool => $candidate->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d'));
+            if ($birthDateMatches && array_any($household, static fn (Member $candidate): bool => $candidate->isActive($now))) {
                 return $member;
             }
         }
 
         return null;
+    }
+
+    /**
+     * @return list<Member>
+     */
+    private function household(Member $member): array
+    {
+        $household = $this->members->findByPrimaryMemberNumber($member->primaryMemberNumber);
+        foreach ($household as $householdMember) {
+            if ($householdMember->id === $member->id) {
+                return $household;
+            }
+        }
+
+        return [$member, ...$household];
     }
 }

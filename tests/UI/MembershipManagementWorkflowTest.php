@@ -1085,7 +1085,7 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $headNumber = $this->string($this->responseData(), 'memberNumber');
         $this->client->jsonRequest('POST', '/api/admin/v1/members', array_replace($this->validMember(), [
             'firstName' => 'Partner', 'birthDate' => '1988-01-01', 'familyRole' => 'partner', 'primaryMemberNumber' => $headNumber,
-            'payerType' => 'other_member', 'payerMemberId' => $headId,
+            'payerType' => 'other_member', 'payerMemberId' => $headId, 'email' => null,
             'accountHolder' => null, 'iban' => null, 'bankName' => null, 'paymentMethod' => 'not_specified',
         ]), $headers);
         $partnerId = $this->string($this->responseData(), 'id');
@@ -1101,6 +1101,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         self::assertSame('head', $partner['familyRole']);
         self::assertSame($partnerNumber, $partner['primaryMemberNumber']);
         self::assertNotNull($partner['contributionCategory']);
+        // Die Kontaktdaten des Hauptmitglieds gehen an den Nachfolger.
+        self::assertSame('erika@example.test', $partner['email']);
         $this->client->request('GET', '/api/admin/v1/members/'.$headId, server: $headers);
         self::assertResponseStatusCodeSame(404);
 

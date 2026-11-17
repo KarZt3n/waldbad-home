@@ -487,9 +487,10 @@ const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCe
                 element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
             ]}),
             ...memberExitBadge(entry.leftAt),
-            // Nur bei Zahlern gesetzt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
-            // ganzen von ihnen bezahlten Personenkreis, rechtsbündig neben Name/Rolle/Nummer.
-            ...(totalCents !== null ? [element('span', {className: 'member-list-card-total', text: formatEuro(totalCents)})] : []),
+            // Nur bei Zahlern gefüllt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
+            // ganzen von ihnen bezahlten Personenkreis. Die Spalte steht leer auch bei allen anderen,
+            // damit die Austrittsabzeichen davor in jeder Zeile auf gleicher Höhe stehen.
+            element('span', {className: 'member-list-card-total', text: totalCents !== null ? formatEuro(totalCents) : ''}),
         ]}),
         openButton,
         ...extraChildren,
@@ -741,6 +742,60 @@ const payerTransferRequired = (member, household) => {
     return others.some((other) => other.payerMemberId === member.id) || (isHead && others.length > 0);
 };
 
+const hasContactInfo = (person) => Boolean(person.email || person.phone);
+
+// Nach dem Löschen wäre niemand aus der Familie mehr per E-Mail oder Telefon erreichbar.
+const contactTransferNeeded = (member, others) => hasContactInfo(member) && others.length > 0 && !others.some(hasContactInfo);
+
+const contactSummary = (person) => [person.email, person.phone].filter(Boolean).join(' · ');
+
+// Fragt beim Löschen, wer aus der Familie E-Mail und Telefon übernimmt (siehe `contactTransferNeeded`).
+// Liefert die ID des Empfängers, '' für „nicht übertragen“ oder null bei Abbruch.
+const openContactTransferDialog = (member, others) => new Promise((resolve) => {
+    const candidates = [...others].sort((left, right) =>
+        Number(hasMemberLeft(left.leftAt)) - Number(hasMemberLeft(right.leftAt)) || left.birthDate.localeCompare(right.birthDate));
+    let choice = candidates[0].id;
+    let result = null;
+    const dialog = element('dialog', {className: 'confirm-dialog member-match-dialog'});
+    dialog.addEventListener('close', () => {
+        resolve(result);
+        dialog.remove();
+    });
+    const option = (value, label, detail) => {
+        const radio = element('input', {attributes: {type: 'radio', name: `contact-recipient-${member.id}`, value}});
+        radio.checked = value === choice;
+        radio.addEventListener('change', () => { choice = value; });
+
+        return element('li', {children: [element('label', {className: 'check-field', children: [
+            radio,
+            element('span', {children: [element('strong', {text: label}), ...(detail ? [element('span', {text: ` · ${detail}`})] : [])]}),
+        ]})]});
+    };
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    cancel.addEventListener('click', () => dialog.close());
+    const submit = element('button', {className: 'button danger-button', text: 'Weiter', attributes: {type: 'button'}});
+    submit.addEventListener('click', () => {
+        result = choice;
+        dialog.close();
+    });
+    dialog.append(element('div', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Mitglied löschen'}),
+        element('h2', {text: 'Kontaktdaten übertragen?'}),
+        element('p', {text: `Nach dem Löschen von ${member.firstName} ${member.lastName} hat niemand in der Familie mehr eine E-Mail-Adresse oder Telefonnummer. Wer soll die Kontaktdaten (${contactSummary(member)}) übernehmen?`}),
+        element('ul', {className: 'member-match-missing', children: [
+            ...candidates.map((candidate) => option(
+                candidate.id,
+                `${candidate.memberNumber} ${candidate.firstName} ${candidate.lastName}`,
+                `${FAMILY_ROLE_LABELS[candidate.familyRole] || candidate.familyRole} · ${ageLabel(candidate.birthDate)}${hasMemberLeft(candidate.leftAt) ? ' · ausgetreten' : ''}`,
+            )),
+            option('', 'Nicht übertragen', 'die Familie ist danach nicht mehr erreichbar'),
+        ]}),
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]}));
+    document.body.append(dialog);
+    dialog.showModal();
+});
+
 // Zahler (und ggf. Hauptmitglied) auf ein anderes, noch aktives Mitglied der Familie übertragen —
 // beim Löschen (`mode: 'delete'`) oder als eigene Aktion (`mode: 'transfer'`). Ähnlich dem Abgleich
 // beim Mitgliedsantrag zeigt eine Tabelle, welche Zahlungsdaten der Nachfolger danach hat; zahlt er
@@ -814,6 +869,13 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
 
     const paymentSection = element('section', {className: 'member-match-person'});
     const headSection = element('section', {className: 'member-match-person'});
+    // Beim Hauptmitglied gehen E-Mail und Telefon immer an den Nachfolger; sonst nur auf Wunsch, wenn
+    // die übrige Familie ohne Kontaktdaten dastünde.
+    const contactAutomatic = deleting && isHead && others.length > 0 && hasContactInfo(member);
+    const contactOptional = deleting && !contactAutomatic && contactTransferNeeded(member, others);
+    const transferContact = element('input', {attributes: {type: 'checkbox'}});
+    transferContact.checked = true;
+    const contactSection = element('section', {className: 'member-match-person'});
     const refresh = () => {
         if (isPayer) {
             const successorPaysHimself = successor.payerType === 'self_payer';
@@ -848,6 +910,15 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
                     : 'Das SEPA-Mandat bleibt gültig, da es am Konto und Kontoinhaber hängt — der Kontoinhaber bleibt daher unverändert.'}),
             );
         }
+        if (contactAutomatic || contactOptional) {
+            const text = `E-Mail und Telefon von ${member.firstName} ${member.lastName} (${contactSummary(member)}) gehen auf ${successor.firstName} ${successor.lastName} über — nur in Felder, die dort noch leer sind.`;
+            contactSection.replaceChildren(
+                element('h3', {text: 'Kontaktdaten'}),
+                contactAutomatic
+                    ? element('p', {text})
+                    : element('label', {className: 'check-field', children: [transferContact, element('span', {text: `Sonst ist niemand in der Familie mehr erreichbar. ${text}`})]}),
+            );
+        }
         if (isHead && others.length) {
             headSection.replaceChildren(
                 element('h3', {text: 'Hauptmitglied'}),
@@ -879,7 +950,8 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
         submit.disabled = true;
         try {
             if (deleting) {
-                if (!(await deleteMemberWithOptionalPin(member.id, {successorMemberId: successor.id, keepSuccessorPaymentDetails: keepOwn}))) {
+                const contactRecipient = contactAutomatic || (contactOptional && transferContact.checked) ? {contactRecipientMemberId: successor.id} : {};
+                if (!(await deleteMemberWithOptionalPin(member.id, {successorMemberId: successor.id, keepSuccessorPaymentDetails: keepOwn, ...contactRecipient}))) {
                     submit.disabled = false;
                     return;
                 }
@@ -907,6 +979,7 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
         element('section', {className: 'member-match-person', children: [element('h3', {text: 'Nachfolger aus der Familie'}), candidateList]}),
         ...(isPayer ? [paymentSection] : []),
         ...(isHead && others.length ? [headSection] : []),
+        ...(contactAutomatic || contactOptional ? [contactSection] : []),
         element('p', {className: 'field-hint', text: 'Ausgetretene Familienmitglieder können nicht übernehmen. Danach werden die Beiträge der ganzen Familie neu berechnet.'}),
         element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
     ]}));
@@ -1126,15 +1199,22 @@ const openMemberDialog = async (member, onSaved) => {
                 }
                 return;
             }
+            const others = household.householdMembers.filter((other) => other.id !== member.id);
+            let contactRecipientMemberId = '';
+            if (contactTransferNeeded(member, others)) {
+                contactRecipientMemberId = await openContactTransferDialog(member, others);
+                if (contactRecipientMemberId === null) return;
+            }
+            const recipient = others.find((other) => other.id === contactRecipientMemberId);
             const confirmed = await confirmAction(
                 'Mitglied löschen',
-                `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird gelöscht und erscheint danach nirgends mehr in der Mitgliederverwaltung.`,
+                `„${member.firstName} ${member.lastName}“ (${member.memberNumber}) wird gelöscht und erscheint danach nirgends mehr in der Mitgliederverwaltung.${recipient ? ` E-Mail und Telefon übernimmt ${recipient.firstName} ${recipient.lastName}.` : ''}`,
                 'Löschen',
             );
             if (!confirmed) return;
             deleteButton.disabled = true;
             try {
-                if (!(await deleteMemberWithOptionalPin(member.id))) {
+                if (!(await deleteMemberWithOptionalPin(member.id, recipient ? {contactRecipientMemberId: recipient.id} : {}))) {
                     deleteButton.disabled = false;
                     return;
                 }
@@ -1506,8 +1586,10 @@ const openMemberDialog = async (member, onSaved) => {
         element('header', {children: [
             element('div', {children: [
                 element('p', {className: 'eyebrow', text: member ? 'Mitglied bearbeiten' : 'Neues Mitglied'}),
-                element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'}),
-                ...(member ? memberExitBadge(member.leftAt) : []),
+                element('div', {className: 'member-dialog-title', children: [
+                    element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'}),
+                    ...(member ? memberExitBadge(member.leftAt) : []),
+                ]}),
             ]}),
         ]}),
         tabStrip,

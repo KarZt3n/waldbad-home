@@ -388,7 +388,7 @@ const renderMemberSelfServicePasswordGate = (token) => {
     return container;
 };
 /**
- * Formular, um über die eigene E-Mail-Adresse + das eigene Geburtsdatum einen 30 Minuten gültigen
+ * Formular, um über die E-Mail-Adresse + das Geburtsdatum einer Person aus dem Haushalt einen 30 Minuten gültigen
  * Zugangslink anzufordern (siehe `RequestMemberAccessUseCase`) — bewusst immer dieselbe
  * Erfolgsmeldung, unabhängig davon, ob die Kombination zu einem Mitglied gehört. Das Geburtsdatum
  * ist zusätzlich zur E-Mail-Adresse nötig, da diese meist für den ganzen Haushalt gleich ist.
@@ -399,7 +399,7 @@ const renderMemberAccessRequestForm = () => {
     const birthDateField = field('Geburtsdatum', 'birthDate', '', 'date');
     const form = element('form', {className: 'public-form', children: [
         element('h2', {text: 'Zugang anfordern'}),
-        element('p', {text: 'Gib die E-Mail-Adresse und das Geburtsdatum ein, die bei deiner Mitgliedschaft hinterlegt sind. Du erhältst per Mail einen Link, der 30 Minuten gültig ist.'}),
+        element('p', {text: 'Gib die E-Mail-Adresse ein, die bei deiner Mitgliedschaft hinterlegt ist, und das Geburtsdatum einer Person aus deiner Familie – zum Beispiel deines oder das eines Kindes. Du erhältst per Mail einen Link, der 30 Minuten gültig ist.'}),
         emailField,
         birthDateField,
         message,

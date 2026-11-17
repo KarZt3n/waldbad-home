@@ -2051,12 +2051,14 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .member-household-list .member-list-card.is-left { background: #fbe3e1; border-color: #e3a7a2; }
 .member-household-list .member-list-card.is-leaving { background: #fff6cf; border-color: var(--sun-400); }
 .member-household-list .member-list-card.is-current.is-left, .member-household-list .member-list-card.is-current.is-leaving { border-color: var(--forest-700); }
-.member-household-list .member-exit-badge { margin-left: auto; }
 .status-badge.member-exit-badge.is-left { color: var(--white); background: var(--danger); }
 .status-badge.member-exit-badge.is-leaving { color: var(--forest-950); background: var(--sun-400); }
-header .member-exit-badge { margin: .4rem 0 0; }
-/* Gesamtbetrag steht nur bei Zahlern (siehe `householdTreeItem`), rechtsbündig neben Name/Rolle. */
-.member-household-list .member-list-card-total { white-space: nowrap; font-weight: 700; color: var(--forest-900); }
+.member-household-list .member-exit-badge { margin-left: auto; }
+.member-dialog-title { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; }
+.member-dialog-title .member-exit-badge { margin: 0; }
+/* Gesamtbetrag steht nur bei Zahlern (siehe `householdTreeItem`); die Spalte hat überall dieselbe Breite,
+   damit die Austrittsabzeichen davor in allen Zeilen auf gleicher Höhe stehen. */
+.member-household-list .member-list-card-total { min-width: 6.5rem; text-align: right; white-space: nowrap; font-weight: 700; color: var(--forest-900); }
 .member-household-list .secondary-button, .member-payer-list .secondary-button { padding: .35rem .7rem; font-size: .85rem; }
 .member-household-children { flex-basis: 100%; margin: .5rem 0 0; padding: 0 0 0 1.1rem; border-left: .2rem solid var(--line); list-style: none; display: grid; gap: .5rem; }
 

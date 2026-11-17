@@ -118,14 +118,16 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     }
 
     /**
-     * Ausgetretene Mitglieder (`Member::isActive()` false) erhalten keinen Zugang: auch bei
+     * Ausgetretene Mitglieder ohne aktive Haushaltsmitglieder erhalten keinen Zugang: auch bei
      * passender E-Mail-Adresse und passendem Geburtsdatum wird weder ein Token gespeichert noch
      * eine Mail verschickt.
      */
-    public function testDoesNothingWhenTheMatchingMemberHasLeft(): void
+    public function testDoesNothingWhenTheMatchingMemberHasLeftAndNobodyInTheHouseholdIsActive(): void
     {
+        $leftMember = $this->member(leftAt: new \DateTimeImmutable('2025-12-31'));
         $members = $this->createStub(MemberManagerInterface::class);
-        $members->method('findByEmail')->willReturn([$this->member(leftAt: new \DateTimeImmutable('2025-12-31'))]);
+        $members->method('findByEmail')->willReturn([$leftMember]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([$leftMember]);
         $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
         $tokens->expects(self::never())->method('save');
 
@@ -231,16 +233,119 @@ final class RequestMemberAccessUseCaseTest extends TestCase
         ))->execute('erika@example.test', '1990-01-01');
     }
 
-    private function member(?\DateTimeImmutable $leftAt = null): Member
+    /**
+     * Ein ausgetretenes Elternteil verwaltet weiterhin die Mitgliedschaft der Kinder: Solange im
+     * Haushalt noch jemand aktiv ist, bekommt es den Zugang für diesen Haushalt.
+     */
+    public function testGrantsAccessToALeftMemberWhileTheHouseholdStillHasActiveMembers(): void
     {
+        $leftParent = $this->member(leftAt: new \DateTimeImmutable('2025-12-31'));
+        $activeChild = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-01-01'));
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByEmail')->willReturn([$leftParent]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([$leftParent, $activeChild]);
+        $savedTokens = [];
+        $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
+        $tokens->expects(self::once())->method('save')->willReturnCallback(static function (MemberAccessToken $token) use (&$savedTokens): MemberAccessToken {
+            $savedTokens[] = $token;
+
+            return $token;
+        });
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+        $capturedEmail = null;
+
+        (new RequestMemberAccessUseCase(
+            $members,
+            $tokens,
+            $this->createStub(SecureTokenGeneratorInterface::class),
+            $this->passwordGenerator(),
+            new MemberAccessPasswordHasher(),
+            $this->createStub(IdentifierGeneratorInterface::class),
+            $clock,
+            $this->configuredMailer($capturedEmail),
+            $this->createStub(MemberAccessLinkBuilderInterface::class),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('erika@example.test', '1990-01-01');
+
+        self::assertCount(1, $savedTokens);
+        self::assertSame('Bad-001', $savedTokens[0]->primaryMemberNumber);
+        self::assertInstanceOf(Email::class, $capturedEmail);
+    }
+
+    /**
+     * E-Mail-Adresse und Geburtsdatum müssen nicht zur selben Person gehören: Die Adresse eines
+     * Elternteils mit dem Geburtsdatum eines Kindes aus demselben Haushalt reicht.
+     */
+    public function testAcceptsTheBirthDateOfAnotherHouseholdMember(): void
+    {
+        $parent = $this->member();
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'));
+        $savedTokens = $this->requestAccess([$parent], [$parent, $child], '2015-04-05');
+
+        self::assertCount(1, $savedTokens);
+        self::assertSame('Bad-001', $savedTokens[0]->primaryMemberNumber);
+    }
+
+    public function testRejectsABirthDateFromOutsideTheHousehold(): void
+    {
+        $parent = $this->member();
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'));
+
+        self::assertSame([], $this->requestAccess([$parent], [$parent, $child], '2016-04-05'));
+    }
+
+    /**
+     * @param list<Member> $byEmail
+     * @param list<Member> $household
+     *
+     * @return list<MemberAccessToken>
+     */
+    private function requestAccess(array $byEmail, array $household, string $birthDate): array
+    {
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('findByEmail')->willReturn($byEmail);
+        $members->method('findByPrimaryMemberNumber')->willReturn($household);
+        $savedTokens = [];
+        $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
+        $tokens->method('save')->willReturnCallback(static function (MemberAccessToken $token) use (&$savedTokens): MemberAccessToken {
+            $savedTokens[] = $token;
+
+            return $token;
+        });
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-06-01'));
+
+        (new RequestMemberAccessUseCase(
+            $members,
+            $tokens,
+            $this->createStub(SecureTokenGeneratorInterface::class),
+            $this->passwordGenerator(),
+            new MemberAccessPasswordHasher(),
+            $this->createStub(IdentifierGeneratorInterface::class),
+            $clock,
+            $this->noopMailer(),
+            $this->createStub(MemberAccessLinkBuilderInterface::class),
+            $this->createStub(LoggerInterface::class),
+        ))->execute('erika@example.test', $birthDate);
+
+        return $savedTokens;
+    }
+
+    private function member(
+        ?\DateTimeImmutable $leftAt = null,
+        string $id = 'member-1',
+        string $memberNumber = 'Bad-001',
+        ?\DateTimeImmutable $birthDate = null,
+    ): Member {
         return new Member(
-            id: 'member-1',
-            memberNumber: 'Bad-001',
+            id: $id,
+            memberNumber: $memberNumber,
             primaryMemberNumber: 'Bad-001',
             salutation: \App\Logic\Membership\Member\Model\Salutation::Ms,
             lastName: 'Musterfrau',
             firstName: 'Erika',
-            birthDate: new \DateTimeImmutable('1990-01-01'),
+            birthDate: $birthDate ?? new \DateTimeImmutable('1990-01-01'),
             street: 'Kirchanger 14',
             postalCode: '14822',
             city: 'Borkheide',

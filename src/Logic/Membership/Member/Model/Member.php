@@ -748,6 +748,37 @@ readonly class Member
     }
 
     /**
+     * Übernimmt E-Mail-Adresse und Telefonnummer von `$previous` (beim Löschen eines Mitglieds, siehe
+     * `DeleteMemberUseCase`), aber nur in Felder, die hier noch leer sind — eigene Kontaktdaten werden
+     * nie überschrieben. Mit der E-Mail-Adresse geht auch deren E-Mail-Einwilligung über, da sie an
+     * der Adresse hängt.
+     */
+    public function takingOverContactFrom(self $previous): self
+    {
+        $takesEmail = ($this->email ?? '') === '' && ($previous->email ?? '') !== '';
+        $takesPhone = ($this->phone ?? '') === '' && ($previous->phone ?? '') !== '';
+        if (!$takesEmail && !$takesPhone) {
+            return $this;
+        }
+        $updated = $this->withContactInfo(
+            firstName: $this->firstName,
+            lastName: $this->lastName,
+            street: $this->street,
+            postalCode: $this->postalCode,
+            city: $this->city,
+            phone: $takesPhone ? $previous->phone : $this->phone,
+            email: $takesEmail ? $previous->email : $this->email,
+        );
+
+        return $takesEmail ? $updated->withEmailConsent($previous->emailConsent) : $updated;
+    }
+
+    public function hasContactInfo(): bool
+    {
+        return ($this->email ?? '') !== '' || ($this->phone ?? '') !== '';
+    }
+
+    /**
      * Übernimmt die Rolle des Zahlers von `$previousPayer` (siehe `PayerTransfer`): Bankverbindung,
      * SEPA-Mandat, Zahlart, Zahlintervall, Zahltag und nächste Buchung gehen unverändert über. Das
      * Mandat bleibt gültig, weil es an Kontoinhaber und Konto hängt, nicht am Mitglied.

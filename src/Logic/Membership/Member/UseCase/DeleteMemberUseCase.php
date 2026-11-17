@@ -22,8 +22,14 @@ use App\Logic\Membership\Member\Service\PayerTransfer;
  *
  * In beiden Fällen ist ein Nachfolger aus derselben Familie anzugeben (`$successorMemberId`): Er
  * übernimmt Zahler-Rolle mit Bankverbindung und SEPA-Mandat sowie ggf. die Hauptnummer (siehe
- * `PayerTransfer`). Übertragung, Löschen und die Neuberechnung der Beiträge des Haushalts erfolgen
- * gemeinsam — entweder alles oder nichts.
+ * `PayerTransfer`).
+ *
+ * Kontaktdaten (E-Mail, Telefon) gehen an `$contactRecipientMemberId` aus derselben Familie über —
+ * beim Hauptmitglied ohne ausdrückliche Angabe an den Nachfolger, damit die Familie erreichbar
+ * bleibt. Übernommen wird nur in leere Felder (siehe `Member::takingOverContactFrom()`).
+ *
+ * Übertragungen, Löschen und die Neuberechnung der Beiträge des Haushalts erfolgen gemeinsam —
+ * entweder alles oder nichts.
  */
 readonly class DeleteMemberUseCase
 {
@@ -35,8 +41,12 @@ readonly class DeleteMemberUseCase
     ) {
     }
 
-    public function execute(string $id, ?string $successorMemberId = null, bool $keepSuccessorPaymentDetails = false): void
-    {
+    public function execute(
+        string $id,
+        ?string $successorMemberId = null,
+        bool $keepSuccessorPaymentDetails = false,
+        ?string $contactRecipientMemberId = null,
+    ): void {
         $member = $this->manager->get($id);
 
         $payerDependents = $this->manager->findByPayerMemberId($id);
@@ -44,8 +54,17 @@ readonly class DeleteMemberUseCase
             $this->manager->findByPrimaryMemberNumber($member->memberNumber),
             static fn (Member $other): bool => $other->id !== $id,
         ));
-        if ($payerDependents === [] && $householdDependents === []) {
-            $this->manager->delete($id);
+        $needsSuccessor = $payerDependents !== [] || $householdDependents !== [];
+        $contactRecipientMemberId ??= $householdDependents !== [] ? $successorMemberId : null;
+        if ($contactRecipientMemberId !== null) {
+            $this->assertContactRecipient($member, $contactRecipientMemberId);
+        }
+
+        if (!$needsSuccessor) {
+            $this->transaction->execute(function () use ($member, $id, $contactRecipientMemberId): void {
+                $this->transferContact($member, $contactRecipientMemberId);
+                $this->manager->delete($id);
+            });
 
             return;
         }
@@ -61,7 +80,7 @@ readonly class DeleteMemberUseCase
                     .'Bitte ein neues Hauptmitglied aus der Familie wählen.');
         }
 
-        $this->transaction->execute(function () use ($member, $id, $successorMemberId, $keepSuccessorPaymentDetails): void {
+        $this->transaction->execute(function () use ($member, $id, $successorMemberId, $keepSuccessorPaymentDetails, $contactRecipientMemberId): void {
             $successor = $this->payerTransfer->transfer(
                 $member,
                 $successorMemberId,
@@ -69,8 +88,32 @@ readonly class DeleteMemberUseCase
                 transferPrimaryMembership: true,
                 previousStays: false,
             );
+            $this->transferContact($member, $contactRecipientMemberId);
             $this->manager->delete($id);
             $this->recalculator->recalculate($successor);
         });
+    }
+
+    private function assertContactRecipient(Member $member, string $recipientId): void
+    {
+        if ($recipientId === $member->id) {
+            throw new BusinessRuleViolationException('Die Kontaktdaten können nicht an das zu löschende Mitglied selbst übertragen werden.');
+        }
+        if ($this->manager->get($recipientId)->primaryMemberNumber !== $member->primaryMemberNumber) {
+            throw new BusinessRuleViolationException('Die Kontaktdaten können nur an ein Mitglied derselben Familie übertragen werden.');
+        }
+    }
+
+    private function transferContact(Member $member, ?string $recipientId): void
+    {
+        if ($recipientId === null || !$member->hasContactInfo()) {
+            return;
+        }
+        // Frisch laden: Eine vorherige Zahler-/Hauptmitglied-Übertragung hat den Empfänger ggf. schon gespeichert.
+        $recipient = $this->manager->get($recipientId);
+        $updated = $recipient->takingOverContactFrom($member);
+        if ($updated !== $recipient) {
+            $this->manager->save($updated);
+        }
     }
 }

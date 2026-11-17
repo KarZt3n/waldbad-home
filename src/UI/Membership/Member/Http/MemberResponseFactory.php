@@ -126,6 +126,9 @@ readonly class MemberResponseFactory
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
             'contributionLiable' => $member->contributionLiable,
             'leftAt' => $member->leftAt?->format('Y-m-d'),
+            // Beim Löschen prüft das Frontend, ob die übrige Familie noch erreichbar ist.
+            'email' => $member->email,
+            'phone' => $member->phone,
             // Für die Zahler-Baumdarstellung der Familienzugehörigkeit im Admin-Frontend (siehe
             // `assets/admin/members.js`, `groupHouseholdByPayer`) — dort entscheidet
             // `payerType`/`payerMemberId`, welche Haushaltsmitglieder als eigene Wurzel (Zahler)

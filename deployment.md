@@ -274,13 +274,19 @@ Deployment. Schlägt er fehl, verschickt GitHub die übliche Fehler-Mail. Von Ha
 Das Environment `production` ist dem Deploy von Tags vorbehalten. Die Sicherung nutzt deshalb ein
 eigenes Environment `production-backup` (`Settings` → `Environments`; „Deployment branches and tags“:
 nur `main`) mit den Variablen `PROD_SSH_HOST`, `PROD_SSH_USER` und den Secrets `PROD_SSH_PRIVATE_KEY`,
-`PROD_SSH_KNOWN_HOSTS` — am besten mit einem eigenen Schlüsselpaar nur für die Sicherung. Unterstützt
-der Webspace erzwungene Befehle, beschränkt dieser Eintrag in `~/.ssh/authorized_keys` den Schlüssel
-auf die Sicherung:
+`PROD_SSH_KNOWN_HOSTS` — mit einem eigenen Schlüsselpaar nur für die Sicherung:
 
+```bash
+ssh-keygen -t ed25519 -N '' -C waldbad-backup -f ~/.ssh/waldbad_backup
+cat ~/.ssh/waldbad_backup.pub | ssh "$PROD_SSH_USER@hosting.telekom.de" 'cat >> ~/.ssh/authorized_keys'
+gh secret set PROD_SSH_PRIVATE_KEY --env production-backup < ~/.ssh/waldbad_backup
+ssh-keyscan -t ed25519 hosting.telekom.de | gh secret set PROD_SSH_KNOWN_HOSTS --env production-backup
 ```
-command="bash ~/waldbad-home/current/deploy/prod-backup-remote.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA… waldbad-backup
-```
+
+Der Fingerprint aus `ssh-keyscan` muss zu `ssh-keygen -lF hosting.telekom.de` passen. Das vorgeschaltete
+SSH-Gateway der Telekom verwirft Zeilen mit Optionen wie `command="…"` in `authorized_keys` komplett;
+der Schlüssel lässt sich deshalb nicht auf die Sicherung beschränken und muss als einfache Zeile
+eingetragen werden.
 
 Je Tag entsteht `~/waldbad-home/backups/nightly/JJJJ-MM-TT/` mit
 

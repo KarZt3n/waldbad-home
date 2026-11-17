@@ -95,6 +95,73 @@ final class DeleteMemberUseCaseTest extends TestCase
         self::assertSame(['begin', 'transfer', 'delete', 'recalculate', 'commit'], $calls);
     }
 
+    /**
+     * Beim Hauptmitglied gehen die Kontaktdaten ohne ausdrückliche Angabe an den Nachfolger — aber
+     * nur in leere Felder: Seine eigene Telefonnummer bleibt.
+     */
+    public function testHeadPassesContactDetailsToTheSuccessorWithoutOverwritingOwnOnes(): void
+    {
+        $head = $this->member(email: 'eltern@example.test', phone: '0331 1', emailConsent: true);
+        $successor = $this->member(id: 'child-1', phone: '0170 2');
+        $saved = [];
+        $members = $this->createStub(MemberManagerInterface::class);
+        $members->method('get')->willReturnCallback(static fn (string $id): Member => $id === 'child-1' ? $successor : $head);
+        $members->method('findByPayerMemberId')->willReturn([$successor]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([$head, $successor]);
+        $members->method('save')->willReturnCallback(static function (Member $member) use (&$saved): Member {
+            $saved[] = $member;
+
+            return $member;
+        });
+        $payerTransfer = $this->createStub(PayerTransfer::class);
+        $payerTransfer->method('transfer')->willReturn($successor);
+
+        $this->useCase($members, $payerTransfer)->execute('member-1', 'child-1');
+
+        self::assertCount(1, $saved);
+        self::assertSame('child-1', $saved[0]->id);
+        self::assertSame('eltern@example.test', $saved[0]->email);
+        self::assertTrue($saved[0]->emailConsent);
+        self::assertSame('0170 2', $saved[0]->phone);
+    }
+
+    public function testFamilyMemberWithoutDependentsPassesContactDetailsToTheChosenRecipient(): void
+    {
+        $partner = $this->member(id: 'partner-1', email: 'partner@example.test', phone: '0331 1', primaryMemberNumber: 'M-0009');
+        $child = $this->member(id: 'child-1', primaryMemberNumber: 'M-0009');
+        $saved = [];
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('get')->willReturnCallback(static fn (string $id): Member => $id === 'child-1' ? $child : $partner);
+        $members->method('findByPayerMemberId')->willReturn([]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([]);
+        $members->method('save')->willReturnCallback(static function (Member $member) use (&$saved): Member {
+            $saved[] = $member;
+
+            return $member;
+        });
+        $members->expects(self::once())->method('delete')->with('partner-1');
+
+        $this->useCase($members)->execute('partner-1', contactRecipientMemberId: 'child-1');
+
+        self::assertCount(1, $saved);
+        self::assertSame(['partner@example.test', '0331 1'], [$saved[0]->email, $saved[0]->phone]);
+    }
+
+    public function testRejectsAContactRecipientFromAnotherFamily(): void
+    {
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('get')->willReturnCallback(fn (string $id): Member => $id === 'other-1'
+            ? $this->member(id: 'other-1', primaryMemberNumber: 'M-0099')
+            : $this->member(email: 'max@example.test'));
+        $members->method('findByPayerMemberId')->willReturn([]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([]);
+        $members->expects(self::never())->method('delete');
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('derselben Familie');
+        $this->useCase($members)->execute('member-1', contactRecipientMemberId: 'other-1');
+    }
+
     private function useCase(MemberManagerInterface $members, ?PayerTransfer $payerTransfer = null): DeleteMemberUseCase
     {
         $transaction = $this->createStub(MemberPayerTransferTransactionInterface::class);
@@ -108,12 +175,17 @@ final class DeleteMemberUseCaseTest extends TestCase
         );
     }
 
-    private function member(string $id = 'member-1'): Member
-    {
+    private function member(
+        string $id = 'member-1',
+        ?string $email = null,
+        ?string $phone = null,
+        string $primaryMemberNumber = 'M-0001',
+        bool $emailConsent = false,
+    ): Member {
         return new Member(
             id: $id,
             memberNumber: 'M-0001',
-            primaryMemberNumber: 'M-0001',
+            primaryMemberNumber: $primaryMemberNumber,
             salutation: Salutation::Diverse,
             lastName: 'Muster',
             firstName: 'Max',
@@ -121,8 +193,8 @@ final class DeleteMemberUseCaseTest extends TestCase
             street: 'Kirchanger 14',
             postalCode: '14822',
             city: 'Borkheide',
-            email: null,
-            phone: null,
+            email: $email,
+            phone: $phone,
             familyRole: FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
             leftAt: null,
@@ -144,6 +216,7 @@ final class DeleteMemberUseCaseTest extends TestCase
             remarks: [],
             oneTimeCharges: [],
             version: 1,
+            emailConsent: $emailConsent,
         );
     }
 }

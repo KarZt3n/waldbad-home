@@ -291,7 +291,7 @@ class AdminMemberController extends AbstractController
         $submittedPin = $request->getPayload()->getString('pin', '');
         $verifyPin->execute(ProtectedAction::MembersDelete, $submittedPin === '' ? null : $submittedPin);
         $successor = $this->requestMapper->deleteSuccessor($request);
-        $useCase->execute($id, $successor['successorMemberId'], $successor['keepSuccessorPaymentDetails']);
+        $useCase->execute($id, $successor['successorMemberId'], $successor['keepSuccessorPaymentDetails'], $successor['contactRecipientMemberId']);
 
         return new Response(null, Response::HTTP_NO_CONTENT);
     }
