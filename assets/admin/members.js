@@ -484,7 +484,7 @@ const memberListItem = (entry, currentId, openOther, extraChildren = [], totalCe
         element('div', {className: `member-list-card${isCurrent ? ' is-current' : ''}${exitStatus ? ` ${exitStatus.className}` : ''}`, children: [
             element('span', {className: 'member-list-card-label', children: [
                 element('strong', {text: `${entry.firstName} ${entry.lastName}`}),
-                element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
+                element('small', {className: 'member-list-card-meta', text: `${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
             ]}),
             ...memberExitBadge(entry.leftAt),
             // Nur bei Zahlern gefüllt (siehe `householdTreeItem`) — deren Gesamtbetrag für den
