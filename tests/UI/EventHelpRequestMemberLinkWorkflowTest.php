@@ -180,6 +180,15 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         self::assertSame('Kirchanger 14', $candidates[0]['street']);
         self::assertSame('1990-06-15', $candidates[0]['birthDate']);
 
+        // Gesucht wird nur nach Vor- und Nachname: Straße oder Mitgliedsnummer finden nichts.
+        $this->client->request('GET', '/api/admin/v1/event-help-requests/member-candidates?search=Kirchanger', server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->responseData()['items']);
+        $this->client->request('GET', '/api/admin/v1/event-help-requests/member-candidates?search=Erika%20Musterfrau', server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertIsArray($this->responseData()['items']);
+        self::assertCount(1, $this->responseData()['items']);
+
         // Zunächst (versehentlich) mit dem falschen Mitglied verknüpft ...
         $this->client->jsonRequest('POST', "/api/admin/v1/event-help-requests/{$unmatchedId}/member", [
             'memberId' => $otherMemberId, 'firstName' => 'Helfer', 'lastName' => 'Ohnematch',

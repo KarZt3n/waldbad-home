@@ -30,4 +30,16 @@ readonly class ChainVolunteerEventProvider implements VolunteerEventProviderInte
         return $this->scheduleProvider->findCurrent($eventIdentifier)
             ?? $this->legacyPageProvider->findCurrent($eventIdentifier);
     }
+
+    public function findAllWithHelpEnabled(): array
+    {
+        $events = [];
+        // Wie bei `findCurrent()` hat das Veranstaltungsmodul Vorrang vor einem Legacy-Seitenblock
+        // mit derselben Kennung.
+        foreach ([...$this->legacyPageProvider->findAllWithHelpEnabled(), ...$this->scheduleProvider->findAllWithHelpEnabled()] as $event) {
+            $events[$event->identifier] = $event;
+        }
+
+        return array_values($events);
+    }
 }

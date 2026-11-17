@@ -31,6 +31,14 @@ interface MemberManagerInterface
      */
     public function search(?string $term): array;
 
+    /**
+     * Wie `search()`, durchsucht aber nur Vor- und Nachname — jedes Wort muss in einem der beiden
+     * vorkommen.
+     *
+     * @return list<Member>
+     */
+    public function searchByName(string $term): array;
+
     public function save(Member $member): Member;
 
     /**

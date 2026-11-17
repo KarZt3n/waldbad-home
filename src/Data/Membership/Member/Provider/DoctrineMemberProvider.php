@@ -72,6 +72,23 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
 
     public function search(?string $term): array
     {
+        return $this->findMatching((string) $term, [
+            'memberNumber', 'primaryMemberNumber', 'lastName', 'firstName', 'street', 'postalCode', 'city', 'email', 'phone',
+        ]);
+    }
+
+    public function searchByName(string $term): array
+    {
+        return $this->findMatching($term, ['lastName', 'firstName']);
+    }
+
+    /**
+     * @param non-empty-list<string> $fields
+     *
+     * @return list<Member>
+     */
+    private function findMatching(string $term, array $fields): array
+    {
         // "member" ist ein reserviertes DQL-Schlüsselwort (MEMBER OF) und darf nicht als Alias
         // verwendet werden.
         $queryBuilder = $this->entityManager->getRepository(MemberEntity::class)->createQueryBuilder('m')
@@ -84,18 +101,15 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
         // Feldern vorkommen — "Muster Max" findet damit z. B. auch einen Datensatz mit
         // firstName=Max/lastName=Muster, nicht nur eine wortwörtliche Übereinstimmung in einem
         // einzelnen Feld.
-        $term = trim((string) $term);
+        $term = trim($term);
         if ($term !== '') {
             $words = preg_split('/\s+/', $term, -1, PREG_SPLIT_NO_EMPTY) ?: [];
             foreach ($words as $index => $word) {
                 $parameter = 'term'.$index;
-                $queryBuilder->andWhere(
-                    'm.memberNumber LIKE :'.$parameter.' OR m.primaryMemberNumber LIKE :'.$parameter
-                    .' OR m.lastName LIKE :'.$parameter.' OR m.firstName LIKE :'.$parameter
-                    .' OR m.street LIKE :'.$parameter.' OR m.postalCode LIKE :'.$parameter
-                    .' OR m.city LIKE :'.$parameter.' OR m.email LIKE :'.$parameter
-                    .' OR m.phone LIKE :'.$parameter,
-                )->setParameter($parameter, '%'.$word.'%');
+                $queryBuilder->andWhere(implode(' OR ', array_map(
+                    static fn (string $field): string => 'm.'.$field.' LIKE :'.$parameter,
+                    $fields,
+                )))->setParameter($parameter, '%'.$word.'%');
             }
         }
 

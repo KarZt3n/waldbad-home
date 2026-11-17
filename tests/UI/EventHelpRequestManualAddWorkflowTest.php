@@ -120,6 +120,36 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    /**
+     * Auswahlliste für „Neuen Helfer anmelden": nur Veranstaltungen mit aktivierter
+     * Helferanmeldung — auch unveröffentlichte —, chronologisch sortiert.
+     */
+    public function testListsEventsWithHelpEnabledForRegistration(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $event = static fn (string $title, string $date, bool $helpEnabled, bool $visible): array => [
+            'kind' => 'work_assignment', 'title' => $title, 'date' => $date, 'time' => '09:00', 'content' => '',
+            'helpEnabled' => $helpEnabled, 'helpButtonLabel' => 'Ich möchte helfen!', 'visible' => $visible,
+            'activities' => [], 'callToActions' => [],
+        ];
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', $event('Herbstputz', '2026-10-03', true, false), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', $event('Frühjahrsputz', '2026-04-11', true, true), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', $event('Sommerfest', '2026-07-04', false, true), $headers);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/admin/v1/event-help-requests/events', server: $headers);
+        self::assertResponseIsSuccessful();
+        $items = $this->responseData()['items'];
+        self::assertIsArray($items);
+        self::assertCount(2, $items);
+        self::assertIsArray($items[0]);
+        self::assertIsArray($items[1]);
+        self::assertSame(['Frühjahrsputz', '2026-04-11', '09:00'], [$items[0]['eventTitle'], $items[0]['eventDate'], $items[0]['eventTime']]);
+        self::assertSame('Herbstputz', $items[1]['eventTitle']);
+    }
+
     public function testManuallyAddingAnUnknownMemberOrEventFails(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];

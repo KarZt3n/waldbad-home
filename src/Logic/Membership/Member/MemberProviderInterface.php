@@ -37,6 +37,14 @@ interface MemberProviderInterface
     public function search(?string $term): array;
 
     /**
+     * Wie `search()`, durchsucht aber nur Vor- und Nachname — jedes Wort muss in einem der beiden
+     * vorkommen.
+     *
+     * @return list<Member>
+     */
+    public function searchByName(string $term): array;
+
+    /**
      * Alle Mitglieder einschließlich gelöschter, mit Zeitstempeln — nur für den vollständigen Export.
      *
      * @return list<MemberSnapshot>

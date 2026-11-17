@@ -5,6 +5,8 @@ namespace App\UI\Event\HelpRequest\Http;
 use App\Logic\Common\Messaging\AsyncEventPublisherInterface;
 use App\Logic\Event\HelpRequest\Event\EventHelpRequestBroadcastRequestedEvent;
 use App\Logic\Event\HelpRequest\Query\ListEventHelpRequestsQuery;
+use App\Logic\Event\HelpRequest\Query\ListVolunteerEventOptionsQuery;
+use App\Logic\Event\HelpRequest\Dto\VolunteerEventOptionResponse;
 use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
 use App\Logic\Event\HelpRequest\UseCase\AddEventHelpRequestUseCase;
 use App\Logic\Event\HelpRequest\UseCase\GetEventHelpRequestBroadcastRecipientsUseCase;
@@ -57,9 +59,30 @@ class AdminEventHelpRequestController extends AbstractController
     }
 
     /**
+     * Veranstaltungen zur Auswahl in „Neuen Helfer anmelden“ — eigener Endpunkt, damit dafür kein
+     * Leserecht auf das Veranstaltungsmodul nötig ist.
+     */
+    #[Route('/events', name: 'api_admin_event_help_events', methods: ['GET'])]
+    public function events(ListVolunteerEventOptionsQuery $query): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+
+        return new JsonResponse(['items' => array_map(
+            static fn (VolunteerEventOptionResponse $event): array => [
+                'eventIdentifier' => $event->eventIdentifier,
+                'eventTitle' => $event->eventTitle,
+                'eventDate' => $event->eventDate,
+                'eventTime' => $event->eventTime,
+            ],
+            $query->execute(),
+        )]);
+    }
+
+    /**
      * Eigener, schlanker Such-Endpunkt für den „Mitglied verknüpfen"-Dialog: liefert nur die für
      * die Suche/Anzeige nötigen Felder und benötigt bewusst nicht `Permission::MembersView`, damit
-     * auch Helfer-Verwalter ohne volles Mitgliederverwaltung-Recht verknüpfen können.
+     * auch Helfer-Verwalter ohne volles Mitgliederverwaltung-Recht verknüpfen können. Gesucht wird
+     * nur nach Vor- und Nachname.
      */
     #[Route('/member-candidates', name: 'api_admin_event_help_member_candidates', methods: ['GET'])]
     public function memberCandidates(Request $request, MemberManagerInterface $members): JsonResponse
@@ -70,7 +93,7 @@ class AdminEventHelpRequestController extends AbstractController
             return new JsonResponse(['items' => []]);
         }
 
-        $candidates = array_slice($members->search($search), 0, self::MEMBER_CANDIDATES_LIMIT);
+        $candidates = array_slice($members->searchByName($search), 0, self::MEMBER_CANDIDATES_LIMIT);
 
         return new JsonResponse(['items' => array_map(static fn (Member $member): array => [
             'id' => $member->id,

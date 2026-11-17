@@ -36,6 +36,14 @@ readonly class EventScheduleVolunteerEventProvider implements VolunteerEventProv
         return $schedule === null ? null : $this->toVolunteerEvent($schedule);
     }
 
+    public function findAllWithHelpEnabled(): array
+    {
+        return array_values(array_map(
+            $this->toVolunteerEvent(...),
+            array_filter($this->provider->findAll(), static fn (EventSchedule $schedule): bool => $schedule->helpEnabled),
+        ));
+    }
+
     private function toVolunteerEvent(EventSchedule $schedule): VolunteerEvent
     {
         return new VolunteerEvent(

@@ -220,7 +220,7 @@ const showEventHelpers = async () => {
                 return pick;
             }) : [emptyState('Keine Mitglieder gefunden.')]));
         };
-        const search = searchField('Name oder Mitgliedsnummer suchen …', '', async (term) => {
+        const search = searchField('Vor- oder Nachname suchen …', '', async (term) => {
             if (term === '') { results.replaceChildren(); return; }
             const data = await request(`/api/admin/v1/event-help-requests/member-candidates?search=${encodeURIComponent(term)}`);
             renderResults(data.items);
@@ -278,10 +278,13 @@ const showEventHelpers = async () => {
     // „Mail an alle Helfer") — für Fälle, in denen jemand nicht über das öffentliche Formular
     // angemeldet hat (z. B. spontan vor Ort). Nutzt denselben Mitglied-Such-Endpunkt wie
     // „Mitglied verknüpfen" (siehe `openLinkMemberDialog` oben) und `AddEventHelpRequestUseCase`.
-    const openAddEventHelperDialog = (event) => {
+    // Ohne `event` (Button „Neuen Helfer anmelden") wird die Veranstaltung zuerst aus `events` gewählt.
+    const openAddEventHelperDialog = (event, events = []) => {
         const dialog = element('dialog', {className: 'confirm-dialog'});
         const message = formMessage();
         let selectedMember = null;
+        let selectedEvent = event;
+        const updateSaveState = () => { save.disabled = !selectedMember || !selectedEvent; };
 
         const results = element('div', {className: 'member-link-results'});
         results.addEventListener('mousedown', (mousedownEvent) => mousedownEvent.preventDefault());
@@ -297,7 +300,7 @@ const showEventHelpers = async () => {
                 });
                 pick.addEventListener('click', () => {
                     selectedMember = candidate;
-                    save.disabled = false;
+                    updateSaveState();
                     results.querySelectorAll('.member-link-candidate').forEach((button) => {
                         button.classList.toggle('is-selected', button === pick);
                     });
@@ -306,7 +309,7 @@ const showEventHelpers = async () => {
                 return pick;
             }) : [emptyState('Keine Mitglieder gefunden.')]));
         };
-        const search = searchField('Name oder Mitgliedsnummer suchen …', '', async (term) => {
+        const search = searchField('Vor- oder Nachname suchen …', '', async (term) => {
             if (term === '') { results.replaceChildren(); return; }
             const data = await request(`/api/admin/v1/event-help-requests/member-candidates?search=${encodeURIComponent(term)}`);
             renderResults(data.items);
@@ -323,9 +326,28 @@ const showEventHelpers = async () => {
         save.disabled = true;
         cancel.addEventListener('click', () => dialog.close());
         dialog.addEventListener('close', () => dialog.remove());
+        const eventLabel = (option) => `${new Date(`${option.eventDate}T00:00:00`).toLocaleDateString('de-DE')}${option.eventTime ? ` · ${option.eventTime} Uhr` : ''} – ${option.eventTitle}`;
+        const eventField = () => {
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const upcoming = events.filter((option) => option.eventDate >= today);
+            const past = events.filter((option) => option.eventDate < today).reverse();
+            const optionOf = (option) => element('option', {text: eventLabel(option), attributes: {value: option.eventIdentifier}});
+            const select = element('select', {attributes: {id: 'add-helper-event', required: 'required'}, children: [
+                element('option', {text: 'Veranstaltung wählen …', attributes: {value: ''}}),
+                ...(upcoming.length ? [element('optgroup', {attributes: {label: 'Kommende Veranstaltungen'}, children: upcoming.map(optionOf)})] : []),
+                ...(past.length ? [element('optgroup', {attributes: {label: 'Vergangene Veranstaltungen'}, children: past.map(optionOf)})] : []),
+            ]});
+            select.addEventListener('change', () => {
+                selectedEvent = events.find((option) => option.eventIdentifier === select.value) || null;
+                updateSaveState();
+            });
+
+            return element('label', {className: 'field', children: [element('span', {text: 'Veranstaltung'}), select]});
+        };
         const form = element('form', {className: 'confirm-dialog-content', children: [
-            element('p', {className: 'eyebrow', text: 'Helfer hinzufügen'}),
-            element('h2', {text: event.eventTitle}),
+            element('p', {className: 'eyebrow', text: event ? 'Helfer hinzufügen' : 'Neuen Helfer anmelden'}),
+            event ? element('h2', {text: event.eventTitle}) : eventField(),
             search,
             results,
             message,
@@ -333,14 +355,14 @@ const showEventHelpers = async () => {
         ]});
         form.addEventListener('submit', async (submitEvent) => {
             submitEvent.preventDefault();
-            if (!selectedMember) return;
+            if (!selectedMember || !selectedEvent) return;
             save.disabled = true;
             try {
                 await request('/api/admin/v1/event-help-requests', {
                     method: 'POST',
-                    body: JSON.stringify({eventIdentifier: event.eventIdentifier, memberId: selectedMember.id}),
+                    body: JSON.stringify({eventIdentifier: selectedEvent.eventIdentifier, memberId: selectedMember.id}),
                 });
-                toast(`„${selectedMember.firstName} ${selectedMember.lastName}“ wurde als Helfer hinzugefügt.`);
+                toast(`„${selectedMember.firstName} ${selectedMember.lastName}“ wurde als Helfer zu „${selectedEvent.eventTitle}“ hinzugefügt.`);
                 dialog.close();
                 await showEventManagement();
             } catch (error) {
@@ -814,8 +836,31 @@ const showEventHelpers = async () => {
             .sort(([firstYear], [secondYear]) => secondYear - firstYear)
             .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups, `year:${year}`)),
     ];
+    // Auswahl für „Neuen Helfer anmelden": Veranstaltungen mit aktivierter Helferanmeldung plus
+    // solche, zu denen schon Anmeldungen bestehen (z. B. Helferanmeldung inzwischen deaktiviert).
+    const openRegisterHelperDialog = async () => {
+        const {items} = await request('/api/admin/v1/event-help-requests/events');
+        const events = new Map(items.map((option) => [option.eventIdentifier, option]));
+        groups.forEach(({event}) => {
+            if (!events.has(event.eventIdentifier)) {
+                events.set(event.eventIdentifier, {
+                    eventIdentifier: event.eventIdentifier, eventTitle: event.eventTitle,
+                    eventDate: event.eventDate, eventTime: event.eventTime,
+                });
+            }
+        });
+        const sorted = [...events.values()].sort((left, right) => `${left.eventDate} ${left.eventTime}`.localeCompare(`${right.eventDate} ${right.eventTime}`));
+        if (!sorted.length) {
+            toast('Es gibt keine Veranstaltung mit Helferanmeldung.', 'error');
+            return;
+        }
+        openAddEventHelperDialog(null, sorted);
+    };
+    const registerHelperButton = element('button', {className: 'button button-compact', text: 'Neuen Helfer anmelden', attributes: {type: 'button'}});
+    registerHelperButton.addEventListener('click', () => openRegisterHelperDialog().catch((error) => toast(error.message, 'error')));
     workspace.replaceChildren(
         sectionHeading('Veranstaltungshelfer', 'Anmeldungen nach Veranstaltung gruppiert verwalten'),
+        ...(canEditModule('event_helpers') ? [element('div', {className: 'management-toolbar', children: [registerHelperButton]})] : []),
         element('div', {className: 'event-helper-groups', children: sections.length ? sections : [emptyState('Noch keine Helferanmeldungen vorhanden.')]}),
     );
 };
