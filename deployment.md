@@ -201,7 +201,11 @@ Webspace kein dauerhafter Worker und kein Cron läuft.
    `MAILER_DSN` ist in Prod der reguläre Versandweg und der Ausweichweg für Brevo (siehe Schritt 3). Er muss
    auf einen echten Mailserver zeigen; mit `null://null` würden Mails stillschweigend verworfen.
 
-3. Zeitkritische Mails (Anmeldelink für `/admin`, Zugangslink für „Meine Mitgliedschaft“, siehe
+3. **Derzeit ungenutzt:** Bis die Domain bei Brevo authentifiziert ist (siehe Ende dieses Schritts), gehen
+   auch Anmelde- und Zugangslinks über `MAILER_DSN`. Danach lassen sie sich in `RequestLoginUseCase` und
+   `RequestMemberAccessUseCase` wieder auf `MailDelivery::Express` stellen.
+
+   Zeitkritische Mails (Anmeldelink für `/admin`, Zugangslink für „Meine Mitgliedschaft“, siehe
    `MailDelivery::Express`) gehen in Prod über Brevo (`smtp-relay.brevo.com:587`, Login
    `c032a9001@smtp-brevo.com`, siehe `config/packages/mailer.yaml`), alle anderen direkt über `MAILER_DSN`.
    So bleibt das Brevo-Tageskontingent für die Links frei. Lehnt Brevo ab (z. B. Kontingent erschöpft),

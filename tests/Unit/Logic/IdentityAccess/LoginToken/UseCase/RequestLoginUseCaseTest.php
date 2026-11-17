@@ -139,7 +139,8 @@ final class RequestLoginUseCaseTest extends TestCase
         self::assertNotNull($capturedEmail);
         self::assertStringContainsString('https://example.test/admin?login_token=raw-token-value', (string) $capturedEmail->getTextBody());
         self::assertStringContainsString('30 Minuten', (string) $capturedEmail->getTextBody());
-        self::assertSame('express', $capturedEmail->getHeaders()->get('X-Transport')?->getBodyAsString());
+        // Bis die Domain bei Brevo authentifiziert ist, über den regulären SMTP-Versand (siehe `MailDelivery`).
+        self::assertSame('main', $capturedEmail->getHeaders()->get('X-Transport')?->getBodyAsString());
     }
 
     public function testLogsInsteadOfThrowingWhenSomethingFails(): void
