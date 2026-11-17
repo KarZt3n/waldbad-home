@@ -277,8 +277,12 @@ class AdminMemberController extends AbstractController
         $data = $request->getPayload();
         $version = $data->getInt('version');
         $updateRequest = $this->requestMapper->update($id, $version, $data->all());
+        $result = $useCase->execute($updateRequest);
 
-        return new JsonResponse($this->responseFactory->member($useCase->execute($updateRequest)));
+        return new JsonResponse([
+            ...$this->responseFactory->member($result->member),
+            'contributionWarning' => $result->contributionWarning,
+        ]);
     }
 
     #[Route('/{id}', name: 'api_admin_member_delete', methods: ['DELETE'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]

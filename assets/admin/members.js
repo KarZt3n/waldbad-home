@@ -1582,14 +1582,21 @@ const openMemberDialog = async (member, onSaved) => {
     updateTabStrip();
     updatePanels();
 
+    const dialogTitle = element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'});
+    const dialogTitleRow = element('div', {className: 'member-dialog-title', children: [dialogTitle]});
+    // Das Austrittsabzeichen folgt dem Feld „Austrittsdatum“ sofort, nicht erst nach erneutem Öffnen.
+    const updateTitleExitBadge = () => {
+        if (member) dialogTitleRow.replaceChildren(dialogTitle, ...memberExitBadge(leftAtInput.value || null));
+    };
+    leftAtInput.addEventListener('input', updateTitleExitBadge);
+    leftAtInput.addEventListener('change', updateTitleExitBadge);
+    updateTitleExitBadge();
+
     const form = element('form', {className: 'activity-dialog-content member-dialog-content', children: [
         element('header', {children: [
             element('div', {children: [
                 element('p', {className: 'eyebrow', text: member ? 'Mitglied bearbeiten' : 'Neues Mitglied'}),
-                element('div', {className: 'member-dialog-title', children: [
-                    element('h2', {text: member ? `${member.firstName} ${member.lastName}` : 'Mitglied anlegen'}),
-                    ...(member ? memberExitBadge(member.leftAt) : []),
-                ]}),
+                dialogTitleRow,
             ]}),
         ]}),
         tabStrip,
@@ -1682,7 +1689,7 @@ const openMemberDialog = async (member, onSaved) => {
                 markSaved();
             }
             if (member) await saveRemark();
-            toast('Das Mitglied wurde gespeichert.');
+            toast(member?.contributionWarning || 'Das Mitglied wurde gespeichert.', member?.contributionWarning ? 'info' : 'success');
             await onSaved();
 
             return true;
@@ -1741,7 +1748,12 @@ const openMemberDialog = async (member, onSaved) => {
             applyContributionLiableState();
             familyRole.querySelector('select').value = member.familyRole;
             markSaved();
-            toast('Das Mitglied wurde gespeichert.');
+            if (member.contributionWarning) {
+                message.textContent = member.contributionWarning;
+                toast(member.contributionWarning, 'info');
+            } else {
+                toast('Das Mitglied wurde gespeichert, die Beiträge der Familie wurden neu berechnet.');
+            }
             await onSaved();
         } catch (error) {
             message.textContent = error.message;

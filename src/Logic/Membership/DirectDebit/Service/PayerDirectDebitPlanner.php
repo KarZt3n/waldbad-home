@@ -26,8 +26,9 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  * Selbstzahler, plus alle Mitglieder, deren Beitrag er trägt. Je Person werden der gespeicherte
  * Beitrag und Arbeitseinsatz-Zuschlag sowie deren einmalige Gebühren (z. B. Beitrittsgebühr) als
  * wählbare Positionen angeboten; Ausgetretene und Beitragsbefreite entfallen wie dort. Ist der
- * Zahler selbst ausgetreten, wird nicht mehr über sein Konto eingezogen (Hinderungsgrund „Zahler
- * ausgetreten“), auch wenn er noch für aktive Mitglieder eingetragen ist.
+ * Zahler selbst ausgetreten, zahlt aber noch für aktive Mitglieder (z. B. ein Elternteil für die
+ * Kinder), wird für diese weiter über sein Konto eingezogen — das Mandat hängt am Kontoinhaber,
+ * nicht an der Mitgliedschaft. Das wird als Hinweis angezeigt; sein eigener Beitrag entfällt.
  *
  * Anhand der Lastschrift-Historie des Zahlers: Ist er im laufenden Jahr eingetreten und wurde für
  * dieses Jahr noch nichts eingezogen, ist es die Lastschrift für das Eintrittsjahr (sofort fällig).
@@ -132,8 +133,7 @@ readonly class PayerDirectDebitPlanner
                 $collectedChargeIds,
             );
             // Ein ausgetretener Zahler ohne weitere aktive Mitglieder ist kein Zahler mehr — er taucht
-            // gar nicht auf. Zahlt er noch für aktive Mitglieder, bleibt er als blockierter Eintrag
-            // sichtbar (siehe `blockers()`), damit für diese ein neuer Zahler hinterlegt wird.
+            // gar nicht auf. Zahlt er noch für aktive Mitglieder, wird für diese weiter eingezogen.
             if ($member->hasLeft($now) && $draft->positions === []) {
                 continue;
             }
@@ -179,6 +179,13 @@ readonly class PayerDirectDebitPlanner
                 $warnings[] = sprintf('Für %s ist noch kein Beitrag berechnet.', $this->memberName($entry));
             }
             $positions = [...$positions, ...$this->positionsFor($entry, $payer, $rateLabel, $kind, $collectedChargeIds)];
+        }
+        if ($payer->hasLeft($now) && $payer->leftAt !== null && $positions !== []) {
+            $warnings[] = sprintf(
+                'Der Zahler ist zum %s ausgetreten – es wird weiter über sein Konto für %s eingezogen.',
+                $payer->leftAt->format('d.m.Y'),
+                implode(', ', array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberName, $positions)))),
+            );
         }
 
         $mandateSignedOn = $payer->mandateValidFrom ?? $payer->joinedAt;
@@ -322,9 +329,6 @@ readonly class PayerDirectDebitPlanner
         $blockers = [];
         if ($withoutPayer) {
             $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::MissingPayer, 'Das Mitglied zahlt laut Zahlungsdaten nicht selbst, es ist aber kein zahlendes Mitglied hinterlegt.');
-        }
-        if ($payer->hasLeft($now) && $payer->leftAt !== null) {
-            $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::PayerLeft, sprintf('Der Zahler ist zum %s ausgetreten – für die weiteren Mitglieder muss ein neuer Zahler hinterlegt werden.', $payer->leftAt->format('d.m.Y')));
         }
         if (!$creditorComplete) {
             $blockers[] = new DirectDebitObstacle(DirectDebitObstacleKind::IncompleteCreditor, 'Die SEPA-Gläubigerdaten des Vereins sind nicht vollständig (Mitgliederverwaltung → Beitragssätze → SEPA-Gläubigerdaten).');

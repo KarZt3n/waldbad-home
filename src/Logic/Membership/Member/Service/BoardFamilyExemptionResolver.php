@@ -13,7 +13,7 @@ use App\Logic\Membership\Member\Model\MemberFunction;
  * Funktion „Vorstand“, wird der ganze Haushalt beitragsfrei gestellt; enthält er keins (mehr), wird
  * der ganze Haushalt wieder beitragspflichtig. Wird von jeder Stelle verwendet, die tatsächlich „den
  * Beitrag berechnet“: `HouseholdContributionRecalculator` (manuelles „Beitrag neu berechnen“ sowie
- * der automatische Trigger beim Funktionswechsel in `UpdateMemberUseCase`) und
+ * die automatische Neuberechnung beim Speichern in `UpdateMemberUseCase`) und
  * `RecalculateAllMemberContributionsUseCase` („Beiträge für alle Mitglieder neu berechnen“).
  *
  * Bewusst symmetrisch (auch das Zurücksetzen auf true, sobald kein Vorstandsmitglied mehr im

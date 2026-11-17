@@ -14,7 +14,6 @@ enum DirectDebitObstacleKind: string
     case AlreadyCollected = 'already_collected';
     case OtherPaymentMethod = 'other_payment_method';
     case MissingPayer = 'missing_payer';
-    case PayerLeft = 'payer_left';
     case IncompleteCreditor = 'incomplete_creditor';
     case InvalidRemittance = 'invalid_remittance';
 
@@ -27,7 +26,6 @@ enum DirectDebitObstacleKind: string
             self::AlreadyCollected => 'Bereits eingezogen',
             self::OtherPaymentMethod => 'Andere Zahlart',
             self::MissingPayer => 'Ohne Zahler',
-            self::PayerLeft => 'Zahler ausgetreten',
             self::IncompleteCreditor => 'Gläubigerdaten unvollständig',
             self::InvalidRemittance => 'Verwendungszweck ungültig',
         };

@@ -14,7 +14,7 @@ use App\Logic\Membership\Member\Model\Member;
  * Geburtsreihenfolge unter den Geschwistern), sodass die Neuberechnung eines Mitglieds auch die
  * Berechnung der übrigen Haushaltsmitglieder verändern kann. Wird sowohl vom manuellen
  * „Beitrag neu berechnen“ (`RecalculateMemberContributionUseCase`) als auch automatisch beim
- * Wechsel der Funktion auf/von „Vorstand“ (`UpdateMemberUseCase`) verwendet.
+ * Speichern eines Mitglieds (`UpdateMemberUseCase`) verwendet.
  *
  * Vor der eigentlichen Berechnung korrigiert `BoardFamilyExemptionResolver` jedes Haushaltsmitglied:
  * Ist mindestens ein Haushaltsmitglied Vorstand, gilt für den gesamten Haushalt keine

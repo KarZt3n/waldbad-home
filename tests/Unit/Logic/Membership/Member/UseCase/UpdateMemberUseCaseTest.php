@@ -2,6 +2,7 @@
 
 namespace App\Tests\Unit\Logic\Membership\Member\UseCase;
 
+use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Membership\Member\Dto\UpdateMemberRequest;
 use App\Logic\Membership\Member\Mapping\MemberModelFactory;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
@@ -36,7 +37,7 @@ final class UpdateMemberUseCaseTest extends TestCase
 
         $result = (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))->execute($request);
 
-        self::assertFalse($result->contributionLiable);
+        self::assertFalse($result->member->contributionLiable);
     }
 
     public function testSwitchingAwayFromBoardReenablesContributionLiabilityAndRecalculatesHousehold(): void
@@ -60,10 +61,10 @@ final class UpdateMemberUseCaseTest extends TestCase
 
         $result = (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))->execute($request);
 
-        self::assertTrue($result->contributionLiable);
+        self::assertTrue($result->member->contributionLiable);
     }
 
-    public function testUnrelatedFieldChangeDoesNotToggleContributionLiabilityOrRecalculate(): void
+    public function testUnrelatedFieldChangeDoesNotToggleContributionLiabilityButRecalculatesHousehold(): void
     {
         $current = $this->member(function: MemberFunction::Member, contributionLiable: true);
         $request = $this->request(function: MemberFunction::Member, contributionLiable: true, city: 'Neustadt');
@@ -78,12 +79,12 @@ final class UpdateMemberUseCaseTest extends TestCase
         });
 
         $recalculator = $this->createMock(HouseholdContributionRecalculator::class);
-        $recalculator->expects(self::never())->method('recalculate');
+        $recalculator->expects(self::once())->method('recalculate')->willReturnArgument(0);
 
         (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))->execute($request);
     }
 
-    public function testRemainingBoardMemberDoesNotRecalculate(): void
+    public function testRemainingBoardMemberStaysExemptAndHouseholdIsRecalculated(): void
     {
         $current = $this->member(function: MemberFunction::Board, contributionLiable: false);
         $request = $this->request(function: MemberFunction::Board, contributionLiable: false);
@@ -93,19 +94,60 @@ final class UpdateMemberUseCaseTest extends TestCase
         $manager->method('save')->willReturnCallback(static fn (Member $member): Member => $member);
 
         $recalculator = $this->createMock(HouseholdContributionRecalculator::class);
-        $recalculator->expects(self::never())->method('recalculate');
+        $recalculator->expects(self::once())->method('recalculate')->willReturnArgument(0);
 
         $result = (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))->execute($request);
 
-        self::assertFalse($result->contributionLiable);
+        self::assertFalse($result->member->contributionLiable);
+    }
+
+    /**
+     * Die Neuberechnung ist nachgelagert: Scheitert sie, bleibt die Änderung gespeichert und der
+     * Grund kommt als Hinweis zurück.
+     */
+    public function testFailedRecalculationKeepsTheChangeAndReturnsAWarning(): void
+    {
+        $manager = $this->createMock(MemberManagerInterface::class);
+        $manager->method('get')->willReturn($this->member(function: MemberFunction::Member, contributionLiable: true));
+        $manager->expects(self::once())->method('save')->willReturnArgument(0);
+        $recalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $recalculator->method('recalculate')->willThrowException(new BusinessRuleViolationException('Kein Beitragssatz für Familie: Kind.'));
+
+        $result = (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))
+            ->execute($this->request(function: MemberFunction::Member, contributionLiable: true, city: 'Neustadt'));
+
+        self::assertSame('Neustadt', $result->member->city);
+        self::assertStringContainsString('Kein Beitragssatz für Familie: Kind.', (string) $result->contributionWarning);
+    }
+
+    public function testChangingTheFamilyAlsoRecalculatesThePreviousFamily(): void
+    {
+        $remaining = $this->member(function: MemberFunction::Member, contributionLiable: true, id: 'sibling-1');
+        $manager = $this->createStub(MemberManagerInterface::class);
+        $manager->method('get')->willReturn($this->member(function: MemberFunction::Member, contributionLiable: true));
+        $manager->method('save')->willReturnArgument(0);
+        $manager->method('findByPrimaryMemberNumber')->willReturn([$remaining]);
+        $recalculated = [];
+        $recalculator = $this->createStub(HouseholdContributionRecalculator::class);
+        $recalculator->method('recalculate')->willReturnCallback(static function (Member $member) use (&$recalculated): Member {
+            $recalculated[] = $member->id;
+
+            return $member;
+        });
+
+        (new UpdateMemberUseCase($manager, new MemberModelFactory(), $recalculator))
+            ->execute($this->request(function: MemberFunction::Member, contributionLiable: true, primaryMemberNumber: 'M-0002'));
+
+        self::assertSame(['member-1', 'sibling-1'], $recalculated);
     }
 
     private function member(
         MemberFunction $function,
         bool $contributionLiable,
+        string $id = 'member-1',
     ): Member {
         return new Member(
-            id: 'member-1',
+            id: $id,
             memberNumber: 'M-0001',
             primaryMemberNumber: 'M-0001',
             salutation: Salutation::Diverse,
@@ -146,12 +188,13 @@ final class UpdateMemberUseCaseTest extends TestCase
         MemberFunction $function,
         bool $contributionLiable,
         string $city = 'Borkheide',
+        string $primaryMemberNumber = 'M-0001',
     ): UpdateMemberRequest {
         return new UpdateMemberRequest(
             id: 'member-1',
             version: 1,
             memberNumber: 'M-0001',
-            primaryMemberNumber: 'M-0001',
+            primaryMemberNumber: $primaryMemberNumber,
             salutation: Salutation::Diverse,
             lastName: 'Muster',
             firstName: 'Max',

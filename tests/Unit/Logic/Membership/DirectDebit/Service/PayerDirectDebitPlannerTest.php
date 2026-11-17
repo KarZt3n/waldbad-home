@@ -307,11 +307,11 @@ final class PayerDirectDebitPlannerTest extends TestCase
     }
 
     /**
-     * Ein ausgetretener Zahler wird nicht mehr eingezogen: Zahlt er noch für aktive Mitglieder, ist
-     * er blockiert („Zahler ausgetreten“); ohne aktive Mitglieder taucht er in `planAll()` gar nicht
-     * mehr auf.
+     * Ein ausgetretener Zahler, der noch für aktive Mitglieder zahlt, wird für diese weiter
+     * eingezogen (mit Hinweis), sein eigener Beitrag entfällt; ohne aktive Mitglieder taucht er in
+     * `planAll()` gar nicht mehr auf.
      */
-    public function testLeftPayerIsBlockedAndLeftPayerWithoutActiveMembersIsSkipped(): void
+    public function testLeftPayerIsStillCollectedForActiveMembersAndSkippedWithoutThem(): void
     {
         $leftPayer = $this->member('payer', leftAt: '2026-06-30', mandateValidFrom: '2020-03-01');
         $child = $this->member('child', payerId: 'payer', category: ContributionCategory::FamilyChildPaying, amountCents: 3000, surchargeCents: null);
@@ -320,8 +320,10 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $planner = $this->planner([$leftPayer, $child, $leftAlone]);
 
         $draft = $planner->plan('child', $now);
-        self::assertSame([DirectDebitObstacleKind::PayerLeft], array_map(static fn (DirectDebitObstacle $blocker): DirectDebitObstacleKind => $blocker->kind, $draft->blockers));
-        self::assertStringContainsString('30.06.2026', $draft->blockers[0]->message);
+        self::assertSame([], $draft->blockers);
+        self::assertSame(['child'], array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberId, $draft->positions))));
+        self::assertSame(3000, $draft->defaultAmountCents());
+        self::assertNotEmpty(array_filter($draft->warnings, static fn (string $warning): bool => str_contains($warning, 'zum 30.06.2026 ausgetreten')));
         self::assertSame(['payer'], array_map(static fn (PayerDirectDebitDraft $each): string => $each->payer->id, $planner->planAll($now)));
     }
 
