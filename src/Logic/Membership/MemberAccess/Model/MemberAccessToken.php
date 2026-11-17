@@ -36,6 +36,12 @@ readonly class MemberAccessToken
         public \DateTimeImmutable $expiresAt,
         public string $primaryMemberNumber,
         public string $passwordHash,
+        /**
+         * Der Zahler, dessen Mitglieder der Zugang zeigt (er selbst und alle, für die er zahlt, siehe
+         * `MemberPayerGroupResolver`). Null nur bei Tokens von vor dieser Einschränkung — dann gilt
+         * weiter der ganze Haushalt.
+         */
+        public ?string $payerMemberId = null,
     ) {
         if (trim($this->email) === '' || filter_var($this->email, FILTER_VALIDATE_EMAIL) === false) {
             throw new BusinessRuleViolationException('Die E-Mail-Adresse ist ungültig.');

@@ -355,6 +355,16 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
  * abgelaufen), erscheint dieselbe Fehlermeldung samt Link, um einen neuen Zugang anzufordern —
  * ohne erkennbaren Unterschied, welcher der beiden Faktoren nicht gepasst hat.
  */
+const MEMBER_ACCESS_SUPPORT_EMAIL = 'it@waldbad-borkheide.de';
+const memberAccessSupportNote = () => element('p', {className: 'field-hint member-access-support', children: [
+    element('span', {className: 'member-access-support-icon', text: 'ⓘ', attributes: {'aria-hidden': 'true'}}),
+    element('span', {children: [
+        'Klappt die Anmeldung nicht – etwa weil keine E-Mail ankommt oder deine Daten nicht erkannt werden?',
+        element('br'),
+        'Dann schreib uns an ',
+        element('a', {text: MEMBER_ACCESS_SUPPORT_EMAIL, attributes: {href: `mailto:${MEMBER_ACCESS_SUPPORT_EMAIL}`}}),
+    ]}),
+]});
 const renderMemberSelfServicePasswordGate = (token) => {
     const container = element('div');
     const message = formMessage();
@@ -366,6 +376,7 @@ const renderMemberSelfServicePasswordGate = (token) => {
         message,
         element('button', {className: 'button', text: 'Bestätigen', attributes: {type: 'submit'}}),
         element('a', {className: 'button', text: 'Neuen Zugang anfordern', attributes: {href: '/' + MEMBER_ACCESS_SLUG}}),
+        memberAccessSupportNote(),
     ]});
     passwordField.querySelector('input').required = true;
     form.addEventListener('submit', async (event) => {
@@ -404,6 +415,7 @@ const renderMemberAccessRequestForm = () => {
         birthDateField,
         message,
         element('button', {className: 'button', text: 'Zugangslink anfordern', attributes: {type: 'submit'}}),
+        memberAccessSupportNote(),
     ]});
     emailField.querySelector('input').required = true;
     birthDateField.querySelector('input').required = true;

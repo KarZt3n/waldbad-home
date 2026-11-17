@@ -12,6 +12,7 @@ use App\Logic\Membership\MemberAccess\Dto\MemberSelfServiceResponse;
 use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenException;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
 use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 
 /**
@@ -23,7 +24,8 @@ use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
  * geprüft, statt nur einmalig — die Erfolgsprüfung liefert bei falschem Token wie bei falschem
  * Passwort denselben Fehler, um nicht zu verraten, welcher der beiden Faktoren nicht passt.
  *
- * Nur aktive Mitglieder des Haushalts sind erreichbar: Ausgetretene erscheinen weder in der Anzeige
+ * Erreichbar sind nur der Zahler und die Mitglieder, für die er zahlt (siehe `MemberPayerGroupResolver`)
+ * — ein Selbstzahler im selben Haushalt nicht. Davon nur aktive Mitglieder: Ausgetretene erscheinen weder in der Anzeige
  * noch lassen sie sich über die darauf aufbauenden Use Cases (Kontaktdaten, Einwilligung, Nachricht)
  * ansprechen. Ist niemand mehr aktiv — z. B. Austritt nach dem Versand des Links —, gilt der Zugang
  * als ungültig.
@@ -38,6 +40,7 @@ readonly class ResolveMemberAccessSessionUseCase
         private WorkAssignmentCreditCalculator $workAssignmentCredit,
         private MemberAccessPasswordHasher $passwordHasher,
         private ClockInterface $clock,
+        private MemberPayerGroupResolver $payerGroups,
     ) {
     }
 
@@ -53,7 +56,9 @@ readonly class ResolveMemberAccessSessionUseCase
 
         $now = $this->clock->now();
         $members = array_values(array_filter(
-            $this->members->findByPrimaryMemberNumber($token->primaryMemberNumber),
+            $token->payerMemberId !== null
+                ? $this->payerGroups->members($token->payerMemberId)
+                : $this->members->findByPrimaryMemberNumber($token->primaryMemberNumber),
             static fn (Member $member): bool => $member->isActive($now),
         ));
         if ($members === []) {

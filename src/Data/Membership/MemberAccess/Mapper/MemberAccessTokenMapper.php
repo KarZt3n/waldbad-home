@@ -16,6 +16,7 @@ readonly class MemberAccessTokenMapper
             expiresAt: $entity->getExpiresAt(),
             primaryMemberNumber: $entity->getPrimaryMemberNumber(),
             passwordHash: $entity->getPasswordHash(),
+            payerMemberId: $entity->getPayerMemberId(),
         );
     }
 
@@ -28,6 +29,7 @@ readonly class MemberAccessTokenMapper
             expiresAt: $token->expiresAt,
             primaryMemberNumber: $token->primaryMemberNumber,
             passwordHash: $token->passwordHash,
+            payerMemberId: $token->payerMemberId,
         );
     }
 }

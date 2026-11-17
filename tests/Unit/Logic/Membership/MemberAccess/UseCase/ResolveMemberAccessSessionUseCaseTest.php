@@ -21,6 +21,7 @@ use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
 use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\PaymentInterval;
@@ -182,18 +183,21 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
         $defaultCredit = $this->createStub(WorkAssignmentCreditCalculator::class);
         $defaultCredit->method('calculate')->willReturn(new WorkAssignmentCreditResponse('2026-01-01', '2027-01-01', 0, 0, 5, 300, 0, 0));
 
+        $members ??= $this->createStub(MemberManagerInterface::class);
+
         return new ResolveMemberAccessSessionUseCase(
             $tokens,
-            $members ?? $this->createStub(MemberManagerInterface::class),
+            $members,
             $rates ?? $this->createStub(ContributionRateManagerInterface::class),
             $settings ?? $this->createStub(ContributionRateSettingsManagerInterface::class),
             $workAssignmentCredit ?? $defaultCredit,
             new MemberAccessPasswordHasher(),
             $clock,
+            new MemberPayerGroupResolver($members),
         );
     }
 
-    private function token(\DateTimeImmutable $expiresAt): MemberAccessToken
+    private function token(\DateTimeImmutable $expiresAt, ?string $payerMemberId = null): MemberAccessToken
     {
         return new MemberAccessToken(
             'token-1',
@@ -202,10 +206,34 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
             $expiresAt,
             'Bad-001',
             password_hash(self::PASSWORD, PASSWORD_DEFAULT),
+            $payerMemberId,
         );
     }
 
-    private function member(string $id, ?ContributionCategory $category, ?\DateTimeImmutable $leftAt = null): Member
+    /**
+     * Karsten zahlt für seine Kinder, Sally im selben Haushalt zahlt selbst: Sein Zugang zeigt nur
+     * ihn und die Kinder, für die er zahlt.
+     */
+    public function testShowsOnlyThePayerAndTheMembersHePaysFor(): void
+    {
+        $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
+        $tokens->method('findByHash')->willReturn($this->token(new \DateTimeImmutable('2026-06-01T10:05:00+02:00'), 'karsten'));
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->expects(self::never())->method('findByPrimaryMemberNumber');
+        $members->method('get')->willReturn($this->member('karsten', null));
+        $members->expects(self::once())->method('findByPayerMemberId')->with('karsten')->willReturn([
+            $this->member('kind-1', null, payerMemberId: 'karsten'),
+            $this->member('kind-2', null, payerMemberId: 'karsten'),
+        ]);
+        $settings = $this->createStub(ContributionRateSettingsManagerInterface::class);
+        $settings->method('get')->willReturn(new ContributionRateSettings(null));
+
+        $session = $this->useCase($tokens, $members, null, $settings)->execute('raw-token', self::PASSWORD);
+
+        self::assertSame(['karsten', 'kind-1', 'kind-2'], array_map(static fn ($member): string => $member->id, $session->members));
+    }
+
+    private function member(string $id, ?ContributionCategory $category, ?\DateTimeImmutable $leftAt = null, ?string $payerMemberId = null): Member
     {
         return new Member(
             id: $id,
@@ -231,8 +259,8 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
             paymentMethod: PaymentMethod::BankTransfer,
             paymentInterval: PaymentInterval::Yearly,
             paymentDay: PaymentDay::First,
-            payerType: PayerType::SelfPayer,
-            payerMemberId: null,
+            payerType: $payerMemberId === null ? PayerType::SelfPayer : PayerType::OtherMember,
+            payerMemberId: $payerMemberId,
             nextBookingMonth: 1,
             nextBookingYear: 2027,
             contributionCategory: $category,

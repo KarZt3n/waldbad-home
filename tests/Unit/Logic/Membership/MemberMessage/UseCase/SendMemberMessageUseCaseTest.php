@@ -20,6 +20,7 @@ use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
 use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\MemberMessage\Manager\MemberMessageManagerInterface;
@@ -55,6 +56,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->workAssignmentCreditCalculator(),
             new MemberAccessPasswordHasher(),
             $this->clock(),
+            new MemberPayerGroupResolver($this->createStub(MemberManagerInterface::class)),
         );
 
         $messages = $this->createMock(MemberMessageManagerInterface::class);
@@ -96,6 +98,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->workAssignmentCreditCalculator(),
             new MemberAccessPasswordHasher(),
             $this->clock(),
+            new MemberPayerGroupResolver($this->createStub(MemberManagerInterface::class)),
         );
 
         $messages = $this->createMock(MemberMessageManagerInterface::class);

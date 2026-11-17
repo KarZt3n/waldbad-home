@@ -12,6 +12,7 @@ use App\Logic\Membership\MemberAccess\MemberAccessLinkBuilderInterface;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
 use App\Logic\Settings\Email\Model\AssociationName;
 use App\Logic\Settings\Email\Model\MailDelivery;
 use App\Logic\Settings\Email\Service\NotificationMailer;
@@ -47,6 +48,7 @@ readonly class RequestMemberAccessUseCase
         private NotificationMailer $notificationMailer,
         private MemberAccessLinkBuilderInterface $linkBuilder,
         private LoggerInterface $logger,
+        private MemberPayerGroupResolver $payerGroups,
     ) {
     }
 
@@ -77,6 +79,7 @@ readonly class RequestMemberAccessUseCase
                 expiresAt: $expiresAt,
                 primaryMemberNumber: $match->primaryMemberNumber,
                 passwordHash: $this->passwordHasher->hash($password),
+                payerMemberId: $this->payerGroups->payerIdOf($match),
             ));
 
             $this->notificationMailer->sendTo($email, MailTemplateKey::MemberAccessMagicLink, [
@@ -93,24 +96,26 @@ readonly class RequestMemberAccessUseCase
     }
 
     /**
-     * Ein Mitglied mit dieser E-Mail-Adresse, in dessen Haushalt (gleiche Hauptnummer) jemand das
-     * angegebene Geburtsdatum hat — nicht zwingend dieselbe Person: Eltern können so mit ihrer
-     * Adresse und dem Geburtsdatum eines Kindes anfragen und umgekehrt. Die Adresse allein reicht
-     * nicht, weil sie i. d. R. einen ganzen Haushalt identifiziert.
+     * Ein Mitglied mit dieser E-Mail-Adresse, in dessen Zahlergruppe (der Zahler und alle, für die
+     * er zahlt, siehe `MemberPayerGroupResolver`) jemand das angegebene Geburtsdatum hat — nicht
+     * zwingend dieselbe Person: Eltern können so mit ihrer Adresse und dem Geburtsdatum eines Kindes
+     * anfragen und umgekehrt. Die Adresse allein reicht nicht, weil sie i. d. R. einen ganzen
+     * Haushalt identifiziert; erst das Geburtsdatum entscheidet bei gemeinsamer Adresse, welcher
+     * Zahler gemeint ist.
      *
-     * Zugang gibt es nur, solange im Haushalt noch jemand aktiv ist — auch für ein ausgetretenes
-     * Elternteil, das die Mitgliedschaft der Kinder verwaltet; angezeigt werden dann nur die aktiven
-     * Mitglieder (siehe `ResolveMemberAccessSessionUseCase`). Da dieser Endpunkt für passende wie
-     * nicht passende Kombinationen dieselbe Antwort gibt (siehe Klassenkommentar), bleibt der
-     * Unterschied nach außen unsichtbar.
+     * Zugang gibt es nur, solange in der Gruppe noch jemand aktiv ist — auch für einen ausgetretenen
+     * Zahler, der weiter für seine Kinder zahlt; angezeigt werden dann nur die aktiven Mitglieder
+     * (siehe `ResolveMemberAccessSessionUseCase`). Da dieser Endpunkt für passende wie nicht
+     * passende Kombinationen dieselbe Antwort gibt (siehe Klassenkommentar), bleibt der Unterschied
+     * nach außen unsichtbar.
      */
     private function matchingMember(string $email, \DateTimeImmutable $birthDate): ?Member
     {
         $now = $this->clock->now();
         foreach ($this->members->findByEmail($email) as $member) {
-            $household = $this->household($member);
-            $birthDateMatches = array_any($household, static fn (Member $candidate): bool => $candidate->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d'));
-            if ($birthDateMatches && array_any($household, static fn (Member $candidate): bool => $candidate->isActive($now))) {
+            $group = $this->payerGroup($member);
+            $birthDateMatches = array_any($group, static fn (Member $candidate): bool => $candidate->birthDate->format('Y-m-d') === $birthDate->format('Y-m-d'));
+            if ($birthDateMatches && array_any($group, static fn (Member $candidate): bool => $candidate->isActive($now))) {
                 return $member;
             }
         }
@@ -121,15 +126,15 @@ readonly class RequestMemberAccessUseCase
     /**
      * @return list<Member>
      */
-    private function household(Member $member): array
+    private function payerGroup(Member $member): array
     {
-        $household = $this->members->findByPrimaryMemberNumber($member->primaryMemberNumber);
-        foreach ($household as $householdMember) {
-            if ($householdMember->id === $member->id) {
-                return $household;
+        $group = $this->payerGroups->members($this->payerGroups->payerIdOf($member));
+        foreach ($group as $groupMember) {
+            if ($groupMember->id === $member->id) {
+                return $group;
             }
         }
 
-        return [$member, ...$household];
+        return [$member, ...$group];
     }
 }

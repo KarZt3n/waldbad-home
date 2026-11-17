@@ -1152,8 +1152,17 @@ const openMemberDialog = async (member, onSaved) => {
     applyContributionLiableState();
     if (createMandateButton) {
         createMandateButton.addEventListener('click', async () => {
+            // Der Server erzeugt das Mandat aus dem gespeicherten Datensatz — eine gerade
+            // eingetragene IBAN, Zahlart oder ein Zahlerwechsel müssen daher vorher gespeichert sein.
+            if (!reportFormValidity()) return;
             createMandateButton.disabled = true;
             try {
+                if (JSON.stringify(buildPayload()) !== JSON.stringify(savedState)) {
+                    member = await persistMember();
+                    markSaved();
+                    if (member.contributionWarning) toast(member.contributionWarning, 'info');
+                    await onSaved();
+                }
                 // Speichert serverseitig direkt am Mitglied; Formularfelder und Version werden
                 // nachgezogen, damit ein späteres „Speichern“ das Mandat nicht wieder leert.
                 const updated = await request(`/api/admin/v1/members/${member.id}/mandate`, {method: 'POST'});
@@ -1164,6 +1173,7 @@ const openMemberDialog = async (member, onSaved) => {
                 savedState = {...savedState, mandateReference: updated.mandateReference || null, mandateValidFrom: updated.mandateValidFrom || null};
                 toast('Das SEPA-Mandat wurde erzeugt.');
             } catch (error) {
+                message.textContent = error.message;
                 toast(error.message, 'error');
             } finally {
                 createMandateButton.disabled = false;

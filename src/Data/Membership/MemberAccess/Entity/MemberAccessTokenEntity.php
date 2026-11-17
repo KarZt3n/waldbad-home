@@ -25,6 +25,8 @@ class MemberAccessTokenEntity
         private string $primaryMemberNumber,
         #[ORM\Column(name: 'password_hash', type: Types::STRING, length: 255)]
         private string $passwordHash,
+        #[ORM\Column(name: 'payer_member_id', type: Types::STRING, length: 36, nullable: true)]
+        private ?string $payerMemberId = null,
     ) {
     }
 
@@ -56,5 +58,10 @@ class MemberAccessTokenEntity
     public function getPasswordHash(): string
     {
         return $this->passwordHash;
+    }
+
+    public function getPayerMemberId(): ?string
+    {
+        return $this->payerMemberId;
     }
 }

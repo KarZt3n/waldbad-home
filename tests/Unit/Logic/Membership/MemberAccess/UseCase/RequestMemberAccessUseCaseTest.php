@@ -12,6 +12,8 @@ use App\Logic\Membership\MemberAccess\MemberAccessLinkBuilderInterface;
 use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
+use App\Logic\Membership\Member\Exception\MemberNotFoundException;
 use App\Logic\Membership\MemberAccess\UseCase\RequestMemberAccessUseCase;
 use App\Logic\Settings\Email\Manager\EmailSettingsManagerInterface;
 use App\Logic\Settings\Email\Model\EmailSettings;
@@ -51,6 +53,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('unknown@example.test', '1990-01-01');
     }
 
@@ -70,6 +73,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('not-an-email', '1990-01-01');
     }
 
@@ -89,6 +93,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', 'not-a-date');
     }
 
@@ -100,6 +105,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     {
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('findByEmail')->willReturn([$this->member()]);
+        $members->method('get')->willReturn($this->member());
         $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
         $tokens->expects(self::never())->method('save');
 
@@ -114,6 +120,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', '1991-02-03');
     }
 
@@ -127,7 +134,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
         $leftMember = $this->member(leftAt: new \DateTimeImmutable('2025-12-31'));
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('findByEmail')->willReturn([$leftMember]);
-        $members->method('findByPrimaryMemberNumber')->willReturn([$leftMember]);
+        $members->method('get')->willReturn($leftMember);
         $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
         $tokens->expects(self::never())->method('save');
 
@@ -145,6 +152,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', '1990-01-01');
     }
 
@@ -158,6 +166,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     {
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('findByEmail')->willReturn([$this->member()]);
+        $members->method('get')->willReturn($this->member());
 
         $tokenGenerator = $this->createStub(SecureTokenGeneratorInterface::class);
         $tokenGenerator->method('generate')->willReturn('raw-token-value');
@@ -195,6 +204,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $mailer,
             $linkBuilder,
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('  Erika@Example.test  ', '1990-01-01');
 
         self::assertNotNull($savedToken);
@@ -230,6 +240,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $logger,
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', '1990-01-01');
     }
 
@@ -240,10 +251,11 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     public function testGrantsAccessToALeftMemberWhileTheHouseholdStillHasActiveMembers(): void
     {
         $leftParent = $this->member(leftAt: new \DateTimeImmutable('2025-12-31'));
-        $activeChild = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-01-01'));
+        $activeChild = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-01-01'), payerMemberId: 'member-1');
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('findByEmail')->willReturn([$leftParent]);
-        $members->method('findByPrimaryMemberNumber')->willReturn([$leftParent, $activeChild]);
+        $members->method('get')->willReturn($leftParent);
+        $members->method('findByPayerMemberId')->willReturn([$activeChild]);
         $savedTokens = [];
         $tokens = $this->createMock(MemberAccessTokenManagerInterface::class);
         $tokens->expects(self::once())->method('save')->willReturnCallback(static function (MemberAccessToken $token) use (&$savedTokens): MemberAccessToken {
@@ -266,10 +278,11 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->configuredMailer($capturedEmail),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', '1990-01-01');
 
         self::assertCount(1, $savedTokens);
-        self::assertSame('Bad-001', $savedTokens[0]->primaryMemberNumber);
+        self::assertSame('member-1', $savedTokens[0]->payerMemberId);
         self::assertInstanceOf(Email::class, $capturedEmail);
     }
 
@@ -280,32 +293,76 @@ final class RequestMemberAccessUseCaseTest extends TestCase
     public function testAcceptsTheBirthDateOfAnotherHouseholdMember(): void
     {
         $parent = $this->member();
-        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'));
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'), payerMemberId: 'member-1');
         $savedTokens = $this->requestAccess([$parent], [$parent, $child], '2015-04-05');
 
         self::assertCount(1, $savedTokens);
         self::assertSame('Bad-001', $savedTokens[0]->primaryMemberNumber);
+        self::assertSame('member-1', $savedTokens[0]->payerMemberId);
     }
 
-    public function testRejectsABirthDateFromOutsideTheHousehold(): void
+    /**
+     * Ein Kind, für das das Elternteil zahlt, ruft den Zugang ebenfalls für dessen Zahlergruppe ab.
+     */
+    public function testBindsAccessOfAPaidForMemberToItsPayer(): void
     {
         $parent = $this->member();
-        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'));
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'), payerMemberId: 'member-1');
+        $savedTokens = $this->requestAccess([$child], [$parent, $child], '1990-01-01');
+
+        self::assertCount(1, $savedTokens);
+        self::assertSame('member-1', $savedTokens[0]->payerMemberId);
+    }
+
+    public function testRejectsABirthDateFromOutsideThePayerGroup(): void
+    {
+        $parent = $this->member();
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'), payerMemberId: 'member-1');
 
         self::assertSame([], $this->requestAccess([$parent], [$parent, $child], '2016-04-05'));
     }
 
     /**
+     * Die Partnerin im selben Haushalt zahlt selbst: Mit der gemeinsamen Adresse und ihrem
+     * Geburtsdatum entsteht ein Zugang nur für sie — nicht für den anderen Zahler und seine Kinder.
+     */
+    public function testASelfPayingPartnerWithTheSameEmailGetsOnlyHerOwnGroup(): void
+    {
+        $father = $this->member();
+        $child = $this->member(id: 'member-2', memberNumber: 'Bad-002', birthDate: new \DateTimeImmutable('2015-04-05'), payerMemberId: 'member-1');
+        $partner = $this->member(id: 'member-3', memberNumber: 'Bad-003', birthDate: new \DateTimeImmutable('1988-08-08'));
+
+        $savedTokens = $this->requestAccess([$father, $partner], [$father, $child, $partner], '1988-08-08');
+        self::assertCount(1, $savedTokens);
+        self::assertSame('member-3', $savedTokens[0]->payerMemberId);
+
+        // Ihre Adresse mit dem Geburtsdatum eines Kindes, für das sie nicht zahlt, reicht nicht.
+        self::assertSame([], $this->requestAccess([$partner], [$father, $child, $partner], '2015-04-05'));
+    }
+
+    /**
      * @param list<Member> $byEmail
-     * @param list<Member> $household
+     * @param list<Member> $all
      *
      * @return list<MemberAccessToken>
      */
-    private function requestAccess(array $byEmail, array $household, string $birthDate): array
+    private function requestAccess(array $byEmail, array $all, string $birthDate): array
     {
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('findByEmail')->willReturn($byEmail);
-        $members->method('findByPrimaryMemberNumber')->willReturn($household);
+        $members->method('get')->willReturnCallback(static function (string $id) use ($all): Member {
+            foreach ($all as $member) {
+                if ($member->id === $id) {
+                    return $member;
+                }
+            }
+
+            throw new MemberNotFoundException($id);
+        });
+        $members->method('findByPayerMemberId')->willReturnCallback(static fn (string $payerId): array => array_values(array_filter(
+            $all,
+            static fn (Member $member): bool => $member->payerMemberId === $payerId,
+        )));
         $savedTokens = [];
         $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
         $tokens->method('save')->willReturnCallback(static function (MemberAccessToken $token) use (&$savedTokens): MemberAccessToken {
@@ -327,6 +384,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             $this->noopMailer(),
             $this->createStub(MemberAccessLinkBuilderInterface::class),
             $this->createStub(LoggerInterface::class),
+            new MemberPayerGroupResolver($members),
         ))->execute('erika@example.test', $birthDate);
 
         return $savedTokens;
@@ -337,6 +395,7 @@ final class RequestMemberAccessUseCaseTest extends TestCase
         string $id = 'member-1',
         string $memberNumber = 'Bad-001',
         ?\DateTimeImmutable $birthDate = null,
+        ?string $payerMemberId = null,
     ): Member {
         return new Member(
             id: $id,
@@ -362,8 +421,8 @@ final class RequestMemberAccessUseCaseTest extends TestCase
             paymentMethod: \App\Logic\Membership\Member\Model\PaymentMethod::BankTransfer,
             paymentInterval: \App\Logic\Membership\PaymentInterval::Yearly,
             paymentDay: \App\Logic\Membership\Member\Model\PaymentDay::First,
-            payerType: \App\Logic\Membership\Member\Model\PayerType::SelfPayer,
-            payerMemberId: null,
+            payerType: $payerMemberId === null ? \App\Logic\Membership\Member\Model\PayerType::SelfPayer : \App\Logic\Membership\Member\Model\PayerType::OtherMember,
+            payerMemberId: $payerMemberId,
             nextBookingMonth: 1,
             nextBookingYear: 2027,
             contributionCategory: null,
