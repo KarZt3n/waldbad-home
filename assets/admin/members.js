@@ -735,12 +735,13 @@ const contributionPositions = (entry) => {
 
 const formatWorkHours = (minutes) => `${(minutes / 60).toLocaleString('de-DE', {maximumFractionDigits: 2})} Std.`;
 // Wie in „Meine Mitgliedschaft“ (`member-self-service.js`): angerechnet werden höchstens die
-// benötigten Stunden des Haushalts, mehr Stunden erhöhen die Gutschrift nicht.
+// benötigten Stunden des Zahler-Strangs, mehr Stunden erhöhen die Gutschrift nicht.
 const creditedWorkMinutes = (credit) => Math.min(credit.workedMinutes, credit.liableMemberCount * credit.requiredHoursPerAssignment * 60);
 
 /**
  * Reiter „Arbeitseinsätze“: Gutschrift je Beitragsjahr ganz oben, darunter je Jahr ein Accordion mit
- * den Veranstaltungen bzw. Einsätzen des Haushalts, die wiederum aufklappbar ihre Hilfezeiträume zeigen.
+ * den Veranstaltungen bzw. Einsätzen des Zahler-Strangs (Zahler und alle, für die er zahlt), die
+ * wiederum aufklappbar ihre Hilfezeiträume zeigen.
  */
 const renderMemberWorkAssignments = (years, refund = null) => {
     const currentYear = new Date().getFullYear();
@@ -748,7 +749,7 @@ const renderMemberWorkAssignments = (years, refund = null) => {
     const refundButton = (year) => {
         if (!refund || year < currentYear - 2 || year > currentYear) return element('td');
         const button = element('button', {className: 'secondary-button', text: 'Gutschrift…', attributes: {type: 'button'}});
-        button.addEventListener('click', () => openWorkAssignmentRefundDialog(refund.primaryMemberNumber, year, refund.onExported));
+        button.addEventListener('click', () => openWorkAssignmentRefundDialog(refund.payerMemberNumber, year, refund.onExported));
 
         return element('td', {children: [button]});
     };
@@ -1638,7 +1639,7 @@ const openMemberDialog = async (member, onSaved) => {
         try {
             const data = await request(`/api/admin/v1/members/${member.id}/work-assignments`);
             workAssignmentSection.replaceChildren(...renderMemberWorkAssignments(data.years, canEditModule('members')
-                ? {primaryMemberNumber: member.primaryMemberNumber, onExported: async () => {}}
+                ? {payerMemberNumber: member.memberNumber, onExported: async () => {}}
                 : null));
         } catch (error) {
             workAssignmentsRequested = false;
@@ -2578,14 +2579,14 @@ const directDebitOverviewPanel = (kind = 'contribution') => {
 
 const formatHours = (minutes) => `${(minutes / 60).toLocaleString('de-DE', {maximumFractionDigits: 2})} Std.`;
 
-// Gutschrift eines Haushalts im Detail (siehe `GetWorkAssignmentRefundDetailQuery`), aufgebaut wie
-// die Lastschrift-Vorschau: Empfänger und Vereinskonto, je Mitglied Zuschlag und Einsätze, dann die
-// Berechnung. Ist der Haushalt überweisbar, lässt sich die Gutschrift hier auch einzeln als
+// Gutschrift eines Zahler-Strangs im Detail (siehe `GetWorkAssignmentRefundDetailQuery`), aufgebaut
+// wie die Lastschrift-Vorschau: Empfänger und Vereinskonto, je Mitglied Zuschlag und Einsätze, dann
+// die Berechnung. Ist die Gutschrift überweisbar, lässt sich die Gutschrift hier auch einzeln als
 // XML-Datei (pain.001) exportieren — z. B. vom Reiter „Arbeitseinsätze“ eines Mitglieds aus.
-const openWorkAssignmentRefundDialog = async (primaryMemberNumber, year, onExported = async () => {}) => {
+const openWorkAssignmentRefundDialog = async (payerMemberNumber, year, onExported = async () => {}) => {
     let detail;
     try {
-        detail = await request(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(primaryMemberNumber)}?year=${encodeURIComponent(year)}`);
+        detail = await request(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(payerMemberNumber)}?year=${encodeURIComponent(year)}`);
     } catch (error) {
         toast(error.message, 'error');
         return;
@@ -2654,7 +2655,7 @@ const openWorkAssignmentRefundDialog = async (primaryMemberNumber, year, onExpor
         message.textContent = '';
         submit.disabled = true;
         try {
-            const file = await exportDirectDebitWithOptionalPin(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(primaryMemberNumber)}/export`, {
+            const file = await exportDirectDebitWithOptionalPin(`/api/admin/v1/work-assignment-refunds/${encodeURIComponent(entry.payerMemberNumber)}/export`, {
                 year: detail.year,
                 executionDate: executionDate.querySelector('input').value,
             }, 'SEPA-Gutschrift exportieren');
@@ -2675,8 +2676,8 @@ const openWorkAssignmentRefundDialog = async (primaryMemberNumber, year, onExpor
     dialog.showModal();
 };
 
-// Gutschrift der geleisteten Arbeitsstunden je Haushalt (siehe `GetWorkAssignmentRefundOverviewQuery`):
-// Beitragsjahr wählen, Ausführungsdatum festlegen und alle überweisbaren Haushalte als eine
+// Gutschrift der geleisteten Arbeitsstunden je Zahler-Strang (siehe `GetWorkAssignmentRefundOverviewQuery`):
+// Beitragsjahr wählen, Ausführungsdatum festlegen und alle überweisbaren Gutschriften als eine
 // SEPA-Überweisungsdatei (pain.001) exportieren. Bereits überwiesene Beträge zieht der Server ab.
 const workAssignmentRefundPanel = () => {
     const body = element('div', {className: 'direct-debit-overview-body', children: [emptyState('Gutschriften werden geladen …')]});
@@ -2699,7 +2700,7 @@ const workAssignmentRefundPanel = () => {
                 element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
                 ...(withObstacles ? [element('td', {className: 'direct-debit-obstacles', text: entry.obstacles.map((obstacle) => obstacle.message).join(' ')})] : []),
             ]});
-            const open = () => openWorkAssignmentRefundDialog(entry.primaryMemberNumber, overview.year, load);
+            const open = () => openWorkAssignmentRefundDialog(entry.payerMemberNumber, overview.year, load);
             row.addEventListener('click', open);
             row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
 
@@ -2722,18 +2723,18 @@ const workAssignmentRefundPanel = () => {
         exportAll.disabled = overview.valid.length === 0;
         exportAll.textContent = `Alle exportieren (${overview.valid.length})`;
         body.replaceChildren(
-            element('p', {className: 'field-hint', text: 'Gutschrift = geleistete Stunden des Haushalts × Satz je Stunde, höchstens der Arbeitseinsatz-Zuschlag des Haushalts. Empfänger ist der Zahler, bereits überwiesene Beträge des Jahres werden abgezogen.'}),
+            element('p', {className: 'field-hint', text: 'Gutschrift je Zahler: geleistete Stunden des Zahlers und aller, für die er zahlt, × Satz je Stunde, höchstens deren Arbeitseinsatz-Zuschläge. Ein Selbstzahler im selben Haushalt erhält eine eigene Gutschrift. Bereits überwiesene Beträge des Jahres werden abgezogen.'}),
             sepaAccordion(openSections, 'invalid', 'Nicht überweisbar', String(overview.invalid.length), [
-                element('p', {className: 'field-hint', text: 'Diese Haushalte sind nicht in der Sammelüberweisung enthalten.'}),
+                element('p', {className: 'field-hint', text: 'Diese Gutschriften sind nicht in der Sammelüberweisung enthalten.'}),
                 overview.invalid.length
                     ? sepaObstacleSection(overview.invalid, overview.obstacleCategories, state, (entries) => table(entries, true))
-                    : emptyState('Keine – alle Haushalte sind überweisbar.'),
+                    : emptyState('Keine – alle Gutschriften sind überweisbar.'),
             ]),
             sepaAccordion(openSections, 'valid', 'Überweisbar', `${overview.valid.length} · ${formatEuro(sumAmounts(overview.valid))}`, [
                 overview.valid.length ? table(overview.valid, false) : emptyState('Keine überweisbaren Gutschriften.'),
             ]),
             ...(overview.withoutAmount.length ? [sepaAccordion(openSections, 'withoutAmount', 'Nichts zu überweisen', String(overview.withoutAmount.length), [
-                element('p', {className: 'field-hint', text: 'Diese Haushalte haben Stunden geleistet, aber keinen Arbeitseinsatz-Zuschlag, oder ihre Gutschrift wurde bereits vollständig überwiesen.'}),
+                element('p', {className: 'field-hint', text: 'Diese Zahler-Stränge haben Stunden geleistet, aber keinen Arbeitseinsatz-Zuschlag, oder ihre Gutschrift wurde bereits vollständig überwiesen.'}),
                 table(overview.withoutAmount, false),
             ])] : []),
         );
@@ -2757,7 +2758,7 @@ const workAssignmentRefundPanel = () => {
             const file = await exportDirectDebitWithOptionalPin('/api/admin/v1/work-assignment-refunds/export', {
                 year: overview.year,
                 executionDate: executionDateInput.value,
-                primaryMemberNumbers: overview.valid.map((entry) => entry.primaryMemberNumber),
+                payerMemberNumbers: overview.valid.map((entry) => entry.payerMemberNumber),
             }, 'SEPA-Gutschrift exportieren');
             if (!file) return;
             downloadFile(file);

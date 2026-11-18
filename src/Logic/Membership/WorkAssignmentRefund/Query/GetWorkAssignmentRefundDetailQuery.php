@@ -28,14 +28,14 @@ readonly class GetWorkAssignmentRefundDetailQuery
     ) {
     }
 
-    public function execute(string $primaryMemberNumber, ?int $year): WorkAssignmentRefundDetailResponse
+    public function execute(string $payerMemberNumber, ?int $year): WorkAssignmentRefundDetailResponse
     {
         $now = $this->clock->now();
         $year ??= (int) $now->format('Y');
-        $draft = $this->planner->plan($primaryMemberNumber, $year, $now);
+        $draft = $this->planner->plan($payerMemberNumber, $year, $now);
 
         $participationsByMember = [];
-        $memberIds = array_map(static fn (Member $member): string => $member->id, $draft->householdMembers);
+        $memberIds = array_map(static fn (Member $member): string => $member->id, $draft->members);
         foreach ($this->workAssignments->findForMembers($memberIds) as $participation) {
             if ($participation->year() === $year) {
                 $participationsByMember[$participation->memberId][] = $participation;
@@ -43,7 +43,7 @@ readonly class GetWorkAssignmentRefundDetailQuery
         }
 
         $members = [];
-        foreach ($draft->householdMembers as $member) {
+        foreach ($draft->members as $member) {
             $participations = $participationsByMember[$member->id] ?? [];
             $members[] = new WorkAssignmentRefundMemberResponse(
                 memberId: $member->id,
@@ -68,7 +68,7 @@ readonly class GetWorkAssignmentRefundDetailQuery
             members: $members,
             refunds: array_values(array_filter(
                 $this->records->findByYear($year),
-                static fn (WorkAssignmentRefundRecord $record): bool => $record->primaryMemberNumber === $primaryMemberNumber,
+                static fn (WorkAssignmentRefundRecord $record): bool => $record->payerMemberId === $draft->recipient?->id,
             )),
         );
     }

@@ -22,20 +22,24 @@ use App\Logic\Membership\WorkAssignment\MemberWorkAssignmentProviderInterface;
 use App\Logic\Membership\WorkAssignment\Model\WorkAssignmentInterval;
 use App\Logic\Membership\WorkAssignment\Model\WorkAssignmentParticipation;
 use App\Logic\Membership\WorkAssignment\Query\GetMemberWorkAssignmentsQuery;
+use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
 use PHPUnit\Framework\TestCase;
 
 final class GetMemberWorkAssignmentsQueryTest extends TestCase
 {
     /**
      * Das laufende Jahr erscheint immer (auch ohne Einsätze), frühere Jahre nur mit Einsätzen; neuestes
-     * zuerst. Die Gutschrift wird je Beitragsjahr für den ganzen Haushalt berechnet.
+     * zuerst. Die Gutschrift wird je Beitragsjahr für den ganzen Zahler-Strang berechnet; ein
+     * Selbstzahler im selben Haushalt gehört nicht dazu.
      */
-    public function testGroupsHouseholdParticipationsByContributionYear(): void
+    public function testGroupsPayerStrandParticipationsByContributionYear(): void
     {
-        $household = [$this->member('parent', 'Erika', 1500), $this->member('child', 'Max', null)];
+        $parent = $this->member('parent', 'Erika', 1500);
+        $child = $this->member('child', 'Max', null, 'parent');
         $members = $this->createStub(MemberManagerInterface::class);
-        $members->method('get')->willReturn($household[1]);
-        $members->method('findByPrimaryMemberNumber')->willReturn($household);
+        $members->method('get')->willReturnCallback(static fn (string $id): Member => $id === 'parent' ? $parent : $child);
+        $members->method('findByPayerMemberId')->willReturn([$child]);
+        $members->method('findByPrimaryMemberNumber')->willReturn([$parent, $child, $this->member('partner', 'Sally', 1500)]);
 
         $participations = [
             $this->participation('child', 'Sommerfest', '2025-07-12', 120),
@@ -45,7 +49,7 @@ final class GetMemberWorkAssignmentsQueryTest extends TestCase
         $provider = $this->createMock(MemberWorkAssignmentProviderInterface::class);
         $provider->expects(self::once())->method('findForMembers')->with(['parent', 'child'])->willReturn($participations);
 
-        $years = (new GetMemberWorkAssignmentsQuery($members, $provider, $this->calculator(), $this->clock('2026-03-01')))->execute('child');
+        $years = (new GetMemberWorkAssignmentsQuery($members, $provider, $this->calculator(), $this->clock('2026-03-01'), new MemberPayerGroupResolver($members)))->execute('child');
 
         self::assertSame([2026, 2025, 2024], array_map(static fn ($year): int => $year->year, $years));
         self::assertSame([], $years[0]->participations);
@@ -95,7 +99,7 @@ final class GetMemberWorkAssignmentsQueryTest extends TestCase
         return new WorkAssignmentParticipation($memberId, $title, $date, '09:00', $minutes, [new WorkAssignmentInterval('09:00', '10:00')]);
     }
 
-    private function member(string $id, string $firstName, ?int $workAssignmentSurchargeCents): Member
+    private function member(string $id, string $firstName, ?int $workAssignmentSurchargeCents, ?string $payerMemberId = null): Member
     {
         return new Member(
             id: $id,
@@ -121,8 +125,8 @@ final class GetMemberWorkAssignmentsQueryTest extends TestCase
             paymentMethod: PaymentMethod::BankTransfer,
             paymentInterval: PaymentInterval::Yearly,
             paymentDay: PaymentDay::First,
-            payerType: PayerType::SelfPayer,
-            payerMemberId: null,
+            payerType: $payerMemberId === null ? PayerType::SelfPayer : PayerType::OtherMember,
+            payerMemberId: $payerMemberId,
             nextBookingMonth: 1,
             nextBookingYear: 2027,
             contributionCategory: null,

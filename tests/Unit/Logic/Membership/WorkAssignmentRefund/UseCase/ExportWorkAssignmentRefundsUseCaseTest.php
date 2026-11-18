@@ -44,12 +44,13 @@ use App\Logic\Membership\WorkAssignmentRefund\UseCase\ExportWorkAssignmentRefund
 use PHPUnit\Framework\TestCase;
 
 /**
- * Zuschlag 15 € bei 5 Stunden je Arbeitseinsatz = 3 € je Stunde. Haushalte:
+ * Zuschlag 15 € bei 5 Stunden je Arbeitseinsatz = 3 € je Stunde. Zahler-Stränge:
  * - Bad-a: Zahler + Kind (2 Zuschläge = 30 €), der Zahler leistet 10 Std. → 30 € an den Zahler
  * - Bad-b: Platzhalter-IBAN → nicht überweisbar
  * - Bad-c: kein Zuschlag → nichts zu überweisen
  * - Bad-d: 5 Std. = 15 €, davon 10 € schon überwiesen → 5 €
  * - Bad-e: keine Stunden → taucht nicht auf
+ * - Bad-f und Bad-f2: selber Haushalt, aber zwei Selbstzahler mit je 5 Std. → je 15 € an jeden
  */
 final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
 {
@@ -64,7 +65,8 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
         self::assertSame([2026, 2025, 2024], $overview->selectableYears);
         // 30.10.2026 ist ein Freitag → nächster Bankarbeitstag Montag.
         self::assertSame('2026-11-02', $overview->defaultExecutionDate);
-        self::assertSame(['Bad-a' => 3000, 'Bad-d' => 500], $this->amounts($overview->valid));
+        self::assertSame(['Bad-a' => 3000, 'Bad-d' => 500, 'Bad-f' => 1500, 'Bad-f2' => 1500], $this->amounts($overview->valid));
+        self::assertSame(['Bad-f', 'Bad-f'], [$overview->valid[2]->primaryMemberNumber, $overview->valid[3]->primaryMemberNumber]);
         self::assertSame('Zahler a', $overview->valid[0]->recipientName);
         self::assertSame(['Bad-a', 'Muster', 'A'], [$overview->valid[0]->memberNumber, $overview->valid[0]->lastName, $overview->valid[0]->firstName]);
         self::assertSame(1000, $overview->valid[1]->refundedCents);
@@ -73,7 +75,7 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
         self::assertSame(['Bad-c' => 0], $this->amounts($overview->withoutAmount));
     }
 
-    public function testExportsOneTransferPerHouseholdAndBooksEveryRefund(): void
+    public function testExportsOneTransferPerPayerAndBooksEveryRefund(): void
     {
         $batches = [];
         $writer = $this->createStub(CreditTransferFileWriterInterface::class);
@@ -83,7 +85,7 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
             return '<xml/>';
         });
 
-        $file = $this->useCase($writer)->execute(new ExportWorkAssignmentRefundsRequest(2026, new \DateTimeImmutable('2026-11-02'), ['Bad-d', 'Bad-a']));
+        $file = $this->useCase($writer)->execute(new ExportWorkAssignmentRefundsRequest(2026, new \DateTimeImmutable('2026-11-02'), ['Bad-d', 'Bad-a', 'Bad-f2', 'Bad-f']));
 
         self::assertSame('<xml/>', $file->content);
         self::assertSame('sepa-gutschrift-arbeitseinsatz-2026-sammel-20261030-100000.xml', $file->fileName);
@@ -93,13 +95,15 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
             [
                 ['AE2026-Bad-a-20261030', 3000, 'Zahler a', 'DE89370400440532013000', 'Gutschrift Arbeitseinsatz 2026, Mitgl.-Nr. Bad-a, 10 Std.'],
                 ['AE2026-Bad-d-20261030', 500, 'Zahler d', 'DE89370400440532013000', 'Gutschrift Arbeitseinsatz 2026, Mitgl.-Nr. Bad-d, 5 Std.'],
+                ['AE2026-Bad-f-20261030', 1500, 'Zahler f', 'DE89370400440532013000', 'Gutschrift Arbeitseinsatz 2026, Mitgl.-Nr. Bad-f, 5 Std.'],
+                ['AE2026-Bad-f2-20261030', 1500, 'Zahler f2', 'DE89370400440532013000', 'Gutschrift Arbeitseinsatz 2026, Mitgl.-Nr. Bad-f2, 5 Std.'],
             ],
             array_map(static fn (CreditTransferTransaction $transaction): array => [
                 $transaction->endToEndId, $transaction->amountCents, $transaction->creditorName, $transaction->creditorIban, $transaction->remittanceInformation,
             ], $batches[0]->transactions),
         );
         self::assertSame(
-            [['Bad-a', 'a', 3000], ['Bad-d', 'd', 500]],
+            [['Bad-a', 'a', 3000], ['Bad-d', 'd', 500], ['Bad-f', 'f', 1500], ['Bad-f', 'f2', 1500]],
             array_map(static fn (WorkAssignmentRefundRecord $record): array => [$record->primaryMemberNumber, $record->payerMemberId, $record->amountCents], $this->savedRecords),
         );
     }
@@ -117,7 +121,7 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
     {
         $this->expectException(BusinessRuleViolationException::class);
         $this->useCase($this->createStub(CreditTransferFileWriterInterface::class))
-            ->execute(new ExportWorkAssignmentRefundsRequest(2026, new \DateTimeImmutable('2026-10-29'), ['Bad-a', 'Bad-d']));
+            ->execute(new ExportWorkAssignmentRefundsRequest(2026, new \DateTimeImmutable('2026-10-29'), ['Bad-a', 'Bad-d', 'Bad-f', 'Bad-f2']));
     }
 
     /**
@@ -191,7 +195,7 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
      */
     private function amounts(array $entries): array
     {
-        return array_column(array_map(static fn (WorkAssignmentRefundOverviewEntryResponse $entry): array => [$entry->primaryMemberNumber, $entry->amountCents], $entries), 1, 0);
+        return array_column(array_map(static fn (WorkAssignmentRefundOverviewEntryResponse $entry): array => [$entry->payerMemberNumber, $entry->amountCents], $entries), 1, 0);
     }
 
     private function useCase(CreditTransferFileWriterInterface $writer): ExportWorkAssignmentRefundsUseCase
@@ -235,17 +239,20 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
             $this->member('c', surchargeCents: null),
             $this->member('d'),
             $this->member('e'),
+            $this->member('f'),
+            $this->member('f2', primaryId: 'f'),
         ];
         $members->method('search')->willReturn($all);
-        $members->method('findByPrimaryMemberNumber')->willReturnCallback(static fn (string $number): array => array_values(array_filter(
+        $members->method('findByMemberNumber')->willReturnCallback(static fn (string $number): ?Member => array_find($all, static fn (Member $member): bool => $member->memberNumber === $number));
+        $members->method('findByPayerMemberId')->willReturnCallback(static fn (string $id): array => array_values(array_filter(
             $all,
-            static fn (Member $member): bool => $member->primaryMemberNumber === $number,
+            static fn (Member $member): bool => $member->payerMemberId === $id,
         )));
         $rates = $this->createStub(ContributionRateManagerInterface::class);
         $rates->method('findByCategory')->willReturn(new ContributionRate('rate-1', ContributionCategory::WorkAssignmentSurcharge, 'Arbeitseinsatz-Zuschlag', 1500, PaymentInterval::Yearly));
         $minutes = $this->createStub(GetMemberWorkedMinutesQuery::class);
-        $minutes->method('minutesByMember')->willReturn(['a' => 600, 'a2' => 0, 'b' => 120, 'c' => 300, 'd' => 300, 'e' => 0]);
-        // Nur für die Detailansicht (`plan()`), die im Test ausschließlich Haushalt Bad-a abfragt.
+        $minutes->method('minutesByMember')->willReturn(['a' => 600, 'a2' => 0, 'b' => 120, 'c' => 300, 'd' => 300, 'e' => 0, 'f' => 300, 'f2' => 300]);
+        // Nur für die Detailansicht (`plan()`), die im Test ausschließlich den Strang Bad-a abfragt.
         $minutes->method('totalMinutes')->willReturn(600);
         $calculator = new WorkAssignmentCreditCalculator($rates, $minutes, new WorkAssignmentCreditConfig(
             ['from' => '2026-01-01', 'to' => '2027-01-01'],
@@ -267,14 +274,14 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
         return $clock;
     }
 
-    private function member(string $id, ?string $payerId = null, ?int $surchargeCents = 1500, string $iban = 'DE89370400440532013000'): Member
+    private function member(string $id, ?string $payerId = null, ?int $surchargeCents = 1500, string $iban = 'DE89370400440532013000', ?string $primaryId = null): Member
     {
         $isPayer = $payerId === null;
 
         return new Member(
             id: $id,
             memberNumber: 'Bad-'.$id,
-            primaryMemberNumber: 'Bad-'.($payerId ?? $id),
+            primaryMemberNumber: 'Bad-'.($primaryId ?? $payerId ?? $id),
             salutation: Salutation::Diverse,
             lastName: 'Muster',
             firstName: ucfirst($id),

@@ -39,14 +39,14 @@ readonly class WorkAssignmentRefundExporter
                 throw new \LogicException('Nur überweisbare Gutschriften dürfen exportiert werden.');
             }
             $transactions[] = new CreditTransferTransaction(
-                endToEndId: sprintf('AE%d-%s-%s', $draft->year, $draft->primaryMemberNumber, $now->format('Ymd')),
+                endToEndId: sprintf('AE%d-%s-%s', $draft->year, $draft->payerMemberNumber, $now->format('Ymd')),
                 amountCents: $draft->amountCents(),
                 creditorName: $draft->recipientName,
                 creditorIban: $recipient->iban,
                 remittanceInformation: sprintf(
                     'Gutschrift Arbeitseinsatz %d, Mitgl.-Nr. %s, %s Std.',
                     $draft->year,
-                    $draft->primaryMemberNumber,
+                    $draft->payerMemberNumber,
                     rtrim(rtrim(number_format($draft->credit->workedMinutes / 60, 2, ',', ''), '0'), ','),
                 ),
             );

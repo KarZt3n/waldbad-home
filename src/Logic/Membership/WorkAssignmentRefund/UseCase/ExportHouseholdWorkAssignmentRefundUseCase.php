@@ -27,7 +27,7 @@ readonly class ExportHouseholdWorkAssignmentRefundUseCase
     public function execute(ExportHouseholdWorkAssignmentRefundRequest $request): WorkAssignmentRefundFileResponse
     {
         $now = $this->clock->now();
-        $draft = $this->planner->plan($request->primaryMemberNumber, $request->year, $now);
+        $draft = $this->planner->plan($request->payerMemberNumber, $request->year, $now);
         if ($draft->obstacles !== []) {
             throw new BusinessRuleViolationException(implode(' ', array_map(static fn (WorkAssignmentRefundObstacle $obstacle): string => $obstacle->message, $draft->obstacles)));
         }
@@ -35,6 +35,6 @@ readonly class ExportHouseholdWorkAssignmentRefundUseCase
             throw new BusinessRuleViolationException('Für diesen Haushalt ist nichts (mehr) zu überweisen.');
         }
 
-        return $this->exporter->export([$draft], $request->executionDate, $now, $draft->primaryMemberNumber);
+        return $this->exporter->export([$draft], $request->executionDate, $now, $draft->payerMemberNumber);
     }
 }

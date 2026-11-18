@@ -47,11 +47,11 @@ final class AdminWorkAssignmentRefundController extends AbstractController
         ]);
     }
 
-    #[Route('/api/admin/v1/work-assignment-refunds/{primaryMemberNumber}', name: 'api_admin_work_assignment_refund_detail', methods: ['GET'])]
-    public function detail(string $primaryMemberNumber, Request $request, GetWorkAssignmentRefundDetailQuery $query): JsonResponse
+    #[Route('/api/admin/v1/work-assignment-refunds/{payerMemberNumber}', name: 'api_admin_work_assignment_refund_detail', methods: ['GET'])]
+    public function detail(string $payerMemberNumber, Request $request, GetWorkAssignmentRefundDetailQuery $query): JsonResponse
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
-        $detail = $query->execute($primaryMemberNumber, $this->year($request));
+        $detail = $query->execute($payerMemberNumber, $this->year($request));
 
         return new JsonResponse([
             'year' => $detail->year,
@@ -94,18 +94,18 @@ final class AdminWorkAssignmentRefundController extends AbstractController
         $pin = $payload->getString('pin');
         $verifyPin->execute(ProtectedAction::MembersDirectDebitExport, $pin === '' ? null : $pin);
 
-        $primaryMemberNumbers = [];
-        foreach ($payload->all('primaryMemberNumbers') as $primaryMemberNumber) {
-            if (!is_string($primaryMemberNumber)) {
-                throw new BadRequestHttpException('Die Haushaltsauswahl ist ungültig.');
+        $payerMemberNumbers = [];
+        foreach ($payload->all('payerMemberNumbers') as $payerMemberNumber) {
+            if (!is_string($payerMemberNumber)) {
+                throw new BadRequestHttpException('Die Auswahl der Zahler ist ungültig.');
             }
-            $primaryMemberNumbers[] = $primaryMemberNumber;
+            $payerMemberNumbers[] = $payerMemberNumber;
         }
 
         return $this->fileResponse($useCase->execute(new ExportWorkAssignmentRefundsRequest(
             year: $payload->getInt('year'),
             executionDate: $this->executionDate($payload->getString('executionDate')),
-            primaryMemberNumbers: $primaryMemberNumbers,
+            payerMemberNumbers: $payerMemberNumbers,
         )));
     }
 
@@ -120,8 +120,8 @@ final class AdminWorkAssignmentRefundController extends AbstractController
     }
 
     // POST statt GET: der optionale PIN landet im JSON-Body statt in der Query-String.
-    #[Route('/api/admin/v1/work-assignment-refunds/{primaryMemberNumber}/export', name: 'api_admin_work_assignment_refund_export_household', methods: ['POST'])]
-    public function exportHousehold(string $primaryMemberNumber, Request $request, ExportHouseholdWorkAssignmentRefundUseCase $useCase, VerifyPinUseCase $verifyPin): Response
+    #[Route('/api/admin/v1/work-assignment-refunds/{payerMemberNumber}/export', name: 'api_admin_work_assignment_refund_export_household', methods: ['POST'])]
+    public function exportHousehold(string $payerMemberNumber, Request $request, ExportHouseholdWorkAssignmentRefundUseCase $useCase, VerifyPinUseCase $verifyPin): Response
     {
         $this->denyAccessUnlessGranted(Permission::MembersEdit->value);
         $payload = $request->getPayload();
@@ -129,7 +129,7 @@ final class AdminWorkAssignmentRefundController extends AbstractController
         $verifyPin->execute(ProtectedAction::MembersDirectDebitExport, $pin === '' ? null : $pin);
 
         return $this->fileResponse($useCase->execute(new ExportHouseholdWorkAssignmentRefundRequest(
-            primaryMemberNumber: $primaryMemberNumber,
+            payerMemberNumber: $payerMemberNumber,
             year: $payload->getInt('year'),
             executionDate: $this->executionDate($payload->getString('executionDate')),
         )));
@@ -156,6 +156,7 @@ final class AdminWorkAssignmentRefundController extends AbstractController
     private function entryToArray(WorkAssignmentRefundOverviewEntryResponse $entry): array
     {
         return [
+            'payerMemberNumber' => $entry->payerMemberNumber,
             'primaryMemberNumber' => $entry->primaryMemberNumber,
             'payerId' => $entry->payerId,
             'memberNumber' => $entry->memberNumber,

@@ -8,12 +8,14 @@ use App\Logic\Membership\WorkAssignmentRefund\Model\WorkAssignmentRefundObstacle
 readonly class WorkAssignmentRefundOverviewEntryResponse
 {
     /**
-     * `$memberNumber`/`$lastName`/`$firstName` beschreiben den Empfänger bzw. ohne eindeutigen
-     * Empfänger das Hauptmitglied; `$recipientName` ist der Kontoinhaber für die Überweisung.
+     * `$payerMemberNumber` kennzeichnet den Zahler-Strang; `$memberNumber`/`$lastName`/`$firstName`
+     * beschreiben den Zahler bzw. ohne gültigen Zahler das Mitglied selbst, `$primaryMemberNumber`
+     * dessen Haushalt; `$recipientName` ist der Kontoinhaber für die Überweisung.
      *
-     * @param list<array{kind: string, message: string}> $obstacles leer, wenn der Haushalt überwiesen werden kann
+     * @param list<array{kind: string, message: string}> $obstacles leer, wenn die Gutschrift überwiesen werden kann
      */
     public function __construct(
+        public string $payerMemberNumber,
         public string $primaryMemberNumber,
         public ?string $payerId,
         public string $memberNumber,
@@ -34,6 +36,7 @@ readonly class WorkAssignmentRefundOverviewEntryResponse
     public static function fromDraft(WorkAssignmentRefundDraft $draft): self
     {
         return new self(
+            payerMemberNumber: $draft->payerMemberNumber,
             primaryMemberNumber: $draft->primaryMemberNumber,
             payerId: $draft->recipient?->id,
             memberNumber: $draft->contact->memberNumber,

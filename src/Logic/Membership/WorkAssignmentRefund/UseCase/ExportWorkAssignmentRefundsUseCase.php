@@ -30,10 +30,10 @@ readonly class ExportWorkAssignmentRefundsUseCase
         $exportable = [];
         foreach ($this->planner->planAll($request->year, $now) as $draft) {
             if ($draft->isExportable()) {
-                $exportable[$draft->primaryMemberNumber] = $draft;
+                $exportable[$draft->payerMemberNumber] = $draft;
             }
         }
-        $requested = array_values(array_unique($request->primaryMemberNumbers));
+        $requested = array_values(array_unique($request->payerMemberNumbers));
         $available = array_map(strval(...), array_keys($exportable));
         sort($requested);
         sort($available);

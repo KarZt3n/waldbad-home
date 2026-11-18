@@ -10,7 +10,6 @@ enum WorkAssignmentRefundObstacleKind: string
 {
     case MissingBankAccount = 'missing_bank_account';
     case MissingPayer = 'missing_payer';
-    case MultiplePayers = 'multiple_payers';
     case IncompleteClubAccount = 'incomplete_club_account';
 
     public function label(): string
@@ -18,7 +17,6 @@ enum WorkAssignmentRefundObstacleKind: string
         return match ($this) {
             self::MissingBankAccount => 'Ohne Bankverbindung',
             self::MissingPayer => 'Ohne Zahler',
-            self::MultiplePayers => 'Mehrere Zahler',
             self::IncompleteClubAccount => 'Vereinskonto unvollständig',
         };
     }

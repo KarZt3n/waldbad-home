@@ -18,18 +18,17 @@ use App\Logic\Membership\WorkAssignmentRefund\Model\WorkAssignmentRefundObstacle
 use App\Logic\Membership\WorkAssignmentRefund\Model\WorkAssignmentRefundObstacleKind;
 
 /**
- * Stellt die Gutschrift für geleistete Arbeitsstunden je Haushalt (Hauptmitgliedsnummer) und
- * Beitragsjahr zusammen — dieselbe Berechnung wie in „Meine Mitgliedschaft“ und bei den
- * Arbeitseinsätzen des Mitglieds (`WorkAssignmentCreditCalculator`): Stunden sind innerhalb der
- * Familie übertragbar, die Gutschrift ist auf den Arbeitseinsatz-Zuschlag des Haushalts gedeckelt.
+ * Stellt die Gutschrift für geleistete Arbeitsstunden je Zahler-Strang und Beitragsjahr zusammen —
+ * dieselbe Berechnung wie bei den Arbeitseinsätzen des Mitglieds (`WorkAssignmentCreditCalculator`),
+ * angewandt auf den Zahler und alle, für die er zahlt (wie „Meine Mitgliedschaft“, siehe
+ * `MemberPayerGroupResolver`): Stunden sind innerhalb des Strangs übertragbar, die Gutschrift ist auf
+ * dessen Arbeitseinsatz-Zuschläge gedeckelt und geht an den Zahler. Ein Selbstzahler im selben
+ * Haushalt bildet einen eigenen Strang mit eigener Gutschrift. Kennung eines Strangs ist die
+ * Mitgliedsnummer des Zahlers; ein Mitglied ohne gültigen Zahler bildet einen eigenen Strang ohne
+ * Empfänger. Die Zahlart spielt keine Rolle — es genügt eine echte Bankverbindung.
  *
- * Überwiesen wird an den Zahler, der den Zuschlag trägt: Selbstzahler sich selbst, sonst das als
- * Zahler eingetragene Mitglied. Tragen mehrere Zahler Zuschläge eines Haushalts, ist der Empfänger
- * nicht eindeutig und der Haushalt wird nicht überwiesen. Die Zahlart spielt keine Rolle — es
- * genügt eine echte Bankverbindung.
- *
- * Bereits überwiesene Beträge des Jahres (Gutschrift-Historie) werden abgezogen. Haushalte ohne
- * geleistete Stunden und ohne frühere Überweisung tauchen nicht auf.
+ * Bereits an den Zahler überwiesene Beträge des Jahres (Gutschrift-Historie) werden abgezogen.
+ * Stränge ohne geleistete Stunden und ohne frühere Überweisung tauchen nicht auf.
  */
 readonly class WorkAssignmentRefundPlanner
 {
@@ -58,124 +57,119 @@ readonly class WorkAssignmentRefundPlanner
         $this->assertSelectableYear($year, $now);
 
         $membersById = [];
-        $households = [];
         foreach ($this->members->search(null) as $member) {
             $membersById[$member->id] = $member;
-            $households[$member->primaryMemberNumber][] = $member;
         }
-        $refundedByHousehold = [];
+        $strands = [];
+        foreach ($membersById as $member) {
+            $strands[$this->strandKey($member, $membersById)][] = $member;
+        }
+        $refundedByPayer = [];
         foreach ($this->records->findByYear($year) as $record) {
-            $refundedByHousehold[$record->primaryMemberNumber] = ($refundedByHousehold[$record->primaryMemberNumber] ?? 0) + $record->amountCents;
+            $refundedByPayer[$record->payerMemberId] = ($refundedByPayer[$record->payerMemberId] ?? 0) + $record->amountCents;
         }
         $periodFrom = $this->periodFrom($year);
-        $credits = $this->calculator->calculateForHouseholds($households, $periodFrom, $periodFrom->modify('+1 year'));
+        $credits = $this->calculator->calculateForHouseholds($strands, $periodFrom, $periodFrom->modify('+1 year'));
         $club = $this->clubAccount();
 
         $drafts = [];
-        foreach ($households as $primaryMemberNumber => $householdMembers) {
-            $primaryMemberNumber = (string) $primaryMemberNumber;
-            $credit = $credits[$primaryMemberNumber];
-            $refunded = $refundedByHousehold[$primaryMemberNumber] ?? 0;
+        foreach ($strands as $key => $strandMembers) {
+            $key = (string) $key;
+            $credit = $credits[$key];
+            $refunded = $refundedByPayer[$key] ?? 0;
             if ($credit->workedMinutes <= 0 && $refunded <= 0) {
                 continue;
             }
-            $drafts[] = $this->planHousehold(
-                $primaryMemberNumber,
-                $householdMembers,
-                $year,
-                $credit,
-                $refunded,
-                $club,
-                static fn (string $id): ?Member => $membersById[$id] ?? null,
-            );
+            $drafts[] = $this->planStrand($membersById[$key], $strandMembers, $year, $credit, $refunded, $club);
         }
-        usort($drafts, static fn (WorkAssignmentRefundDraft $left, WorkAssignmentRefundDraft $right): int => strnatcmp($left->primaryMemberNumber, $right->primaryMemberNumber));
+        usort($drafts, static fn (WorkAssignmentRefundDraft $left, WorkAssignmentRefundDraft $right): int => strnatcmp($left->payerMemberNumber, $right->payerMemberNumber));
 
         return $drafts;
     }
 
     /**
-     * Dieselbe Planung wie `planAll()` für einen einzelnen Haushalt — für die Detailansicht. Liefert
-     * auch Haushalte ohne geleistete Stunden.
+     * Dieselbe Planung wie `planAll()` für einen einzelnen Zahler-Strang (Mitgliedsnummer des
+     * Zahlers) — für die Detailansicht. Liefert auch Stränge ohne geleistete Stunden.
      */
-    public function plan(string $primaryMemberNumber, int $year, \DateTimeImmutable $now): WorkAssignmentRefundDraft
+    public function plan(string $payerMemberNumber, int $year, \DateTimeImmutable $now): WorkAssignmentRefundDraft
     {
         $this->assertSelectableYear($year, $now);
-        $householdMembers = $this->members->findByPrimaryMemberNumber($primaryMemberNumber);
-        if ($householdMembers === []) {
-            throw new BusinessRuleViolationException('Zu dieser Hauptmitgliedsnummer gibt es keinen Haushalt.');
+        $anchor = $this->members->findByMemberNumber($payerMemberNumber)
+            ?? throw new BusinessRuleViolationException('Zu dieser Mitgliedsnummer gibt es kein Mitglied.');
+        if ($anchor->payerType === PayerType::OtherMember && $anchor->payerMemberId !== null) {
+            $payer = $this->findMember($anchor->payerMemberId);
+            if ($payer !== null && $payer->payerType === PayerType::SelfPayer) {
+                $anchor = $payer;
+            }
+        }
+        $strandMembers = [$anchor];
+        if ($anchor->payerType === PayerType::SelfPayer) {
+            foreach ($this->members->findByPayerMemberId($anchor->id) as $member) {
+                if ($member->payerType === PayerType::OtherMember && $member->id !== $anchor->id) {
+                    $strandMembers[] = $member;
+                }
+            }
         }
         $refunded = 0;
         foreach ($this->records->findByYear($year) as $record) {
-            if ($record->primaryMemberNumber === $primaryMemberNumber) {
+            if ($record->payerMemberId === $anchor->id) {
                 $refunded += $record->amountCents;
             }
         }
         $periodFrom = $this->periodFrom($year);
-        $householdById = [];
-        foreach ($householdMembers as $member) {
-            $householdById[$member->id] = $member;
-        }
 
-        return $this->planHousehold(
-            $primaryMemberNumber,
-            $householdMembers,
+        return $this->planStrand(
+            $anchor,
+            $strandMembers,
             $year,
-            $this->calculator->calculateForPeriod($householdMembers, $periodFrom, $periodFrom->modify('+1 year')),
+            $this->calculator->calculateForPeriod($strandMembers, $periodFrom, $periodFrom->modify('+1 year')),
             $refunded,
             $this->clubAccount(),
-            // Der Zahler kann außerhalb des Haushalts stehen (anderer Hauptmitgliedsnummer zugeordnet).
-            fn (string $id): ?Member => $householdById[$id] ?? $this->findMember($id),
         );
     }
 
     /**
-     * Empfänger ist der Zahler, der die Arbeitseinsatz-Zuschläge des Haushalts trägt.
+     * Schlüssel des Strangs: der Zahler (Selbstzahler sich selbst), ohne gültigen Zahler das
+     * Mitglied selbst.
      *
-     * @param non-empty-list<Member>   $householdMembers
-     * @param callable(string): ?Member $memberById
+     * @param array<string, Member> $membersById
      */
-    private function planHousehold(string $primaryMemberNumber, array $householdMembers, int $year, WorkAssignmentCreditResponse $credit, int $refunded, DirectDebitCreditor $club, callable $memberById): WorkAssignmentRefundDraft
+    private function strandKey(Member $member, array $membersById): string
+    {
+        if ($member->payerType === PayerType::OtherMember && $member->payerMemberId !== null) {
+            $payer = $membersById[$member->payerMemberId] ?? null;
+            if ($payer !== null && $payer->payerType === PayerType::SelfPayer) {
+                return $payer->id;
+            }
+        }
+
+        return $member->id;
+    }
+
+    /**
+     * @param non-empty-list<Member> $strandMembers
+     */
+    private function planStrand(Member $anchor, array $strandMembers, int $year, WorkAssignmentCreditResponse $credit, int $refunded, DirectDebitCreditor $club): WorkAssignmentRefundDraft
     {
         $obstacles = [];
-        $recipient = null;
-        $payers = [];
-        $missingPayer = false;
-        foreach ($householdMembers as $member) {
-            if ($member->workAssignmentSurchargeCents === null) {
-                continue;
-            }
-            $payer = $member->payerType === PayerType::SelfPayer ? $member : ($member->payerMemberId === null ? null : $memberById($member->payerMemberId));
-            if ($payer === null) {
-                $missingPayer = true;
-                continue;
-            }
-            $payers[$payer->id] = $payer;
-        }
-        if ($missingPayer) {
-            $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::MissingPayer, 'Für ein Mitglied mit Arbeitseinsatz-Zuschlag ist kein zahlendes Mitglied hinterlegt.');
-        }
-        if (count($payers) > 1) {
-            $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::MultiplePayers, 'Die Arbeitseinsatz-Zuschläge des Haushalts tragen mehrere Zahler – der Empfänger ist nicht eindeutig.');
-        } elseif (count($payers) === 1) {
-            $recipient = $payers[array_key_first($payers)];
-            if (Iban::isMissingOrPlaceholder($recipient->iban)) {
-                $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::MissingBankAccount, 'Für den Zahler ist keine echte Bankverbindung hinterlegt.');
-            }
+        $recipient = $anchor->payerType === PayerType::SelfPayer ? $anchor : null;
+        if ($recipient === null) {
+            $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::MissingPayer, 'Für dieses Mitglied ist kein zahlendes Mitglied hinterlegt.');
+        } elseif (Iban::isMissingOrPlaceholder($recipient->iban)) {
+            $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::MissingBankAccount, 'Für den Zahler ist keine echte Bankverbindung hinterlegt.');
         }
         if ($club->name === null || $club->iban === null) {
             $obstacles[] = new WorkAssignmentRefundObstacle(WorkAssignmentRefundObstacleKind::IncompleteClubAccount, 'Name und IBAN des Vereinskontos fehlen (Mitgliederverwaltung → Beitragssätze → SEPA-Gläubigerdaten).');
         }
 
-        $contact = $recipient ?? $this->primaryMember($householdMembers, $primaryMemberNumber);
-
         return new WorkAssignmentRefundDraft(
-            primaryMemberNumber: $primaryMemberNumber,
+            payerMemberNumber: $anchor->memberNumber,
+            primaryMemberNumber: $anchor->primaryMemberNumber,
             year: $year,
-            householdMembers: $householdMembers,
+            members: $strandMembers,
             recipient: $recipient,
-            contact: $contact,
-            recipientName: $recipient->accountHolder ?? $contact->firstName.' '.$contact->lastName,
+            contact: $anchor,
+            recipientName: $recipient->accountHolder ?? $anchor->firstName.' '.$anchor->lastName,
             credit: $credit,
             refundedCents: $refunded,
             obstacles: $obstacles,
@@ -216,19 +210,5 @@ readonly class WorkAssignmentRefundPlanner
         $weekday = (int) $date->format('N');
 
         return $weekday >= 6 ? $date->modify(sprintf('+%d days', 8 - $weekday)) : $date;
-    }
-
-    /**
-     * @param non-empty-list<Member> $householdMembers
-     */
-    private function primaryMember(array $householdMembers, string $primaryMemberNumber): Member
-    {
-        foreach ($householdMembers as $member) {
-            if ($member->memberNumber === $primaryMemberNumber) {
-                return $member;
-            }
-        }
-
-        return $householdMembers[0];
     }
 }

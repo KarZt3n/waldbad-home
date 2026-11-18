@@ -6,22 +6,24 @@ use App\Logic\Membership\Member\Model\Member;
 use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 
 /**
- * Die für einen Haushalt ermittelte Gutschrift eines Beitragsjahres (siehe
- * `WorkAssignmentRefundPlanner`). Empfänger ist der Zahler, der den Arbeitseinsatz-Zuschlag des
- * Haushalts trägt; `$recipient` ist null, wenn er sich nicht eindeutig bestimmen lässt (dann steht
- * der Grund in `$obstacles`). `$contact` ist das in Listen angezeigte Mitglied — der Empfänger oder,
- * ohne Empfänger, das Hauptmitglied. `$refundedCents` wurde für dieses Jahr bereits überwiesen.
+ * Die für einen Zahler-Strang ermittelte Gutschrift eines Beitragsjahres (siehe
+ * `WorkAssignmentRefundPlanner`). `$payerMemberNumber` kennzeichnet den Strang; Empfänger ist der
+ * Zahler — `$recipient` ist null, wenn kein gültiger Zahler hinterlegt ist (dann steht der Grund in
+ * `$obstacles`). `$contact` ist das in Listen angezeigte Mitglied — der Zahler oder, ohne Zahler, das
+ * Mitglied selbst; `$primaryMemberNumber` dessen Haushalt. `$refundedCents` wurde für dieses Jahr
+ * bereits an den Zahler überwiesen.
  */
 readonly class WorkAssignmentRefundDraft
 {
     /**
-     * @param non-empty-list<Member>              $householdMembers
+     * @param non-empty-list<Member>              $members
      * @param list<WorkAssignmentRefundObstacle> $obstacles
      */
     public function __construct(
+        public string $payerMemberNumber,
         public string $primaryMemberNumber,
         public int $year,
-        public array $householdMembers,
+        public array $members,
         public ?Member $recipient,
         public Member $contact,
         public string $recipientName,
