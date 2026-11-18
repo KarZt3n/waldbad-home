@@ -2,6 +2,7 @@
 
 namespace App\UI\Membership\MemberAccess\Http;
 
+use App\Logic\Membership\Cancellation\UseCase\SubmitMemberCancellationUseCase;
 use App\Logic\Membership\MemberAccess\Dto\MemberAccessSessionResponse;
 use App\Logic\Membership\MemberAccess\Dto\MemberSelfServiceResponse;
 use App\Logic\Membership\MemberAccess\UseCase\RequestMemberAccessUseCase;
@@ -188,6 +189,45 @@ readonly class PublicMemberAccessController
     }
 
     /**
+     * Kündigt die Mitgliedschaft eines über den Token erreichbaren Mitglieds; wirksam erst nach
+     * Bestätigung durch die Mitgliederverwaltung (siehe `SubmitMemberCancellationUseCase`).
+     */
+    #[Route('/cancellations', name: 'api_public_member_access_cancellation', methods: ['POST'])]
+    public function cancel(Request $request, SubmitMemberCancellationUseCase $useCase): JsonResponse
+    {
+        $data = $request->getPayload();
+        $token = trim($data->getString('token'));
+        $password = trim($data->getString('password'));
+        $memberIds = [];
+        foreach ($data->all('memberIds') as $memberId) {
+            if (!is_string($memberId) || trim($memberId) === '') {
+                throw new BadRequestHttpException('Die ausgewählten Mitglieder sind ungültig.');
+            }
+            $memberIds[] = trim($memberId);
+        }
+        if ($token === '' || $password === '' || $memberIds === []) {
+            throw new BadRequestHttpException('Token, Passwort und Mitglieder sind erforderlich.');
+        }
+
+        $limit = $this->memberSelfServiceUpdateLimiter->create($request->getClientIp() ?? 'unknown')->consume();
+        if (!$limit->isAccepted()) {
+            $retryAfterSeconds = $limit->getRetryAfter()->getTimestamp() - time();
+            throw new TooManyRequestsHttpException($retryAfterSeconds, RateLimitMessage::exceeded($retryAfterSeconds));
+        }
+
+        $successorMemberId = trim($data->getString('successorMemberId'));
+        $contactRecipientMemberId = trim($data->getString('contactRecipientMemberId'));
+
+        return new JsonResponse($this->sessionToArray($useCase->execute(
+            $token,
+            $password,
+            $memberIds,
+            $successorMemberId === '' ? null : $successorMemberId,
+            $contactRecipientMemberId === '' ? null : $contactRecipientMemberId,
+        )));
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function sessionToArray(MemberAccessSessionResponse $session): array
@@ -196,6 +236,7 @@ readonly class PublicMemberAccessController
             'email' => $session->email,
             'members' => array_map($this->memberToArray(...), $session->members),
             'contributionRatesValidFrom' => $session->contributionRatesValidFrom,
+            'cancellationExitDate' => $session->cancellationExitDate,
             'workAssignmentCredit' => [
                 'periodFrom' => $session->workAssignmentCredit->periodFrom,
                 'periodTo' => $session->workAssignmentCredit->periodTo,
@@ -240,6 +281,9 @@ readonly class PublicMemberAccessController
             'paymentMethod' => $member->paymentMethod,
             'paymentInterval' => $member->paymentInterval,
             'paymentDay' => $member->paymentDay,
+            'payerName' => $member->payerName,
+            'pendingCancellationExitDate' => $member->pendingCancellationExitDate,
+            'payerId' => $member->payerId,
         ];
     }
 }

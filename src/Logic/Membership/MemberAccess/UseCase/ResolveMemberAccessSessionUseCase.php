@@ -2,7 +2,10 @@
 
 namespace App\Logic\Membership\MemberAccess\UseCase;
 
+use App\Logic\Membership\Member\Exception\MemberNotFoundException;
 use App\Logic\Common\ClockInterface;
+use App\Logic\Membership\Cancellation\Manager\MemberCancellationManagerInterface;
+use App\Logic\Membership\Cancellation\Service\CancellationExitDate;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateSettingsManagerInterface;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
@@ -41,6 +44,7 @@ readonly class ResolveMemberAccessSessionUseCase
         private MemberAccessPasswordHasher $passwordHasher,
         private ClockInterface $clock,
         private MemberPayerGroupResolver $payerGroups,
+        private MemberCancellationManagerInterface $cancellations,
     ) {
     }
 
@@ -65,14 +69,26 @@ readonly class ResolveMemberAccessSessionUseCase
             throw new InvalidMemberAccessTokenException();
         }
 
+        $openCancellations = $this->cancellations->openByMemberId();
+
         return new MemberAccessSessionResponse(
             email: $token->email,
             members: array_map(
-                fn (Member $member): MemberSelfServiceResponse => MemberSelfServiceResponse::fromMember($member, $this->contributionCategoryLabel($member), $now),
+                function (Member $member) use ($members, $openCancellations, $now): MemberSelfServiceResponse {
+                    return MemberSelfServiceResponse::fromMember(
+                        $member,
+                        $this->contributionCategoryLabel($member),
+                        $now,
+                        isset($openCancellations[$member->id]) ? $openCancellations[$member->id]->exitDate->format('Y-m-d') : null,
+                        $this->payerGroups->payerIdOf($member),
+                        $this->payerName($member, $members),
+                    );
+                },
                 $members,
             ),
             contributionRatesValidFrom: $this->contributionRateSettings->get()->validFrom?->format('Y-m-d'),
             workAssignmentCredit: $this->workAssignmentCredit->calculate($members),
+            cancellationExitDate: CancellationExitDate::for($now)->format('Y-m-d'),
         );
     }
 
@@ -82,4 +98,28 @@ readonly class ResolveMemberAccessSessionUseCase
             ? $this->contributionRates->findByCategory($member->contributionCategory)?->label
             : null;
     }
+
+    /**
+     * @param list<Member> $members
+     */
+    private function payerName(Member $member, array $members): ?string
+    {
+        $payerId = $this->payerGroups->payerIdOf($member);
+        if ($payerId === $member->id) {
+            return null;
+        }
+        foreach ($members as $candidate) {
+            if ($candidate->id === $payerId) {
+                return $candidate->firstName.' '.$candidate->lastName;
+            }
+        }
+        try {
+            $payer = $this->members->get($payerId);
+        } catch (MemberNotFoundException) {
+            return null;
+        }
+
+        return $payer->firstName.' '.$payer->lastName;
+    }
+
 }

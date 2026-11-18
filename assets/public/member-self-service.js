@@ -234,6 +234,140 @@ const openMemberSelfServiceEditDialog = (token, password, member, householdSize,
     dialog.showModal();
 };
 /**
+ * Übergabe-Regeln beim Kündigen — Gegenstück zu `CancellationHandover` (PHP), das sie beim Absenden
+ * verbindlich prüft. Verbleibend ist, wer weder gekündigt wird noch austritt noch schon gekündigt hat.
+ */
+const cancellationHandover = (members, selectedIds) => {
+    const selected = members.filter((member) => selectedIds.includes(member.id));
+    const candidates = members.filter((member) => !selectedIds.includes(member.id) && !member.leftAt && !member.pendingCancellationExitDate);
+    const hasContact = (member) => Boolean(member.email || member.phone);
+    const requiresSuccessor = selected.some((member) => (member.payerId === member.id && candidates.some((other) => other.payerId === member.id))
+        || (member.memberNumber === member.primaryMemberNumber && candidates.some((other) => other.primaryMemberNumber === member.memberNumber)));
+    const requiresContactRecipient = selected.some(hasContact) && candidates.length > 0 && !candidates.some(hasContact);
+
+    return {candidates, requiresSuccessor, requiresContactRecipient};
+};
+
+/**
+ * „Mitgliedschaft beenden“: Auswahl per Checkbox, wer gekündigt wird — einzelne Personen oder über
+ * „Alle“ die gesamte Mitgliedschaft. Die Kündigung geht an die Mitgliederverwaltung und wird erst mit
+ * deren Bestätigung wirksam (siehe `SubmitMemberCancellationUseCase`). Austritt ist immer zum 31.12.,
+ * bei Eingang nach dem 30.09. erst zum Ende des Folgejahres — das Datum liefert der Server
+ * (`session.cancellationExitDate`). Bleiben danach Personen übrig, für die eine gekündigte Person zahlt
+ * bzw. deren Hauptmitglied sie ist, oder hätte niemand mehr Kontaktdaten, wird wie beim Löschen im
+ * Backend nach Nachfolger und Kontakt-Empfänger gefragt.
+ */
+const openMemberCancellationDialog = (token, password, session, preselectedIds, onSaved) => {
+    const dialog = element('dialog', {className: 'confirm-dialog'});
+    const message = formMessage();
+    const eligible = [...session.members]
+        .filter((member) => !member.leftAt && !member.pendingCancellationExitDate)
+        .sort((a, b) => a.birthDate.localeCompare(b.birthDate));
+    const fullName = (member) => `${member.firstName} ${member.lastName}`;
+
+    const memberBoxes = eligible.map((member) => element('input', {attributes: {
+        type: 'checkbox', value: member.id, ...(preselectedIds.includes(member.id) ? {checked: 'checked'} : {}),
+    }}));
+    const allBox = element('input', {attributes: {type: 'checkbox'}});
+    const selection = element('fieldset', {className: 'member-cancellation-selection', children: [
+        element('legend', {text: 'Wer soll gekündigt werden?'}),
+        ...(eligible.length > 1 ? [element('label', {className: 'check-field member-cancellation-all', children: [allBox, element('span', {text: 'Alle – gesamte Mitgliedschaft beenden'})]})] : []),
+        ...eligible.map((member, index) => element('label', {className: 'check-field', children: [
+            memberBoxes[index],
+            element('span', {text: `${fullName(member)} (${member.memberNumber})`}),
+        ]})),
+    ]});
+
+    const handoverArea = element('div', {className: 'member-cancellation-handover'});
+    const candidateSelect = (label, name, candidates, previous) => element('label', {className: 'field', children: [
+        element('span', {text: label}),
+        element('select', {attributes: {name, required: 'required'}, children: [
+            element('option', {text: 'Bitte wählen …', attributes: {value: ''}}),
+            ...candidates.map((other) => element('option', {text: fullName(other), attributes: {value: other.id, ...(other.id === previous ? {selected: 'selected'} : {})}})),
+        ]}),
+    ]});
+    // Wer zahlt, sieht unter „Meine Mitgliedschaft“ alle, für die er zahlt (siehe `MemberPayerGroupResolver`).
+    const successorHint = (name) => `Nach unserer Bestätigung zahlt ${name} für die verbleibenden Personen und sieht sie dann hier alle.`;
+    const selectedIds = () => memberBoxes.filter((box) => box.checked).map((box) => box.value);
+    const update = () => {
+        const ids = selectedIds();
+        allBox.checked = ids.length === eligible.length;
+        allBox.indeterminate = ids.length > 0 && ids.length < eligible.length;
+        const previousSuccessor = handoverArea.querySelector('[name="successorMemberId"]')?.value || '';
+        const previousContact = handoverArea.querySelector('[name="contactRecipientMemberId"]')?.value || '';
+        const {candidates, requiresSuccessor, requiresContactRecipient} = cancellationHandover(session.members, ids);
+        const children = [];
+        if (requiresSuccessor) {
+            const field = candidateSelect('Wer zahlt künftig die Beiträge bzw. wird Hauptmitglied?', 'successorMemberId', candidates, previousSuccessor);
+            const note = element('span', {});
+            const select = field.querySelector('select');
+            const refreshNote = () => {
+                const chosen = candidates.find((other) => other.id === select.value);
+                note.textContent = successorHint(chosen ? fullName(chosen) : 'die gewählte Person');
+            };
+            select.addEventListener('change', refreshNote);
+            refreshNote();
+            children.push(field, element('p', {className: 'field-hint member-access-support', children: [
+                element('span', {className: 'member-access-support-icon', text: 'ⓘ', attributes: {'aria-hidden': 'true'}}),
+                note,
+            ]}));
+        }
+        if (requiresContactRecipient) {
+            children.push(
+                candidateSelect('Wer übernimmt die Kontaktdaten (E-Mail, Telefon)?', 'contactRecipientMemberId', candidates, previousContact),
+                element('p', {className: 'field-hint', text: 'Sonst wäre in der Familie niemand mehr per E-Mail oder Telefon erreichbar.'}),
+            );
+        }
+        handoverArea.replaceChildren(...children);
+        submit.disabled = ids.length === 0;
+        submit.textContent = ids.length > 1 ? `Kündigung für ${ids.length} Personen absenden` : 'Kündigung absenden';
+    };
+    allBox.addEventListener('change', () => {
+        memberBoxes.forEach((box) => { box.checked = allBox.checked; });
+        update();
+    });
+    memberBoxes.forEach((box) => box.addEventListener('change', update));
+
+    const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
+    const submit = element('button', {className: 'button', text: 'Kündigung absenden', attributes: {type: 'submit'}});
+    const form = element('form', {className: 'confirm-dialog-content', children: [
+        element('p', {className: 'eyebrow', text: 'Mitgliedschaft beenden'}),
+        element('p', {text: `Die Mitgliedschaft endet zum ${formatDateDE(session.cancellationExitDate)}. Ein Austritt ist immer zum 31.12. möglich und muss bis zum 30.09. eingehen – danach gilt er zum Ende des folgenden Jahres.`}),
+        selection,
+        handoverArea,
+        element('p', {text: 'Die Kündigung wird von uns geprüft und bestätigt; die Bestätigung erhältst du per E-Mail.'}),
+        message,
+        element('div', {className: 'confirm-dialog-actions', children: [cancel, submit]}),
+    ]});
+    cancel.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => dialog.remove());
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const ids = selectedIds();
+        if (!ids.length) return;
+        const data = new FormData(form);
+        submit.disabled = true;
+        try {
+            const updated = await request('/api/public/v1/member-access/cancellations', {method: 'POST', body: JSON.stringify({
+                token, password, memberIds: ids,
+                successorMemberId: data.get('successorMemberId') || '',
+                contactRecipientMemberId: data.get('contactRecipientMemberId') || '',
+            })});
+            toast('Deine Kündigung ist eingegangen.');
+            dialog.close();
+            onSaved(updated);
+        } catch (error) {
+            message.textContent = error.message;
+            toast(error.message, 'error');
+            submit.disabled = false;
+        }
+    });
+    update();
+    dialog.append(form);
+    document.body.append(dialog);
+    dialog.showModal();
+};
+/**
  * Nur lesende Ansicht der eigenen Mitgliedsdaten (Stammdaten/Kontaktdaten/Vereinsdaten/
  * Beitragsdaten, siehe `MemberSelfServiceResponse`) für jede über den Token erreichbare Person
  * (i. d. R. der ganze Haushalt, siehe `RequestMemberAccessUseCase`) als aufklappbares Akkordeon
@@ -246,23 +380,36 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
     const root = element('div', {className: 'member-self-service'});
 
     const build = (session) => {
+        const cancelMembershipButton = (member) => {
+            const button = element('button', {className: 'text-button member-self-service-cancel', text: 'Mitgliedschaft beenden', attributes: {type: 'button'}});
+            button.addEventListener('click', () => openMemberCancellationDialog(token, password, session, [member.id], build));
+
+            return element('div', {className: 'member-self-service-card-actions', children: [button]});
+        };
         // Ältestes Haushaltsmitglied zuerst (Nutzer-Vorgabe) — bestimmt sowohl die Akkordeon- als
         // auch die Pulldown-Reihenfolge; `birthDate` ist ein ISO-Datum ("YYYY-MM-DD"), daher reicht
         // ein aufsteigender String-Vergleich.
         const sortedMembers = [...session.members].sort((a, b) => a.birthDate.localeCompare(b.birthDate));
 
         const memberCards = sortedMembers.map((member, index) => {
-            const card = element('details', {className: 'member-self-service-card', children: [
+            // Angezeigt werden nur aktive Mitglieder; ein Austrittsdatum liegt daher immer in der Zukunft.
+            // Hervorhebung wie in der Familienzugehörigkeit im Backend (gelb, Badge rechts vor dem Beitrag).
+            const card = element('details', {className: `member-self-service-card${member.leftAt ? ' is-leaving' : ''}`, children: [
             element('summary', {children: [
                 element('span', {className: 'member-self-service-summary-identity', children: [
                     element('span', {className: 'member-self-service-summary-number', text: member.memberNumber}),
                     element('span', {className: 'member-self-service-summary-name', text: `${member.firstName} ${member.lastName}`}),
                 ]}),
-                element('span', {className: 'member-self-service-summary-total', text: member.contributionLiable
-                    ? `${formatEuro(memberTotalCents(member))} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`
-                    : 'Beitragsfrei'}),
+                element('span', {className: 'member-self-service-summary-end', children: [
+                    ...(member.leftAt ? [element('span', {className: 'status-badge member-exit-badge is-leaving', text: `Austritt zum ${formatDateDE(member.leftAt)}`})] : []),
+                    ...(member.pendingCancellationExitDate ? [element('span', {className: 'status-badge status-pending', text: `Kündigung zum ${formatDateDE(member.pendingCancellationExitDate)} eingegangen`})] : []),
+                    element('span', {className: 'member-self-service-summary-total', text: member.contributionLiable
+                        ? `${formatEuro(memberTotalCents(member))} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`
+                        : 'Beitragsfrei'}),
+                ]}),
             ]}),
             element('div', {className: 'member-self-service-card-body', children: [
+                ...(!member.leftAt && !member.pendingCancellationExitDate ? [cancelMembershipButton(member)] : []),
                 element('h4', {text: 'Stammdaten'}),
                 memberDataRow('Mitgliedsnummer', member.memberNumber),
                 memberDataRow('Anrede', SALUTATION_LABELS[member.salutation] || member.salutation),
@@ -278,6 +425,7 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
                 memberDataRow('Status', member.active ? 'Aktives Mitglied' : 'Nicht mehr aktiv'),
                 memberDataRow('Mitglied seit', formatDateDE(member.joinedAt)),
                 ...(member.leftAt ? [memberDataRow('Austrittsdatum', formatDateDE(member.leftAt))] : []),
+                ...(member.pendingCancellationExitDate ? [memberDataRow('Kündigung', `zum ${formatDateDE(member.pendingCancellationExitDate)} eingegangen, wird noch bestätigt`)] : []),
                 element('h4', {text: 'Beitragsdaten'}),
                 memberDataRow('Beitragspflichtig', member.contributionLiable ? 'Ja' : 'Nein (z. B. Vorstand)'),
                 ...(member.contributionLiable ? [
@@ -285,7 +433,9 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
                     ...(member.contributionCategoryLabel ? [memberDataRow('Beitragssatz', member.contributionCategoryLabel)] : []),
                     memberDataRow('Beitrag', `${formatEuro(member.contributionAmountCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`),
                     ...(member.workAssignmentSurchargeCents ? [memberDataRow('Arbeitseinsatz-Zuschlag', `${formatEuro(member.workAssignmentSurchargeCents)} (${PAYMENT_INTERVAL_LABELS[member.paymentInterval] || member.paymentInterval})`)] : []),
-                    memberDataRow('Zahlweise', PAYMENT_METHOD_LABELS[member.paymentMethod] || member.paymentMethod),
+                    member.payerName
+                        ? memberDataRow('Zahlung', `über ${member.payerName}`)
+                        : memberDataRow('Zahlweise', PAYMENT_METHOD_LABELS[member.paymentMethod] || member.paymentMethod),
                 ] : []),
             ]}),
         ]});
@@ -336,7 +486,15 @@ const renderMemberSelfServiceData = (token, password, initialSession) => {
     });
 
         root.replaceChildren(
-            element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
+            element('div', {className: 'member-self-service-header', children: [
+                element('p', {className: 'field-hint', text: `Angemeldet mit ${session.email}`}),
+                ...(session.members.some((member) => !member.leftAt && !member.pendingCancellationExitDate) ? [(() => {
+                    const button = element('button', {className: 'text-button member-self-service-cancel', text: 'Mitgliedschaft beenden', attributes: {type: 'button'}});
+                    button.addEventListener('click', () => openMemberCancellationDialog(token, password, session, [], build));
+
+                    return button;
+                })()] : []),
+            ]}),
             renderMemberSelfServiceTotal(session.members, session.contributionRatesValidFrom, session.workAssignmentCredit),
             ...memberCards,
             messageForm,

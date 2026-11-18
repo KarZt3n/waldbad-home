@@ -23,6 +23,8 @@ enum MailTemplateKey: string
     case AdminLoginMagicLink = 'admin_login_magic_link';
     case MemberAccessMagicLink = 'member_access_magic_link';
     case MemberMessageSubmittedNotification = 'member_message_submitted_notification';
+    case MemberCancellationSubmittedNotification = 'member_cancellation_submitted_notification';
+    case MemberCancellationConfirmed = 'member_cancellation_confirmed';
     case EventHelpRequestConfirmation = 'event_help_request_confirmation';
     case MemberEmailConsentRequest = 'member_email_consent_request';
     case MemberEmailConsentOptOutRegret = 'member_email_consent_opt_out_regret';
@@ -42,6 +44,8 @@ enum MailTemplateKey: string
             self::AdminLoginMagicLink => 'Anmeldelink: Redaktion',
             self::MemberAccessMagicLink => 'Zugangslink: Meine Mitgliedschaft',
             self::MemberMessageSubmittedNotification => 'Benachrichtigung: Nachricht von einem Mitglied',
+            self::MemberCancellationSubmittedNotification => 'Benachrichtigung: Kündigung eines Mitglieds',
+            self::MemberCancellationConfirmed => 'Bestätigung: Kündigung',
             self::EventHelpRequestConfirmation => 'Bestätigung: Helferanmeldung',
             self::MemberEmailConsentRequest => 'Bestätigungslink: E-Mail-Einwilligung',
             self::MemberEmailConsentOptOutRegret => 'Rückmeldung: E-Mail-Einwilligung widerrufen',
@@ -63,6 +67,8 @@ enum MailTemplateKey: string
             self::AdminLoginMagicLink => 'Geht an die E-Mail-Adresse eines Redaktions-Benutzers, sobald über die Anmeldeseite ein Anmeldelink angefordert wird.',
             self::MemberAccessMagicLink => 'Geht an die eingegebene E-Mail-Adresse, sobald über „Meine Mitgliedschaft" ein Zugang angefordert wird.',
             self::MemberMessageSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft" eine Nachricht gesendet wird.',
+            self::MemberCancellationSubmittedNotification => 'Geht an die unter „Benachrichtigungen" hinterlegten Empfänger, sobald über „Meine Mitgliedschaft“ eine Kündigung eingeht. Bestätigt wird sie unter „Mitgliederverwaltung“ → „Kündigungen“.',
+            self::MemberCancellationConfirmed => 'Geht an die E-Mail-Adresse, über die gekündigt wurde, und an die der gekündigten Mitglieder, sobald die Kündigung unter „Mitgliederverwaltung“ → „Kündigungen“ bestätigt wird — eine Mail mit allen Personen der Kündigung.',
             self::EventHelpRequestConfirmation => 'Geht raus, sobald eine Helferanmeldung ("Ich möchte helfen!") beim Absenden automatisch einem Mitglied zugeordnet werden konnte (nicht beim nachträglichen manuellen Verknüpfen) — an die E-Mail-Adresse des Mitglieds, sonst an dessen Haushalt, sowie zusätzlich an eine im Formular angegebene, abweichende E-Mail-Adresse.',
             self::MemberEmailConsentRequest => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald die Redaktion unter „Mitgliederverwaltung“ → Mitglied → Kontaktdaten die E-Mail-Einwilligung anfordert — der Erhalt von Vereinsinformationen per E-Mail gilt erst als zugestimmt, wenn der enthaltene Link angeklickt wird.',
             self::MemberEmailConsentOptOutRegret => 'Geht an die E-Mail-Adresse eines Mitglieds, sobald es unter „Meine Mitgliedschaft“ die E-Mail-Einwilligung selbst abbestellt — enthält einen Link, um das rückgängig zu machen, falls es ein Versehen war.',
@@ -81,12 +87,14 @@ enum MailTemplateKey: string
     public function placeholders(): array
     {
         return match ($this) {
-            self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart'],
+            self::MembershipApplicationSubmittedNotification => ['vorname', 'nachname', 'mitgliedschaftsart', 'link'],
             self::MembershipApplicationApproved => ['vorname', 'nachname', 'mitgliedsnummer', 'beitrittsdatum', 'personen', 'link', 'vereinsname'],
             self::MembershipApplicationMerged => ['vorname', 'nachname', 'mitgliedsnummer', 'personen', 'link', 'vereinsname'],
             self::AdminLoginMagicLink => ['link', 'gueltig_minuten', 'vereinsname'],
             self::MemberAccessMagicLink => ['link', 'passwort', 'gueltig_minuten', 'vereinsname'],
-            self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht'],
+            self::MemberMessageSubmittedNotification => ['vorname', 'nachname', 'mitgliedsnummer', 'nachricht', 'link'],
+            self::MemberCancellationSubmittedNotification => ['name', 'personen', 'austrittsdatum', 'uebergabe', 'link'],
+            self::MemberCancellationConfirmed => ['name', 'personen', 'link', 'vereinsname'],
             self::EventHelpRequestConfirmation => ['vorname', 'nachname', 'veranstaltung', 'datum', 'vereinsname'],
             self::MemberEmailConsentRequest => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
             self::MemberEmailConsentOptOutRegret => ['vorname', 'link', 'gueltig_tage', 'vereinsname'],
@@ -108,6 +116,8 @@ enum MailTemplateKey: string
             self::AdminLoginMagicLink => 'Dein Anmeldelink für die Redaktion',
             self::MemberAccessMagicLink => 'Dein Zugang zu „Meine Mitgliedschaft"',
             self::MemberMessageSubmittedNotification => 'Neue Nachricht über „Meine Mitgliedschaft"',
+            self::MemberCancellationSubmittedNotification => 'Kündigung eingegangen zum {{austrittsdatum}}: {{name}}',
+            self::MemberCancellationConfirmed => 'Bestätigung deiner Kündigung beim {{vereinsname}}',
             self::EventHelpRequestConfirmation => 'Danke für deine Helferanmeldung – {{veranstaltung}}',
             self::MemberEmailConsentRequest => 'Möchtest du per E-Mail auf dem Laufenden bleiben?',
             self::MemberEmailConsentOptOutRegret => 'Schade, dass du keine Neuigkeiten mehr erhalten möchtest',
@@ -127,6 +137,8 @@ enum MailTemplateKey: string
                 {{vorname}} {{nachname}} hat einen Mitgliedsantrag gestellt ({{mitgliedschaftsart}}).
 
                 Bitte im Admin-Bereich unter „Mitgliederverwaltung“ → „Mitgliedsanträge“ prüfen.
+
+                [[Mitgliedsanträge öffnen|{{link}}]]
                 TEXT,
             self::MembershipApplicationApproved => <<<'TEXT'
                 Hallo {{vorname}} {{nachname}},
@@ -198,6 +210,35 @@ enum MailTemplateKey: string
                 {{nachricht}}
 
                 Bitte im Admin-Bereich unter „Mitgliederverwaltung“ → „Mitgliedernachrichten“ prüfen.
+
+                [[Mitgliedernachrichten öffnen|{{link}}]]
+                TEXT,
+            self::MemberCancellationSubmittedNotification => <<<'TEXT'
+                {{name}} hat über „Meine Mitgliedschaft“ zum {{austrittsdatum}} gekündigt für:
+
+                {{personen}}
+
+                {{uebergabe}}
+
+                Bitte im Admin-Bereich unter „Mitgliederverwaltung“ → „Kündigungen“ bestätigen.
+
+                [[Kündigungen öffnen|{{link}}]]
+                TEXT,
+            self::MemberCancellationConfirmed => <<<'TEXT'
+                Hallo {{name}},
+
+                wir bestätigen deine Kündigung. Die Mitgliedschaft endet für:
+
+                {{personen}}
+
+                Bis dahin bleibt die Mitgliedschaft wie gewohnt bestehen.
+
+                Schade, dass du gehst – vielen Dank für deine Treue!
+
+                [[Meine Mitgliedschaft öffnen|{{link}}]]
+
+                Viele Grüße
+                Dein {{vereinsname}}
                 TEXT,
             self::EventHelpRequestConfirmation => <<<'TEXT'
                 Hallo {{vorname}},
@@ -212,9 +253,9 @@ enum MailTemplateKey: string
             self::MemberEmailConsentRequest => <<<'TEXT'
                 Hallo {{vorname}},
 
-                du möchtest über Neuigkeiten und Informationen rund um den {{vereinsname}} per E-Mail auf dem Laufenden bleiben? Dann bestätige das bitte über den folgenden Link:
+                du möchtest über Neuigkeiten und Informationen rund um den {{vereinsname}} per E-Mail auf dem Laufenden bleiben? Dann bestätige das bitte über den folgenden Button:
 
-                {{link}}
+                [[E-Mail-Einwilligung bestätigen|{{link}}]]
 
                 Der Link ist {{gueltig_tage}} Tage gültig. Erst nach der Bestätigung schicken wir dir Vereinsinformationen per E-Mail.
 
@@ -228,9 +269,9 @@ enum MailTemplateKey: string
 
                 schade, dass du keine Neuigkeiten und Informationen des {{vereinsname}} per E-Mail mehr erhalten möchtest — wir haben das soeben umgesetzt.
 
-                War das ein Versehen? Dann klicke einfach hier, um es rückgängig zu machen:
+                War das ein Versehen? Dann mach es einfach rückgängig:
 
-                {{link}}
+                [[Wieder anmelden|{{link}}]]
 
                 Der Link ist {{gueltig_tage}} Tage gültig.
 
@@ -289,8 +330,7 @@ enum MailTemplateKey: string
                 Mitglied: {{mitglied}}
                 Nachricht: {{nachricht}}
 
-                Alle Helfer dieser Veranstaltung im Admin-Bereich:
-                {{link}}
+                [[Helfer im Admin-Bereich ansehen|{{link}}]]
                 TEXT,
             self::ContactRequestSubmittedNotification => <<<'TEXT'
                 {{name}} ({{email}}) hat über das Kontaktformular geschrieben.
@@ -299,8 +339,7 @@ enum MailTemplateKey: string
 
                 {{nachricht}}
 
-                Anfrage im Admin-Bereich bearbeiten:
-                {{link}}
+                [[Anfrage im Admin-Bereich bearbeiten|{{link}}]]
                 TEXT,
             self::GuestbookEntrySubmittedNotification => <<<'TEXT'
                 {{name}} hat einen Eintrag ins Gästebuch geschrieben. Er erscheint erst nach der Freigabe.
@@ -309,8 +348,7 @@ enum MailTemplateKey: string
 
                 E-Mail: {{email}}
 
-                Eintrag im Admin-Bereich freigeben oder ablehnen:
-                {{link}}
+                [[Eintrag freigeben oder ablehnen|{{link}}]]
                 TEXT,
         };
     }
@@ -329,6 +367,7 @@ enum MailTemplateKey: string
                 'vorname' => 'Erika',
                 'nachname' => 'Musterfrau',
                 'mitgliedschaftsart' => 'Familie',
+                'link' => 'https://waldbad-borkheide.de/admin/mitglieder/antraege',
             ],
             self::MembershipApplicationApproved => [
                 'vorname' => 'Erika',
@@ -369,6 +408,20 @@ enum MailTemplateKey: string
                 'nachname' => 'Musterfrau',
                 'mitgliedsnummer' => 'Bad-01234',
                 'nachricht' => 'Meine neue Telefonnummer lautet 01234 567890.',
+                'link' => 'https://waldbad-borkheide.de/admin/mitglieder/nachrichten',
+            ],
+            self::MemberCancellationSubmittedNotification => [
+                'name' => 'Erika Musterfrau (Bad-01234)',
+                'personen' => "- Erika Musterfrau (Bad-01234)\n- Lena Musterfrau (Bad-01236)",
+                'austrittsdatum' => '31.12.2026',
+                'uebergabe' => "Beiträge bzw. Hauptmitgliedschaft übernimmt: Paul Musterfrau\nKontaktdaten übernimmt: Paul Musterfrau",
+                'link' => 'https://waldbad-borkheide.de/admin/mitglieder/kuendigungen',
+            ],
+            self::MemberCancellationConfirmed => [
+                'name' => 'Erika Musterfrau',
+                'personen' => "- Erika Musterfrau (Bad-01234) zum 31.12.2026\n- Paul Musterfrau (Bad-01235) zum 31.12.2026",
+                'link' => 'https://waldbad-borkheide.de/meine-mitgliedschaft',
+                'vereinsname' => AssociationName::CURRENT,
             ],
             self::EventHelpRequestConfirmation => [
                 'vorname' => 'Erika',

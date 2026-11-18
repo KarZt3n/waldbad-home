@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\MemberMessage\UseCase;
 
+use App\Logic\Membership\MembershipAdminLinkBuilderInterface;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Membership\MemberAccess\Exception\InvalidMemberAccessTokenException;
@@ -29,6 +30,7 @@ readonly class SendMemberMessageUseCase
         private IdentifierGeneratorInterface $identifierGenerator,
         private ClockInterface $clock,
         private NotificationMailer $notificationMailer,
+        private MembershipAdminLinkBuilderInterface $adminLinks,
     ) {
     }
 
@@ -63,6 +65,7 @@ readonly class SendMemberMessageUseCase
             'nachname' => $member->lastName,
             'mitgliedsnummer' => $member->memberNumber,
             'nachricht' => trim($message),
+            'link' => $this->adminLinks->messages(),
         ]);
 
         return MemberMessageResponse::fromMessage($saved);

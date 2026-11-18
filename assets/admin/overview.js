@@ -24,6 +24,7 @@ const groupRank = (group, openCount) => {
 const TASKS = {
     membership_applications: {group: 'members', label: 'Mitgliedsanträge', hint: 'warten auf Entscheidung', path: ['mitglieder', 'antraege']},
     member_messages: {group: 'members', label: 'Nachrichten von Mitgliedern', hint: 'noch nicht erledigt', path: ['mitglieder', 'nachrichten']},
+    member_cancellations: {group: 'members', label: 'Kündigungen', hint: 'Mitglieder, noch nicht bestätigt', path: ['mitglieder', 'kuendigungen']},
     contact_requests: {group: 'contact', label: 'Kontaktanfragen', hint: 'offen', path: ['kontakt-feedback', 'kontaktanfragen']},
     guestbook_entries: {group: 'contact', label: 'Gästebucheinträge', hint: 'zu moderieren', path: ['kontakt-feedback', 'gaestebuch']},
     sauna_bookings: {group: 'rental', label: 'Anmeldungen', hint: 'zu bestätigen', path: ['vermietung', 'sauna', 'anmeldungen']},

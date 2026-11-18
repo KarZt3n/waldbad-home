@@ -72,6 +72,7 @@ readonly class GetMembershipDashboardQuery
         return new MembershipDashboardResponse(
             totalMembers: count($members),
             pendingApplications: count($pendingApplications),
+
             totalContributionCents: $membershipContributionCents + $workAssignmentSurchargeCents,
             membershipContributionCents: $membershipContributionCents,
             workAssignmentSurchargeCents: $workAssignmentSurchargeCents,

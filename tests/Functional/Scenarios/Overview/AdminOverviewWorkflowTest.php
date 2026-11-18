@@ -46,6 +46,7 @@ final class AdminOverviewWorkflowTest extends WebTestCase
         self::assertSame([
             'membership_applications',
             'member_messages',
+            'member_cancellations',
             'contact_requests',
             'guestbook_entries',
             'sauna_bookings',

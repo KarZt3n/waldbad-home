@@ -2,6 +2,7 @@
 
 namespace App\Tests\Unit\Logic\Membership\Application\UseCase;
 
+use App\Logic\Membership\MembershipAdminLinkBuilderInterface;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\EmailDeliverabilityCheckerInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
@@ -172,7 +173,7 @@ final class SubmitMembershipApplicationUseCaseTest extends TestCase
         $declarations = $this->createStub(MembershipDeclarationProviderInterface::class);
         $declarations->method('current')->willReturn(new MembershipDeclaration('v-current', 'Satzung', 'Datenschutz', 'SEPA', 'E-Mail'));
 
-        (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker, $declarations))
+        (new SubmitMembershipApplicationUseCase($manager, $identifierGenerator, $clock, $notificationMailer, $checker, $declarations, $this->createStub(MembershipAdminLinkBuilderInterface::class)))
             ->execute($request);
     }
 }

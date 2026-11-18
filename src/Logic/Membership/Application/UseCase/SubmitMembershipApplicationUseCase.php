@@ -2,6 +2,7 @@
 
 namespace App\Logic\Membership\Application\UseCase;
 
+use App\Logic\Membership\MembershipAdminLinkBuilderInterface;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\EmailDeliverabilityCheckerInterface;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
@@ -26,6 +27,7 @@ readonly class SubmitMembershipApplicationUseCase
         private NotificationMailer $notificationMailer,
         private EmailDeliverabilityCheckerInterface $emailDeliverabilityChecker,
         private MembershipDeclarationProviderInterface $declarations,
+        private MembershipAdminLinkBuilderInterface $adminLinks,
     ) {
     }
 
@@ -82,6 +84,7 @@ readonly class SubmitMembershipApplicationUseCase
                 'vorname' => $firstApplicant->firstName,
                 'nachname' => $firstApplicant->lastName,
                 'mitgliedschaftsart' => $request->membershipType === MembershipType::Family ? 'Familie' : 'Einzelperson',
+                'link' => $this->adminLinks->applications(),
             ],
         );
 

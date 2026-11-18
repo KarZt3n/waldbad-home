@@ -22,6 +22,7 @@ use App\Logic\Membership\MemberAccess\Manager\MemberAccessTokenManagerInterface;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
 use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
+use App\Logic\Membership\Cancellation\Manager\MemberCancellationManagerInterface;
 use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\PaymentInterval;
@@ -194,6 +195,7 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $clock,
             new MemberPayerGroupResolver($members),
+            $this->createStub(MemberCancellationManagerInterface::class),
         );
     }
 
@@ -214,6 +216,33 @@ final class ResolveMemberAccessSessionUseCaseTest extends TestCase
      * Karsten zahlt für seine Kinder, Sally im selben Haushalt zahlt selbst: Sein Zugang zeigt nur
      * ihn und die Kinder, für die er zahlt.
      */
+    /**
+     * Ein Zugang von vor einer Zahler-Übergabe zeigt den heutigen Strang: Die frühere Zahlerin wird
+     * inzwischen über die Nachfolge mitbezahlt.
+     */
+    public function testFollowsAPayerRoleHandedOverAfterTheAccessWasRequested(): void
+    {
+        $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);
+        $tokens->method('findByHash')->willReturn($this->token(new \DateTimeImmutable('2026-06-01T10:05:00+02:00'), 'vanessa'));
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('get')->willReturnCallback(fn (string $id): Member => match ($id) {
+            'vanessa' => $this->member('vanessa', null, payerMemberId: 'nachfolge'),
+            default => $this->member($id, null),
+        });
+        $members->expects(self::once())->method('findByPayerMemberId')->with('nachfolge')->willReturn([
+            $this->member('vanessa', null, payerMemberId: 'nachfolge'),
+            $this->member('kind', null, payerMemberId: 'nachfolge'),
+        ]);
+        $settings = $this->createStub(ContributionRateSettingsManagerInterface::class);
+        $settings->method('get')->willReturn(new ContributionRateSettings(null));
+
+        $session = $this->useCase($tokens, $members, null, $settings)->execute('raw-token', self::PASSWORD);
+
+        self::assertSame(['nachfolge', 'vanessa', 'kind'], array_map(static fn ($member): string => $member->id, $session->members));
+        self::assertNull($session->members[0]->payerName);
+        self::assertNotNull($session->members[2]->payerName);
+    }
+
     public function testShowsOnlyThePayerAndTheMembersHePaysFor(): void
     {
         $tokens = $this->createStub(MemberAccessTokenManagerInterface::class);

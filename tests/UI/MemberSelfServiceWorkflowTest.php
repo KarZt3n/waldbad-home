@@ -10,6 +10,7 @@ use App\Logic\IdentityAccess\User\Model\Role;
 use App\Logic\IdentityAccess\User\UseCase\CreateUserUseCase;
 use App\Data\Membership\ContributionRate\Entity\ContributionRateEntity;
 use App\Data\Membership\Member\Entity\MemberNumberSequenceEntity;
+use App\Logic\Membership\Cancellation\Service\CancellationExitDate;
 use App\Tests\Support\FixedAccessPasswordGenerator;
 use App\Tests\Support\FixedSecureTokenGenerator;
 use Doctrine\ORM\EntityManagerInterface;
@@ -228,6 +229,137 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
 
         $this->client->request('GET', '/api/admin/v1/member-messages', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(403);
+    }
+
+    /**
+     * Kündigung über „Meine Mitgliedschaft“: Erika zahlt für ihren Sohn und ist Hauptmitglied, Paul
+     * hat keine Kontaktdaten. Sie muss daher einen Nachfolger wählen, der auch ihre Kontaktdaten
+     * übernimmt; wirksam wird die Kündigung erst mit der Bestätigung in der Mitgliederverwaltung.
+     */
+    /**
+     * Werden alle auf einmal gekündigt, bleibt niemand übrig — eine Übergabe ist nicht nötig.
+     */
+    public function testCancellingTheWholeGroupAtOnceNeedsNoHandover(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $erikaId = $this->createMember($csrfToken, 'erika@example.test');
+        $this->client->request('GET', '/api/admin/v1/members/'.$erikaId, server: $headers);
+        $erikaNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', [
+            'primaryMemberNumber' => $erikaNumber, 'salutation' => 'mr', 'lastName' => 'Musterfrau', 'firstName' => 'Paul',
+            'birthDate' => '2015-04-05', 'street' => 'Kirchanger 14', 'postalCode' => '14822', 'city' => 'Borkheide',
+            'email' => null, 'phone' => null, 'familyRole' => 'child', 'joinedAt' => '2026-01-01', 'leftAt' => null,
+            'function' => 'member', 'accountHolder' => null, 'iban' => null, 'bankName' => null, 'mandateReference' => null,
+            'paymentMethod' => 'sepa_direct_debit', 'paymentInterval' => 'yearly', 'paymentDay' => 'first',
+            'payerType' => 'other_member', 'payerMemberId' => $erikaId, 'nextBookingMonth' => null, 'nextBookingYear' => null,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $paulId = $this->string($this->responseData(), 'id');
+        $this->client->request('GET', '/');
+
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/tokens', ['email' => 'erika@example.test', 'birthDate' => '1990-06-15']);
+        $access = ['token' => FixedSecureTokenGenerator::TOKEN, 'password' => FixedAccessPasswordGenerator::PASSWORD];
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/cancellations', [...$access, 'memberIds' => [$erikaId, $paulId]]);
+        self::assertResponseIsSuccessful();
+        self::assertNotNull($this->memberById($this->responseData(), $paulId)['pendingCancellationExitDate']);
+
+        $this->client->request('GET', '/api/admin/v1/member-cancellations', server: $headers);
+        $items = $this->arrayList($this->responseData(), 'items');
+        self::assertCount(2, $items);
+        foreach ($items as $item) {
+            self::assertNull($this->entry($item)['successorName']);
+            self::assertNull($this->entry($item)['contactRecipientName']);
+        }
+    }
+
+    public function testCancellationIsPendingUntilConfirmedAndHandsOverPayerAndContact(): void
+    {
+        $csrfToken = $this->loginAsSuperAdmin();
+        $headers = ['HTTP_X_CSRF_TOKEN' => $csrfToken];
+        $erikaId = $this->createMember($csrfToken, 'erika@example.test');
+        $this->client->request('GET', '/api/admin/v1/members/'.$erikaId, server: $headers);
+        $erikaNumber = $this->string($this->responseData(), 'memberNumber');
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', [
+            'primaryMemberNumber' => $erikaNumber, 'salutation' => 'mr', 'lastName' => 'Musterfrau', 'firstName' => 'Paul',
+            'birthDate' => '2015-04-05', 'street' => 'Kirchanger 14', 'postalCode' => '14822', 'city' => 'Borkheide',
+            'email' => null, 'phone' => null, 'familyRole' => 'child', 'joinedAt' => '2026-01-01', 'leftAt' => null,
+            'function' => 'member', 'accountHolder' => null, 'iban' => null, 'bankName' => null, 'mandateReference' => null,
+            'paymentMethod' => 'sepa_direct_debit', 'paymentInterval' => 'yearly', 'paymentDay' => 'first',
+            'payerType' => 'other_member', 'payerMemberId' => $erikaId, 'nextBookingMonth' => null, 'nextBookingYear' => null,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $paulId = $this->string($this->responseData(), 'id');
+        $this->client->request('GET', '/');
+
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/tokens', ['email' => 'erika@example.test', 'birthDate' => '1990-06-15']);
+        $access = ['token' => FixedSecureTokenGenerator::TOKEN, 'password' => FixedAccessPasswordGenerator::PASSWORD];
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/sessions', $access);
+        self::assertResponseIsSuccessful();
+        $session = $this->responseData();
+        $expectedExitDate = CancellationExitDate::for(new \DateTimeImmutable())->format('Y-m-d');
+        self::assertSame($expectedExitDate, $this->string($session, 'cancellationExitDate'));
+        $erika = $this->memberById($session, $erikaId);
+        self::assertSame($erikaId, $erika['payerId']);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/cancellations', [...$access, 'memberIds' => [$erikaId]]);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/cancellations', [...$access, 'memberIds' => [$erikaId], 'successorMemberId' => $paulId]);
+        self::assertResponseIsSuccessful();
+        $erika = $this->memberById($this->responseData(), $erikaId);
+        self::assertSame($expectedExitDate, $erika['pendingCancellationExitDate']);
+        self::assertNull($erika['leftAt']);
+
+        $this->client->jsonRequest('POST', '/api/public/v1/member-access/cancellations', [...$access, 'memberIds' => [$erikaId], 'successorMemberId' => $paulId]);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->request('GET', '/api/admin/v1/member-cancellations', server: $headers);
+        $items = $this->arrayList($this->responseData(), 'items');
+        self::assertCount(1, $items);
+        $cancellation = $this->entry($items[0]);
+        self::assertSame('open', $this->string($cancellation, 'status'));
+        self::assertSame('Paul Musterfrau', $this->string($cancellation, 'successorName'));
+        self::assertSame('Erika Musterfrau', $this->string($cancellation, 'requestedByName'));
+        self::assertSame($erikaNumber, $this->string($cancellation, 'requestedByMemberNumber'));
+        self::assertSame('Paul Musterfrau', $this->string($cancellation, 'contactRecipientName'));
+
+        $this->client->request('GET', '/api/admin/v1/overview', server: $headers);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString('"member_cancellations"', (string) $this->client->getResponse()->getContent());
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/member-cancellations/confirm', ['ids' => [$this->string($cancellation, 'id')]], $headers);
+        self::assertResponseIsSuccessful();
+        self::assertSame('confirmed', $this->string($this->entry($this->arrayList($this->responseData(), 'items')[0]), 'status'));
+
+        $this->client->request('GET', '/api/admin/v1/members/'.$erikaId, server: $headers);
+        self::assertSame($expectedExitDate, $this->string($this->responseData(), 'leftAt'));
+        $this->client->request('GET', '/api/admin/v1/members/'.$paulId, server: $headers);
+        $paul = $this->responseData();
+        self::assertSame('self_payer', $this->string($paul, 'payerType'));
+        self::assertSame('erika@example.test', $this->string($paul, 'email'));
+        self::assertSame($this->string($paul, 'memberNumber'), $this->string($paul, 'primaryMemberNumber'));
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/member-cancellations/confirm', ['ids' => [$this->string($cancellation, 'id')]], $headers);
+        self::assertResponseStatusCodeSame(422);
+        $this->client->jsonRequest('POST', '/api/admin/v1/member-cancellations/reject', ['ids' => []], $headers);
+        self::assertResponseStatusCodeSame(400);
+    }
+
+    /**
+     * @param array<array-key, mixed> $session
+     *
+     * @return array<array-key, mixed>
+     */
+    private function memberById(array $session, string $id): array
+    {
+        foreach ($this->arrayList($session, 'members') as $member) {
+            $member = $this->entry($member);
+            if (($member['id'] ?? null) === $id) {
+                return $member;
+            }
+        }
+        self::fail(sprintf('Mitglied %s fehlt in der Sitzung.', $id));
     }
 
     private function createMember(string $csrfToken, string $email): string

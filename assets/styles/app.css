@@ -930,6 +930,17 @@ a { color: var(--forest-700); }
 .member-self-service-summary-number { color: var(--muted); font-size: .8rem; font-weight: 700; letter-spacing: .02em; }
 .member-self-service-summary-name { overflow: hidden; color: var(--forest-900); font-size: 1.05rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .member-self-service-summary-total { flex-shrink: 0; color: var(--forest-900); font-weight: 800; white-space: nowrap; }
+.member-self-service-summary-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem .75rem; }
+.member-self-service-card.is-leaving { border-color: var(--sun-400); background: #fff6cf; }
+.member-self-service-card.is-leaving > summary:hover, .member-self-service-card.is-leaving[open] > summary { background: #ffefb0; }
+.member-self-service-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .25rem 1rem; }
+.member-cancellation-selection .check-field { margin: 0; }
+.member-cancellation-selection { display: grid; gap: .5rem; margin: 0; padding: .75rem 1rem; border: 1px solid var(--line); border-radius: .75rem; }
+.member-cancellation-selection legend { padding: 0 .25rem; font-weight: 600; }
+.member-cancellation-all { padding-bottom: .5rem; border-bottom: 1px solid var(--line); font-weight: 600; }
+.member-cancellation-handover { display: grid; gap: .5rem; }
+.member-cancellation-handover:empty { display: none; }
+.member-self-service-card-actions { display: flex; justify-content: flex-end; margin-bottom: -.4rem; }
 .member-self-service-card-body { display: grid; gap: .4rem; padding: 1rem 1.25rem; }
 .member-self-service-card-body h4 { margin: .9rem 0 .1rem; color: var(--forest-700); font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; }
 .member-self-service-card-body h4:first-child { margin-top: 0; }
@@ -1301,6 +1312,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-archive > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 1rem 1.25rem; color: var(--forest-900); cursor: pointer; list-style: none; }
 .event-helper-archive > summary::-webkit-details-marker { display: none; }
 .event-helper-archive > summary:hover { background: var(--forest-100); }
+.member-cancellation-group-title { display: grid; gap: .15rem; min-width: 0; }
+.member-cancellation-group-title small { color: var(--muted); font-weight: 400; }
 .event-helper-archive[open] > summary { border-bottom: 1px solid var(--line); background: var(--forest-100); }
 .event-helper-archive-list { padding: 1rem; }
 .member-work-assignments { display: grid; gap: 1rem; }

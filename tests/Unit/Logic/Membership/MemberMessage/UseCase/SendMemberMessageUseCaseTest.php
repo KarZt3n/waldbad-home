@@ -2,6 +2,7 @@
 
 namespace App\Tests\Unit\Logic\Membership\MemberMessage\UseCase;
 
+use App\Logic\Membership\MembershipAdminLinkBuilderInterface;
 use App\Logic\Common\ClockInterface;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Membership\ContributionRate\Manager\ContributionRateManagerInterface;
@@ -21,6 +22,7 @@ use App\Logic\Membership\MemberAccess\Dto\WorkAssignmentCreditResponse;
 use App\Logic\Membership\MemberAccess\Model\MemberAccessToken;
 use App\Logic\Membership\MemberAccess\Service\MemberAccessPasswordHasher;
 use App\Logic\Membership\MemberAccess\Service\MemberPayerGroupResolver;
+use App\Logic\Membership\Cancellation\Manager\MemberCancellationManagerInterface;
 use App\Logic\Membership\MemberAccess\Service\WorkAssignmentCreditCalculator;
 use App\Logic\Membership\MemberAccess\UseCase\ResolveMemberAccessSessionUseCase;
 use App\Logic\Membership\MemberMessage\Manager\MemberMessageManagerInterface;
@@ -57,6 +59,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->clock(),
             new MemberPayerGroupResolver($this->createStub(MemberManagerInterface::class)),
+            $this->createStub(MemberCancellationManagerInterface::class),
         );
 
         $messages = $this->createMock(MemberMessageManagerInterface::class);
@@ -77,6 +80,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->identifierGenerator(),
             $this->clock(),
             $this->noopMailer(),
+            $this->createStub(MembershipAdminLinkBuilderInterface::class),
         );
 
         $response = $useCase->execute('raw-token', self::PASSWORD, 'member-1', 'Meine Adresse hat sich geändert.');
@@ -99,6 +103,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             new MemberAccessPasswordHasher(),
             $this->clock(),
             new MemberPayerGroupResolver($this->createStub(MemberManagerInterface::class)),
+            $this->createStub(MemberCancellationManagerInterface::class),
         );
 
         $messages = $this->createMock(MemberMessageManagerInterface::class);
@@ -110,6 +115,7 @@ final class SendMemberMessageUseCaseTest extends TestCase
             $this->identifierGenerator(),
             $this->clock(),
             $this->noopMailer(),
+            $this->createStub(MembershipAdminLinkBuilderInterface::class),
         );
 
         $this->expectException(InvalidMemberAccessTokenException::class);

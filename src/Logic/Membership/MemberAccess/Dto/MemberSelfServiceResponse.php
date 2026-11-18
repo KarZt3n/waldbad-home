@@ -38,11 +38,23 @@ readonly class MemberSelfServiceResponse
         public string $paymentMethod,
         public string $paymentInterval,
         public string $paymentDay,
+        /** Austrittsdatum einer eingereichten, noch nicht bestätigten Kündigung, `Y-m-d`. */
+        public ?string $pendingCancellationExitDate = null,
+        /** ID des Zahlers (bei Selbstzahlern die eigene) — für die Übergabe beim Kündigen. */
+        public string $payerId = '',
+        /** Wer die Beiträge zahlt, wenn das Mitglied nicht selbst zahlt — sonst null. */
+        public ?string $payerName = null,
     ) {
     }
 
-    public static function fromMember(Member $member, ?string $contributionCategoryLabel, \DateTimeImmutable $at): self
-    {
+    public static function fromMember(
+        Member $member,
+        ?string $contributionCategoryLabel,
+        \DateTimeImmutable $at,
+        ?string $pendingCancellationExitDate = null,
+        string $payerId = '',
+        ?string $payerName = null,
+    ): self {
         return new self(
             id: $member->id,
             memberNumber: $member->memberNumber,
@@ -69,6 +81,9 @@ readonly class MemberSelfServiceResponse
             paymentMethod: $member->paymentMethod->value,
             paymentInterval: $member->paymentInterval->value,
             paymentDay: $member->paymentDay->value,
+            pendingCancellationExitDate: $pendingCancellationExitDate,
+            payerId: $payerId,
+            payerName: $payerName,
         );
     }
 }

@@ -359,6 +359,137 @@ const showMembership = async () => {
     );
 };
 
+// Reiter „Kündigungen“: über „Meine Mitgliedschaft“ eingegangene Kündigungen. Erst „Bestätigen“
+// trägt das Austrittsdatum ein, überträgt ggf. Zahler-Rolle/Hauptnummer und Kontaktdaten und schickt
+// die Bestätigung an den Haushalt (siehe `ConfirmMemberCancellationUseCase`).
+const CANCELLATION_STATUS = {
+    open: ['status-pending', 'Offen'],
+    confirmed: ['status-released', 'Bestätigt'],
+    rejected: ['status-rejected', 'Verworfen'],
+};
+const showMemberCancellations = async () => {
+    const data = await request('/api/admin/v1/member-cancellations');
+    const canEdit = canEditModule('members');
+
+    // Bestätigen/Verwerfen gilt für die ganze Kündigung, also alle offenen Personen eines Akkordeons.
+    const groupAction = (label, className, path, cancellations, describe, success) => {
+        const button = element('button', {className, text: label, attributes: {type: 'button'}});
+        button.addEventListener('click', async () => {
+            if (!await confirmAction(`Kündigung ${label.toLowerCase()}`, describe(), label)) return;
+            button.disabled = true;
+            try {
+                const result = await request(`/api/admin/v1/member-cancellations/${path}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ids: cancellations.map((cancellation) => cancellation.id)}),
+                });
+                const warning = result.items.find((item) => item.warning)?.warning;
+                toast(warning || success, warning ? 'info' : 'success');
+                await showMembershipManagement();
+            } catch (error) {
+                toast(error.message, 'error');
+                button.disabled = false;
+            }
+        });
+
+        return button;
+    };
+    const groupActions = (cancellations) => {
+        const people = cancellations.map((cancellation) => `${cancellation.memberName} (${cancellation.memberNumber}) zum ${formatDateDE(cancellation.exitDate)}`).join(', ');
+        const handover = cancellations.flatMap((cancellation) => [
+            ...(cancellation.successorName ? [`${cancellation.successorName} übernimmt Zahler-Rolle bzw. Hauptmitgliedschaft von ${cancellation.memberName}.`] : []),
+            ...(cancellation.contactRecipientName ? [`${cancellation.contactRecipientName} übernimmt die Kontaktdaten von ${cancellation.memberName}.`] : []),
+        ]).join(' ');
+
+        return element('div', {className: 'card-actions', children: [
+            groupAction('Bestätigen', 'button', 'confirm', cancellations,
+                () => `Austritt für ${people}. ${handover} Die Beiträge der Familie werden neu berechnet und der Haushalt erhält eine Bestätigung per E-Mail.`,
+                'Die Kündigung wurde bestätigt.'),
+            groupAction('Verwerfen', 'secondary-button', 'reject', cancellations,
+                () => `Die Kündigung für ${people} wird als verworfen markiert, z. B. wenn sie zurückgezogen wurde. Die Mitglieder bleiben unverändert, es geht keine E-Mail raus.`,
+                'Die Kündigung wurde verworfen.'),
+        ]});
+    };
+
+    const renderCard = (cancellation) => {
+        const [badgeClass, badgeText] = CANCELLATION_STATUS[cancellation.status] || ['', cancellation.status];
+        const meta = (label, value) => element('div', {children: [element('dt', {text: label}), element('dd', {text: value})]});
+
+        return element('article', {className: 'management-card membership-admin-card', children: [
+            element('header', {children: [
+                element('div', {children: [
+                    element('strong', {text: cancellation.memberName}),
+                    element('small', {text: `${cancellation.memberNumber} · Familie ${cancellation.primaryMemberNumber}`}),
+                ]}),
+                element('div', {className: 'membership-admin-card-badges', children: [element('span', {className: `status-badge ${badgeClass}`, text: badgeText})]}),
+            ]}),
+            element('dl', {className: 'membership-meta', children: [
+                meta('Austritt zum', formatDateDE(cancellation.exitDate)),
+                meta('Eingang', new Date(cancellation.submittedAt).toLocaleString('de-DE')),
+                ...(cancellation.successorName ? [meta('Zahler/Hauptmitglied übernimmt', cancellation.successorName)] : []),
+                ...(cancellation.contactRecipientName ? [meta('Kontaktdaten übernimmt', cancellation.contactRecipientName)] : []),
+                ...(cancellation.decidedAt ? [meta(cancellation.status === 'confirmed' ? 'Bestätigt am' : 'Verworfen am', new Date(cancellation.decidedAt).toLocaleString('de-DE'))] : []),
+            ]}),
+        ]});
+    };
+
+    // Je auslösender Person ein Akkordeon mit allen Mitgliedern, die sie gekündigt hat — auch wenn die
+    // Kündigungen nacheinander eingegangen sind. Ohne zugeordnete Person gilt die E-Mail-Adresse.
+    const requesterGroups = (items, open) => {
+        const groups = new Map();
+        items.forEach((cancellation) => {
+            const key = cancellation.requestedByMemberNumber || cancellation.requestedByEmail.toLowerCase();
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(cancellation);
+        });
+
+        return [...groups.values()].map((group) => {
+            const requester = group.find((cancellation) => cancellation.requestedByName) || group[0];
+            const title = requester.requestedByName
+                ? `${requester.requestedByName} (${requester.requestedByMemberNumber})`
+                : requester.requestedByEmail;
+            const sorted = [...group].sort((left, right) => left.submittedAt.localeCompare(right.submittedAt));
+
+            return element('details', {className: 'event-helper-archive member-cancellation-group', attributes: open ? {open: 'open'} : {}, children: [
+                element('summary', {children: [
+                    element('div', {className: 'member-cancellation-group-title', children: [
+                        element('strong', {text: title}),
+                        element('small', {text: `Gekündigt über ${requester.requestedByEmail} · ${sorted.map((cancellation) => cancellation.memberName).join(', ')}`}),
+                    ]}),
+                    element('span', {className: `status-badge${open ? ' status-pending' : ''}`, text: `${group.length} ${group.length === 1 ? 'Person' : 'Personen'}`}),
+                ]}),
+                element('div', {className: 'event-helper-archive-list', children: [
+                    element('div', {className: 'card-list', children: sorted.map(renderCard)}),
+                    ...(canEdit && open ? [groupActions(sorted)] : []),
+                ]}),
+            ]});
+        });
+    };
+
+    const openItems = data.items.filter((cancellation) => cancellation.status === 'open');
+    const closedByYear = new Map();
+    data.items.filter((cancellation) => cancellation.status !== 'open').forEach((cancellation) => {
+        const year = Number(cancellation.exitDate.slice(0, 4));
+        if (!closedByYear.has(year)) closedByYear.set(year, []);
+        closedByYear.get(year).push(cancellation);
+    });
+    const archiveSections = [...closedByYear.entries()]
+        .sort(([firstYear], [secondYear]) => secondYear - firstYear)
+        .map(([year, items]) => element('details', {className: 'event-helper-archive', children: [
+            element('summary', {children: [
+                element('strong', {text: `Abgeschlossen – Austritt ${year}`}),
+                element('span', {className: 'status-badge', text: String(items.length)}),
+            ]}),
+            element('div', {className: 'event-helper-archive-list', children: requesterGroups(items, false)}),
+        ]}));
+
+    workspace.replaceChildren(
+        sectionHeading('Kündigungen', 'Über „Meine Mitgliedschaft“ eingegangene Kündigungen prüfen und bestätigen'),
+        element('div', {className: 'management-toolbar', children: [element('span', {text: `${openItems.length} offene Kündigungen`})]}),
+        element('div', {className: 'event-helper-groups', children: openItems.length ? requesterGroups(openItems, true) : [emptyState('Keine offenen Kündigungen vorhanden.')]}),
+        ...(archiveSections.length ? [element('div', {className: 'event-helper-groups membership-archive-groups', children: archiveSections})] : []),
+    );
+};
+
 const showMembershipDashboard = async () => {
     const stats = await request('/api/admin/v1/membership-dashboard');
     const tile = (label, value) => element('article', {className: 'stat-tile', children: [
@@ -3310,6 +3441,7 @@ const membershipTabsBySlug = {
     beitragssaetze: 'rates',
     antraege: 'applications',
     nachrichten: 'messages',
+    kuendigungen: 'cancellations',
 };
 const membershipSlugsByTab = Object.fromEntries(Object.entries(membershipTabsBySlug).map(([slug, tab]) => [tab, slug]));
 let activeMembershipTab = null;
@@ -3327,12 +3459,13 @@ const loadOpenMembershipCounts = async () => {
             return null;
         }
     };
-    const [applications, messages] = await Promise.all([
+    const [applications, messages, cancellations] = await Promise.all([
         count('membership_applications', '/api/admin/v1/membership-applications', (application) => !application.releasedAt && !application.rejectedAt),
         count('member_messages', '/api/admin/v1/member-messages', (message) => message.status !== 'resolved'),
+        count('members', '/api/admin/v1/member-cancellations', (cancellation) => cancellation.status === 'open'),
     ]);
 
-    return {applications, messages};
+    return {applications, messages, cancellations};
 };
 
 const showMembershipManagement = async (segments = []) => {
@@ -3345,6 +3478,7 @@ const showMembershipManagement = async (segments = []) => {
         ...(hasModule('contribution_rates') ? [['rates', 'Beitragssätze', showContributionRates]] : []),
         ...(hasModule('membership_applications') ? [['applications', 'Mitgliedsanträge', showMembership]] : []),
         ...(hasModule('member_messages') ? [['messages', 'Mitgliedernachrichten', showMemberMessages]] : []),
+        ...(hasModule('members') ? [['cancellations', 'Kündigungen', showMemberCancellations]] : []),
     ];
     if (!tabs.some(([key]) => key === activeMembershipTab)) activeMembershipTab = tabs[0]?.[0] || null;
     if (activeMembershipTab) {

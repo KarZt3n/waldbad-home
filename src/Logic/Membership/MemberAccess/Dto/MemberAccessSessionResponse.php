@@ -20,6 +20,8 @@ readonly class MemberAccessSessionResponse
         public ?string $contributionRatesValidFrom,
         /** Arbeitseinsatz-Gutschrift der ganzen Familie (siehe `WorkAssignmentCreditCalculator`). */
         public WorkAssignmentCreditResponse $workAssignmentCredit,
+        /** Austrittsdatum einer heute eingereichten Kündigung (siehe `CancellationExitDate`), `Y-m-d`. */
+        public string $cancellationExitDate = '',
     ) {
     }
 }

@@ -26,12 +26,18 @@ readonly class MemberPayerGroupResolver
     }
 
     /**
+     * Folgt dabei dem heutigen Zahler: Ein Zugang speichert den Zahler beim Anfordern, wurde die
+     * Zahler-Rolle seitdem übergeben (z. B. bei einer Kündigung), zahlt der gespeicherte selbst
+     * über die Nachfolge und gehört weiter zu deren Strang.
+     *
      * @return list<Member>
      */
     public function members(string $payerMemberId): array
     {
         try {
-            $payer = [$this->members->get($payerMemberId)];
+            $stored = $this->members->get($payerMemberId);
+            $payerMemberId = $this->payerIdOf($stored);
+            $payer = [$payerMemberId === $stored->id ? $stored : $this->members->get($payerMemberId)];
         } catch (MemberNotFoundException) {
             $payer = [];
         }

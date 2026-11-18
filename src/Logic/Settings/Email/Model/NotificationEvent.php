@@ -13,6 +13,7 @@ enum NotificationEvent: string
 {
     case MembershipApplicationSubmitted = 'membership_application_submitted';
     case MemberMessageSubmitted = 'member_message_submitted';
+    case MemberCancellationSubmitted = 'member_cancellation_submitted';
     case SaunaBookingSubmitted = 'sauna_booking_submitted';
     case EventHelpRequestSubmitted = 'event_help_request_submitted';
     case ContactRequestSubmitted = 'contact_request_submitted';
@@ -23,6 +24,7 @@ enum NotificationEvent: string
         return match ($this) {
             self::MembershipApplicationSubmitted => 'Neuer Mitgliedsantrag eingegangen',
             self::MemberMessageSubmitted => 'Nachricht über „Meine Mitgliedschaft" gesendet',
+            self::MemberCancellationSubmitted => 'Kündigung über „Meine Mitgliedschaft“ eingegangen',
             self::SaunaBookingSubmitted => 'Neue Sauna-Anmeldung eingegangen',
             self::EventHelpRequestSubmitted => 'Neue Helferanmeldung eingegangen („Ich möchte helfen!“)',
             self::ContactRequestSubmitted => 'Neue Kontaktanfrage eingegangen',

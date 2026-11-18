@@ -9,6 +9,7 @@ enum OverviewTaskType: string
 {
     case MembershipApplications = 'membership_applications';
     case MemberMessages = 'member_messages';
+    case MemberCancellations = 'member_cancellations';
     case ContactRequests = 'contact_requests';
     case GuestbookEntries = 'guestbook_entries';
     case SaunaBookings = 'sauna_bookings';
@@ -22,6 +23,7 @@ enum OverviewTaskType: string
         return match ($this) {
             self::MembershipApplications => CmsModule::MembershipApplications,
             self::MemberMessages => CmsModule::MemberMessages,
+            self::MemberCancellations => CmsModule::Members,
             self::ContactRequests => CmsModule::ContactRequests,
             self::GuestbookEntries => CmsModule::Guestbook,
             self::SaunaBookings, self::SaunaDuties => CmsModule::RentalSauna,
