@@ -508,6 +508,7 @@ Persistenz-Entities verbleiben gemäß Architektur ausschließlich in der Data L
 - kleine initiale Frontend-Bundles
 - cachebare öffentliche API-Antworten
 - keine blockierenden Drittanbieter-Inhalte ohne Einwilligung
+- Der Importmap-Polyfill `es-module-shims` (nur für alte Browser wie iOS 15, lädt in modernen Browsern nie) liegt selbst gehostet unter `/assets/vendor/`, nicht mehr beim CDN `ga.jspm.io`
 - Core Web Vitals als messbare Qualitätsziele
 
 ### 13.3 SEO und Auffindbarkeit
@@ -520,7 +521,7 @@ Persistenz-Entities verbleiben gemäß Architektur ausschließlich in der Data L
 - Titel, Meta-Beschreibung, Canonical-URL und Open-Graph-Angaben je Seite stehen bereits im ausgelieferten HTML; unbekannte, nicht veröffentlichte oder ausgeblendete Seiten antworten mit 404, Redaktion und persönliche Sonderseiten (Meine Mitgliedschaft, E-Mail-Einwilligung, Sauna-Anfrage) mit `noindex`
 - Öffentliche Skripte: statisch geladen werden nur Kern, Inhaltsblöcke und Kopf/Footer; Sauna, Fotoarchiv, Mitgliedsantrag, Helferanmeldung, Kontakt, Gästebuch und Sonderseiten kommen per `import()` erst, wenn eine Seite sie braucht
 - Öffentliche Seiten kommen mit einer einzigen Anfrage aus: Seite, Navigation, Footer und Social-Media-Links stehen als JSON im ausgelieferten HTML (`#site-chrome-data`); die öffentlichen APIs bleiben für Seitenwechsel bzw. als Rückfall. Veröffentlichte Seiten, Footer, Social Media und Logo cachen ihre Manager serverseitig (Pool `cache.models`, Invalidierung bei jedem Speichern), sodass diese Anfragen ohne Datenbankabfrage auskommen
-- Prod-`.htaccess`: Komprimierung (mod_deflate) und ein Jahr Browser-Cache für die gehashten Dateien unter `/assets`
+- Prod-`.htaccess`: ein Jahr Browser-Cache für die gehashten Dateien unter `/assets`. Das Telekom-Hosting hat kein mod_deflate; CSS/JS werden deshalb beim Prod-Build minifiziert (`sensiolabs/minify-bundle`) und vorkomprimiert (AssetMapper `precompress`, Brotli + gzip) und von der `.htaccess` passend zum `Accept-Encoding` ausgeliefert
 - strukturierte Daten für Organisation und Veranstaltungen, soweit inhaltlich korrekt
 - Weiterleitungen für relevante URLs der Bestandswebsite
 

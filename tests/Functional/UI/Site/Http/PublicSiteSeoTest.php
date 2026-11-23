@@ -113,6 +113,16 @@ final class PublicSiteSeoTest extends WebTestCase
         }
     }
 
+    /** Der Polyfill für alte Browser kommt vom eigenen Server, nicht von einem CDN (Datenschutz). */
+    public function testImportmapPolyfillIsSelfHosted(): void
+    {
+        $this->client->request('GET', '/meine-mitgliedschaft');
+        $html = (string) $this->client->getResponse()->getContent();
+
+        self::assertStringNotContainsString('ga.jspm.io', $html);
+        self::assertMatchesRegularExpression('#/assets/vendor/es-module-shims/[^"\']+\.js#', $html);
+    }
+
     /** @param array<string, string> $headers */
     private function page(string $title, string $slug, array $headers, bool $publish, bool $visible = true, ?string $seoTitle = null, ?string $seoDescription = null): void
     {

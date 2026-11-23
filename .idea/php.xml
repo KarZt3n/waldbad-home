@@ -150,6 +150,7 @@
       <path value="$PROJECT_DIR$/vendor/league/uri-interfaces" />
       <path value="$PROJECT_DIR$/vendor/league/uri" />
       <path value="$PROJECT_DIR$/vendor/zytzagoo/smtp-validate-email" />
+      <path value="$PROJECT_DIR$/vendor/sensiolabs/minify-bundle" />
     </include_path>
   </component>
   <component name="PhpProjectSharedConfiguration" php_language_level="8.4">

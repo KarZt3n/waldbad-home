@@ -13,4 +13,6 @@ return [
     Symfony\Bundle\SecurityBundle\SecurityBundle::class => ['all' => true],
     Symfony\Bundle\MonologBundle\MonologBundle::class => ['all' => true],
     Symfony\Bundle\MakerBundle\MakerBundle::class => ['dev' => true],
+    // Minifiziert CSS/JS nur beim `asset-map:compile` für Prod (siehe config/packages/sensiolabs_minify.yaml).
+    Sensiolabs\MinifyBundle\SensiolabsMinifyBundle::class => ['prod' => true],
 ];

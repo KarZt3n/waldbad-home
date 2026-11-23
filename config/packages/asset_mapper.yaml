@@ -9,3 +9,8 @@ when@prod:
     framework:
         asset_mapper:
             missing_import_mode: warn
+            # Legt beim `asset-map:compile` neben jeder CSS/JS-Datei eine .br- (falls `brotli` installiert ist)
+            # und eine .gz-Fassung ab. Das Prod-Hosting hat kein mod_deflate; die .htaccess liefert stattdessen
+            # diese Dateien aus (siehe deploy/prod/public.htaccess).
+            precompress:
+                enabled: true
