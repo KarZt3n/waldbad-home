@@ -42,6 +42,7 @@ const canEditExtensionTexts = () => canViewPages() && (isGlobalAdministrator() |
 // Social-Media-Leiste und Logo sind ebenso sofort auf allen Seiten online (siehe `PageAuthorizationService`).
 const canEditSocialMedia = canEditExtensionTexts;
 const canEditSiteBranding = canEditExtensionTexts;
+const canEditFooterNavigation = canEditExtensionTexts;
 
 export {
     setSessionState,
@@ -59,4 +60,5 @@ export {
     canEditExtensionTexts,
     canEditSocialMedia,
     canEditSiteBranding,
+    canEditFooterNavigation,
 };

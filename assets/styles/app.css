@@ -730,6 +730,11 @@ a { color: var(--forest-700); }
 .social-media-link-row .field { flex: 1; min-width: 0; margin: 0; }
 .social-media-link-actions { display: flex; gap: .35rem; }
 .social-media-add { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+.footer-navigation-row { align-items: center; padding: .65rem .8rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--white); }
+.footer-navigation-page { display: grid; flex: 1; min-width: 0; gap: .15rem; }
+.footer-navigation-page small { color: var(--muted); overflow-wrap: anywhere; }
+.footer-navigation-page .footer-navigation-offline { color: #8a5a00; }
+.footer-navigation-fixed { border-style: dashed; background: var(--forest-100); }
 
 /* Admin „Seiten“ → „Logo“: Vorschau auf dem Kopfzeilen-Hintergrund */
 .site-branding-preview { display: flex; align-items: center; gap: .8rem; width: fit-content; margin-bottom: 1rem; padding: 1rem 1.25rem; border-radius: .8rem; color: var(--white); background: var(--forest-950); }

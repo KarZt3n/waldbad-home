@@ -10,6 +10,7 @@ import {adminPath, setAdminPath, workspace} from './shell.js';
 import {openImagePicker, openMediaFilePicker} from './media-picker.js';
 import {renderPageExtensions} from './page-extensions.js';
 import {renderSocialMedia} from './social-media.js';
+import {renderFooterNavigation} from './footer-navigation.js';
 import {renderSiteBranding} from './site-branding.js';
 
 const BLOCK_TYPES = {
@@ -1732,12 +1733,13 @@ const renderPages = async (creating = null) => {
     ]);
 };
 
-// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen, Social Media und Logo gelten seitenübergreifend.
+// Seitenbezogen eingeschränkte Zugänge sehen nur ihre Seiten; Erweiterungen, Social Media, Footer und Logo gelten seitenübergreifend.
 const pagesTabs = () => [
     ['pages', 'Seiten', ['seiten'], () => renderPages()],
     ...(isPageAccessRestricted() ? [] : [
         ['extensions', 'Erweiterungen', ['seiten', 'erweiterungen'], () => showPageExtensions()],
         ['social-media', 'Social Media', ['seiten', 'social-media'], () => showSocialMedia()],
+        ['footer', 'Footer', ['seiten', 'footer'], () => showFooterNavigation()],
         ['logo', 'Logo', ['seiten', 'logo'], () => showSiteBranding()],
     ]),
 ];
@@ -1775,6 +1777,10 @@ const showSocialMedia = async () => {
     mountPagesTab('social-media', await renderSocialMedia(showSocialMedia));
 };
 
+const showFooterNavigation = async () => {
+    mountPagesTab('footer', await renderFooterNavigation(showFooterNavigation));
+};
+
 const showSiteBranding = async () => {
     mountPagesTab('logo', await renderSiteBranding(showSiteBranding));
 };
@@ -1786,6 +1792,10 @@ const showPages = async (segments = []) => {
     }
     if (segments[0] === 'seiten' && segments[1] === 'social-media' && !isPageAccessRestricted()) {
         await showSocialMedia();
+        return;
+    }
+    if (segments[0] === 'seiten' && segments[1] === 'footer' && !isPageAccessRestricted()) {
+        await showFooterNavigation();
         return;
     }
     if (segments[0] === 'seiten' && segments[1] === 'logo' && !isPageAccessRestricted()) {

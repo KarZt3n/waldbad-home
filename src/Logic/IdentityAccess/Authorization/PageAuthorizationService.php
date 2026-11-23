@@ -106,6 +106,14 @@ readonly class PageAuthorizationService
         }
     }
 
+    /** Die Footer-Seiten erscheinen ebenso ohne Freigabe sofort auf allen Seiten. */
+    public function assertCanEditFooterNavigation(PageAuthorizationContext $context): void
+    {
+        if (!$this->canEditExtensionTexts($context)) {
+            throw new AccessDeniedException('Den Footer dürfen nur Redakteure mit Veröffentlichungsrecht für alle Seiten ändern.');
+        }
+    }
+
     /** Das Logo erscheint ebenso ohne Freigabe sofort auf allen Seiten. */
     public function assertCanEditBranding(PageAuthorizationContext $context): void
     {

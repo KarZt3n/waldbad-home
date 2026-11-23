@@ -207,19 +207,40 @@ const buildSocialMediaBar = () => {
 
     return bar;
 };
-const buildSiteFooter = () => element('footer', {
-    className: 'site-footer',
-    children: [
-        element('p', {text: '© ' + new Date().getFullYear() + ' Naturbad Borkheide e.V.'}),
-        element('nav', {attributes: {'aria-label': 'Servicenavigation'}, children: [
-            element('a', {text: 'Impressum', attributes: {href: '/seite/impressum'}}),
-            element('a', {text: 'Kontakt', attributes: {href: '/seite/kontakt'}}),
-            element('a', {text: 'Gästebuch', attributes: {href: '/seite/gaestebuch'}}),
-            element('a', {text: 'Unterstützer', attributes: {href: '/seite/unterstuetzer'}}),
-            element('a', {text: 'Redaktion', attributes: {href: '/admin'}}),
-        ]}),
-    ],
-});
+// Wie die Navigation ändert sich der Footer während eines Besuchs praktisch nie und wird nur einmal geladen.
+let footerLinksRequest = null;
+const loadFooterLinks = () => {
+    footerLinksRequest ??= request('/api/public/v1/footer-navigation')
+        .then((data) => data.items)
+        .catch(() => {
+            footerLinksRequest = null;
+            return [];
+        });
+
+    return footerLinksRequest;
+};
+/**
+ * Seiten im Footer kommen aus „Seiten“ → „Footer“ (siehe `GetPublicFooterLinksQuery`) und werden
+ * nachgeladen; „Redaktion“ ist keine CMS-Seite und steht immer fest am Ende.
+ */
+const buildSiteFooter = () => {
+    const editorialLink = element('a', {text: 'Redaktion', attributes: {href: '/admin'}});
+    const nav = element('nav', {attributes: {'aria-label': 'Servicenavigation'}, children: [editorialLink]});
+    loadFooterLinks().then((links) => {
+        nav.replaceChildren(
+            ...links.map((link) => element('a', {text: link.label, attributes: {href: pageHref(link.slug)}})),
+            editorialLink,
+        );
+    });
+
+    return element('footer', {
+        className: 'site-footer',
+        children: [
+            element('p', {text: '© ' + new Date().getFullYear() + ' Naturbad Borkheide e.V.'}),
+            nav,
+        ],
+    });
+};
 /**
  * Icon ganz rechts in der Kopfzeile (siehe `buildSiteHeader`) — bei Klick öffnet sich ein Pulldown
  * mit dem Link zu „Meine Mitgliedschaft" (`/meine-mitgliedschaft`, siehe `MEMBER_ACCESS_SLUG`,
