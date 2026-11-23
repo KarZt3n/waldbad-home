@@ -1,6 +1,7 @@
 # CSS und JS werden beim `asset-map:compile` für Prod (GitHub-Deploy, Docker-Build) minifiziert;
-# lokal bleiben die Dateien unverändert lesbar. Das Minify-Programm (tdewolff/minify) lädt der
-# Build dafür einmalig von GitHub nach var/minify (im Nicht-Debug-Modus sonst abgeschaltet).
+# lokal bleiben die Dateien unverändert lesbar. Das Programm `minify` (tdewolff/minify) kommt per
+# apt aus dem Build-System (deploy-prod.yaml, Dockerfile): Den eingebauten Download über die
+# GitHub-API lehnt GitHub auf geteilten Runnern per Rate-Limit ab (403), der Build bricht dann ab.
 when@prod:
     sensiolabs_minify:
         asset_mapper:
@@ -8,4 +9,5 @@ when@prod:
                 css: true
                 js: true
         minify:
-            download_binary: true
+            local_binary: auto
+            download_binary: false

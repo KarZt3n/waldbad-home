@@ -43,9 +43,12 @@ jobs:
           composer install --no-dev --no-autoloader --no-scripts --no-interaction --no-progress --prefer-dist
           composer dump-autoload --no-dev --classmap-authoritative --no-interaction
 
-      # Für die .br-Fassungen der Assets (precompress); gzip kann PHP selbst.
-      - name: Brotli installieren
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends brotli
+      # `minify` für das Minifizieren (sensiolabs/minify-bundle), `brotli` für die .br-Fassungen (precompress).
+      - name: Build-Werkzeuge installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends brotli minify
+          minify --version
 
       - name: Assets kompilieren
         env:

@@ -17,7 +17,7 @@ RUN composer dump-autoload --no-dev --classmap-authoritative --no-interaction
 FROM php:8.4-apache-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gosu libicu-dev libzip-dev \
+    && apt-get install -y --no-install-recommends gosu libicu-dev libzip-dev minify \
     && docker-php-ext-install -j"$(nproc)" intl pdo_mysql zip \
     && a2enmod deflate expires headers rewrite \
     && rm -rf /var/lib/apt/lists/*
