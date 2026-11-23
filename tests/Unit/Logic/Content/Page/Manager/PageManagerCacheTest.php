@@ -17,8 +17,8 @@ final class PageManagerCacheTest extends TestCase
     {
         $provider = $this->createMock(PageProviderInterface::class);
         $provider->expects(self::exactly(2))->method('findAllPublished')->willReturn([
-            FooterTestPages::page('p-home', 'startseite', 'Start'),
-            FooterTestPages::page('p-hidden', 'intern', 'Intern', visible: false),
+            FooterTestPages::page('p-home', 'startseite', 'Start', showInNavigation: true),
+            FooterTestPages::page('p-hidden', 'intern', 'Intern', visible: false, showInNavigation: true),
         ]);
         $processor = $this->createStub(PageProcessorInterface::class);
         $processor->method('save')->willReturnArgument(0);

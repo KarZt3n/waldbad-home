@@ -9,7 +9,7 @@ use App\Logic\Content\Page\Model\PageStatus;
 
 final class FooterTestPages
 {
-    public static function page(string $id, string $slug, string $label, bool $visible = true): Page
+    public static function page(string $id, string $slug, string $label, bool $visible = true, bool $showInNavigation = false): Page
     {
         $now = new \DateTimeImmutable('2026-11-24T10:00:00+01:00');
 
@@ -22,7 +22,7 @@ final class FooterTestPages
             blocks: [new ContentBlock(ContentBlockType::RichText, '<p>Inhalt</p>')],
             status: PageStatus::Published,
             visible: $visible,
-            showInNavigation: false,
+            showInNavigation: $showInNavigation,
             navigationPosition: 0,
             seoTitle: $label,
             seoDescription: null,

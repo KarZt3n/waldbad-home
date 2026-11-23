@@ -19,11 +19,11 @@ final class FooterNavigationManagerTest extends TestCase
         $processor->method('save')->willReturnArgument(0);
         $manager = new FooterNavigationManager($provider, $processor, new InMemoryModelCache());
 
-        self::assertNull($manager->get());
-        self::assertNull($manager->get());
+        $before = [$manager->get(), $manager->get()];
+        self::assertSame([null, null], $before);
 
         $manager->save(new FooterNavigation(['p-a']));
-        self::assertSame(['p-a'], $manager->get()?->pageIds);
-        self::assertSame(['p-a'], $manager->get()?->pageIds);
+        $after = [$manager->get(), $manager->get()];
+        self::assertSame([['p-a'], ['p-a']], array_map(static fn (?FooterNavigation $navigation): ?array => $navigation?->pageIds, $after));
     }
 }
