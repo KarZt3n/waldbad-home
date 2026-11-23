@@ -129,6 +129,8 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
         self::assertSame('Meine Telefonnummer hat sich geändert.', $this->string($message, 'message'));
         self::assertSame('new', $this->string($message, 'status'));
         $memberEmail = $this->string($message, 'memberEmail');
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts');
+        self::assertSame(1, $this->responseData()['messages']);
 
         // 5. Die Verwaltung schreibt dem Mitglied eine Mail; der Status bleibt dabei unverändert.
         $messageId = $this->string($message, 'id');
@@ -144,6 +146,11 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
             'body' => 'Text',
         ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(422);
+
+        $this->client->request('POST', '/api/admin/v1/member-messages/'.$messageId.'/status/resolved', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts');
+        self::assertSame(0, $this->responseData()['messages'], 'Erledigte Nachrichten zählen nicht mehr als offen.');
     }
 
     /**
@@ -229,6 +236,10 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
 
         $this->client->request('GET', '/api/admin/v1/member-messages', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseStatusCodeSame(403);
+
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts');
+        self::assertResponseIsSuccessful();
+        self::assertSame(['applications' => 0, 'messages' => null, 'cancellations' => null], $this->responseData(), 'Bereiche ohne Leserecht bleiben ohne Zahl.');
     }
 
     /**
@@ -323,6 +334,8 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
         self::assertSame('Erika Musterfrau', $this->string($cancellation, 'requestedByName'));
         self::assertSame($erikaNumber, $this->string($cancellation, 'requestedByMemberNumber'));
         self::assertSame('Paul Musterfrau', $this->string($cancellation, 'contactRecipientName'));
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts', server: $headers);
+        self::assertSame(1, $this->responseData()['cancellations']);
 
         $this->client->request('GET', '/api/admin/v1/overview', server: $headers);
         self::assertResponseIsSuccessful();
@@ -331,6 +344,8 @@ final class MemberSelfServiceWorkflowTest extends WebTestCase
         $this->client->jsonRequest('POST', '/api/admin/v1/member-cancellations/confirm', ['ids' => [$this->string($cancellation, 'id')]], $headers);
         self::assertResponseIsSuccessful();
         self::assertSame('confirmed', $this->string($this->entry($this->arrayList($this->responseData(), 'items')[0]), 'status'));
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts', server: $headers);
+        self::assertSame(0, $this->responseData()['cancellations'], 'Bestätigte Kündigungen zählen nicht mehr als offen.');
 
         $this->client->request('GET', '/api/admin/v1/members/'.$erikaId, server: $headers);
         self::assertSame($expectedExitDate, $this->string($this->responseData(), 'leftAt'));

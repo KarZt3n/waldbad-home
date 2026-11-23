@@ -29,4 +29,9 @@ readonly class MemberMessageManager implements MemberMessageManagerInterface
     {
         return $this->processor->save($message);
     }
+
+    public function countOpen(): int
+    {
+        return $this->provider->countOpen();
+    }
 }

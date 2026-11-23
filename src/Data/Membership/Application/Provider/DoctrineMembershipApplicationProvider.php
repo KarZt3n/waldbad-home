@@ -32,4 +32,15 @@ readonly class DoctrineMembershipApplicationProvider implements MembershipApplic
 
         return array_map($this->mapper->toModel(...), $entities);
     }
+
+    public function countOpen(): int
+    {
+        return (int) $this->entityManager->createQueryBuilder()
+            ->select('COUNT(application.id)')
+            ->from(MembershipApplicationEntity::class, 'application')
+            ->where('application.releasedAt IS NULL')
+            ->andWhere('application.rejectedAt IS NULL')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
 }

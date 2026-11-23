@@ -39,4 +39,9 @@ readonly class MemberCancellationManager implements MemberCancellationManagerInt
     {
         return $this->processor->save($cancellation);
     }
+
+    public function countOpen(): int
+    {
+        return $this->provider->countOpen();
+    }
 }

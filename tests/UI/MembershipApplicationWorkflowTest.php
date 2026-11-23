@@ -111,11 +111,17 @@ final class MembershipApplicationWorkflowTest extends WebTestCase
         self::assertIsString($applicationId);
 
         $csrfToken = $this->loginAsSuperAdmin();
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts');
+        self::assertSame(['applications' => 1, 'messages' => 0, 'cancellations' => 0], $this->responseData());
+
         $this->client->jsonRequest('POST', '/api/admin/v1/membership-applications/'.$applicationId.'/reject', [
             'reason' => 'Beitrittserklärung unvollständig.',
         ], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
-        $rejected = $this->responseData();
+        $rejectedData = $this->responseData();
+        $this->client->request('GET', '/api/admin/v1/membership-open-counts');
+        self::assertSame(0, $this->responseData()['applications'], 'Abgelehnte Anträge zählen nicht mehr als offen.');
+        $rejected = $rejectedData;
         self::assertIsString($rejected['rejectedAt']);
         self::assertSame('Beitrittserklärung unvollständig.', $rejected['rejectionReason']);
         self::assertNull($rejected['releasedAt']);

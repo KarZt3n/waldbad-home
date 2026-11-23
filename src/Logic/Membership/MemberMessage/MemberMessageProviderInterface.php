@@ -12,4 +12,7 @@ interface MemberMessageProviderInterface
      * @return list<MemberMessage>
      */
     public function findAll(): array;
+
+    /** Nachrichten, die noch nicht erledigt sind. */
+    public function countOpen(): int;
 }

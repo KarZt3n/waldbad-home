@@ -38,4 +38,10 @@ readonly class DoctrineMemberCancellationProvider implements MemberCancellationP
 
         return array_map($this->mapper->toModel(...), $entities);
     }
+
+    public function countOpen(): int
+    {
+        return $this->entityManager->getRepository(MemberCancellationEntity::class)
+            ->count(['status' => MemberCancellationStatus::Open->value]);
+    }
 }

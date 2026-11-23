@@ -12,4 +12,7 @@ interface MembershipApplicationProviderInterface
      * @return list<MembershipApplication>
      */
     public function findAll(): array;
+
+    /** Anträge, die weder freigegeben noch abgelehnt sind. */
+    public function countOpen(): int;
 }

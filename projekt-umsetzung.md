@@ -587,6 +587,7 @@ Veraltete, doppelte oder rechtlich ungeklärte Inhalte werden nicht automatisch 
 - Online-Ticketverkauf oder Zahlungsabwicklung
 - qualifizierte elektronische Signatur für die digitale Vereinsaufnahme
 - vollständige Mitgliederverwaltung
+- Reiterleiste der Mitgliederverwaltung: Die Zahlen offener Anträge, Nachrichten und Kündigungen kommen gemeinsam über `GET /api/admin/v1/membership-open-counts` (reine `COUNT`-Abfragen; Bereiche ohne Leserecht liefern `null`). Gezählt wird beim Öffnen und nach jeder Aktion, nicht beim Reiterwechsel; der Reiterinhalt wartet nicht auf die Zahlen.
 - Dienstplanung für Rettungsschwimmer
 - Newsletter-Marketing-Automation
 - frei installierbare CMS-Plugins

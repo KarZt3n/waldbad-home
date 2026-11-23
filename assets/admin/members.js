@@ -3448,28 +3448,16 @@ const membershipSlugsByTab = Object.fromEntries(Object.entries(membershipTabsByS
 let activeMembershipTab = null;
 
 /**
- * Anzahl offener Mitgliedsanträge und -nachrichten für die Reiterleiste, damit Unbearbeitetes ohne
- * Umschalten auffällt. Fehlt das Modul oder schlägt die Abfrage fehl, bleibt der Reiter ohne Zahl.
+ * Anzahl offener Mitgliedsanträge, -nachrichten und Kündigungen für die Reiterleiste, damit
+ * Unbearbeitetes ohne Umschalten auffällt. Eine Anfrage mit reinen Zählungen; Bereiche ohne
+ * Leserecht liefern `null`. Schlägt die Abfrage fehl, bleiben die Reiter ohne Zahl.
  */
-const loadOpenMembershipCounts = async () => {
-    const count = async (module, url, isOpen) => {
-        if (!hasModule(module)) return null;
-        try {
-            return (await request(url)).items.filter(isOpen).length;
-        } catch {
-            return null;
-        }
-    };
-    const [applications, messages, cancellations] = await Promise.all([
-        count('membership_applications', '/api/admin/v1/membership-applications', (application) => !application.releasedAt && !application.rejectedAt),
-        count('member_messages', '/api/admin/v1/member-messages', (message) => message.status !== 'resolved'),
-        count('members', '/api/admin/v1/member-cancellations', (cancellation) => cancellation.status === 'open'),
-    ]);
+const loadOpenMembershipCounts = () => request('/api/admin/v1/membership-open-counts').catch(() => ({}));
+// Beim Reiterwechsel ändern sich die Zahlen nicht; neu gezählt wird beim Öffnen der
+// Mitgliederverwaltung und nach jeder Aktion, die neu aufbaut (Aufruf ohne `reuseCounts`).
+let openCountsRequest = null;
 
-    return {applications, messages, cancellations};
-};
-
-const showMembershipManagement = async (segments = []) => {
+const showMembershipManagement = async (segments = [], {reuseCounts = false} = {}) => {
     if (segments[0] === 'mitglieder' && membershipTabsBySlug[segments[1]]) {
         activeMembershipTab = membershipTabsBySlug[segments[1]];
     }
@@ -3485,27 +3473,32 @@ const showMembershipManagement = async (segments = []) => {
     if (activeMembershipTab) {
         setAdminPath(['mitglieder', membershipSlugsByTab[activeMembershipTab]], true);
     }
-    const openCounts = await loadOpenMembershipCounts();
+    if (!reuseCounts || !openCountsRequest) openCountsRequest = loadOpenMembershipCounts();
 
+    const tabButtons = new Map();
     const tabStrip = element('nav', {className: 'sub-tab-strip', attributes: {'aria-label': 'Mitgliederverwaltung'}, children: tabs.map(([key, label]) => {
-        const open = openCounts[key] ?? 0;
         const button = element('a', {
             className: `sub-tab${key === activeMembershipTab ? ' active' : ''}`,
-            attributes: {href: adminPath('mitglieder', membershipSlugsByTab[key]), ...(open ? {'aria-label': `${label} (${open} offen)`} : {})},
-            children: [
-                element('span', {text: label}),
-                ...(open ? [element('span', {className: 'status-badge status-pending sub-tab-count', text: String(open), attributes: {'aria-hidden': 'true'}})] : []),
-            ],
+            attributes: {href: adminPath('mitglieder', membershipSlugsByTab[key])},
+            children: [element('span', {text: label})],
         });
         button.addEventListener('click', async (event) => {
             event.preventDefault();
             activeMembershipTab = key;
             setAdminPath(['mitglieder', membershipSlugsByTab[key]]);
-            await whileNavigating(() => showMembershipManagement());
+            await whileNavigating(() => showMembershipManagement([], {reuseCounts: true}));
         });
+        tabButtons.set(key, [button, label]);
 
         return button;
     })});
+    // Die Zahlen kommen nach, ohne den Aufbau des Reiterinhalts aufzuhalten.
+    openCountsRequest.then((openCounts) => tabButtons.forEach(([button, label], key) => {
+        const open = openCounts[key] ?? 0;
+        if (!open) return;
+        button.setAttribute('aria-label', `${label} (${open} offen)`);
+        button.append(element('span', {className: 'status-badge status-pending sub-tab-count', text: String(open), attributes: {'aria-hidden': 'true'}}));
+    }));
     const active = tabs.find(([key]) => key === activeMembershipTab);
     if (!active) {
         workspace.replaceChildren(tabStrip, emptyState('Für diesen Zugang ist kein Bereich der Mitgliederverwaltung freigeschaltet.'));

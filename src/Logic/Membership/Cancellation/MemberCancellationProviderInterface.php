@@ -17,4 +17,6 @@ interface MemberCancellationProviderInterface
      * @return list<MemberCancellation>
      */
     public function findOpen(): array;
+
+    public function countOpen(): int;
 }

@@ -21,4 +21,6 @@ interface MemberCancellationManagerInterface
     public function openByMemberId(): array;
 
     public function save(MemberCancellation $cancellation): MemberCancellation;
+
+    public function countOpen(): int;
 }

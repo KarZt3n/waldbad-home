@@ -29,4 +29,9 @@ readonly class MembershipApplicationManager implements MembershipApplicationMana
     {
         return $this->processor->save($application);
     }
+
+    public function countOpen(): int
+    {
+        return $this->provider->countOpen();
+    }
 }

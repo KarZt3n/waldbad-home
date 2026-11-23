@@ -14,4 +14,6 @@ interface MembershipApplicationManagerInterface
     public function list(): array;
 
     public function save(MembershipApplication $application): MembershipApplication;
+
+    public function countOpen(): int;
 }

@@ -14,4 +14,6 @@ interface MemberMessageManagerInterface
     public function all(): array;
 
     public function save(MemberMessage $message): MemberMessage;
+
+    public function countOpen(): int;
 }
