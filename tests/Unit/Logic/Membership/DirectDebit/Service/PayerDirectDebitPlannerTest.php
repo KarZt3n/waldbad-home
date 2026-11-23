@@ -302,7 +302,7 @@ final class PayerDirectDebitPlannerTest extends TestCase
         $draft = $this->planner([$payer], records: [$this->record(2027, SequenceType::Recurring)])->plan('payer', new \DateTimeImmutable(self::NOW));
 
         self::assertTrue($draft->alreadyCollected);
-        self::assertEquals([new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, 'Für das Beitragsjahr 2027 wurde bereits eingezogen.')], $draft->bulkExportObstacles());
+        self::assertEquals([new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, 'Für das Beitragsjahr 2027 wurde am 20.09.2026 bereits eine Lastschrift exportiert (fällig 15.10.2026) – ein zweiter Export für dasselbe Jahr ist gesperrt.')], $draft->bulkExportObstacles());
         self::assertSame(4000, $draft->defaultAmountCents());
     }
 

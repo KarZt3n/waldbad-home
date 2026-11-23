@@ -47,7 +47,7 @@ use App\Logic\Membership\Member\Model\PaymentMethod;
  * - Einmalgebühren: alle noch nicht eingezogenen Gebühren, fällig zum nächsten Zahltag. Nach dem
  *   Export gelten sie als eingezogen (siehe `DirectDebitBookkeeper`).
  *
- * „Bereits eingezogen“ und Eintrittsjahr beziehen sich nur auf die Historie derselben Art
+ * „Jahr bereits exportiert“ und Eintrittsjahr beziehen sich nur auf die Historie derselben Art
  * (`DirectDebitRecord::covers()`); ob das Mandat schon genutzt wurde (FRST/RCUR), auf alle Exporte.
  */
 readonly class PayerDirectDebitPlanner
@@ -212,10 +212,12 @@ readonly class PayerDirectDebitPlanner
             ? $this->contributionNotCalculatedBlockers($charged, $contributionYear)
             : [];
         $alreadyCollected = false;
+        $collectedRecord = null;
         // Einmalgebühren werden je Gebühr als eingezogen vermerkt, nicht über das Beitragsjahr.
         foreach ($kind === DirectDebitPositionKind::OneTimeCharge ? [] : $kindRecords as $record) {
             if ($record->contributionYear === $contributionYear) {
                 $alreadyCollected = true;
+                $collectedRecord = $record;
                 $warnings[] = $record->isLegacyImport()
                     ? sprintf('Für %d wurde laut Sage-Übernahme bereits eingezogen.', $contributionYear)
                     : sprintf('Für %d wurde bereits am %s eine Lastschrift über %s exportiert.', $contributionYear, $record->exportedAt->format('d.m.Y'), number_format($record->amountCents / 100, 2, ',', '.').' €');
@@ -247,6 +249,7 @@ readonly class PayerDirectDebitPlanner
             joiningYearDebit: $joiningYearDebit,
             lastRecord: $kindRecords[0] ?? null,
             alreadyCollected: $alreadyCollected,
+            collectedRecord: $collectedRecord,
             kind: $kind,
         );
     }

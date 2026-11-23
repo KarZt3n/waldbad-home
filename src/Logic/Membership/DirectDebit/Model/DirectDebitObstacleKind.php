@@ -24,7 +24,7 @@ enum DirectDebitObstacleKind: string
             self::MissingBankAccount => 'Ohne Bankverbindung',
             self::MissingMandate => 'Ohne Mandat',
             self::ExpiredMandate => 'Mandat abgelaufen',
-            self::AlreadyCollected => 'Bereits eingezogen',
+            self::AlreadyCollected => 'Jahr bereits exportiert',
             self::OtherPaymentMethod => 'Andere Zahlart',
             self::MissingPayer => 'Ohne Zahler',
             self::IncompleteCreditor => 'Gläubigerdaten unvollständig',

@@ -13,7 +13,7 @@ use App\Logic\Membership\Member\Model\Member;
  * Zahlers, für das noch nichts eingezogen wurde — sie wird sofort fällig und rückt die „Nächste
  * Buchung“ nicht vor. `$contributionYear` ist das Beitragsjahr, für das abgebucht wird.
  * `$alreadyCollected`: für `$contributionYear` gibt es bereits einen Eintrag in der
- * Lastschrift-Historie (Export über die App oder Sage-Übernahme). `$kind`: welche Art von Positionen
+ * Lastschrift-Historie (Export über die App oder Sage-Übernahme), nämlich `$collectedRecord`. `$kind`: welche Art von Positionen
  * dieser Entwurf abbucht (Beiträge, Arbeitseinsatz-Pauschale oder Einmalgebühren).
  */
 readonly class PayerDirectDebitDraft
@@ -39,6 +39,7 @@ readonly class PayerDirectDebitDraft
         public ?DirectDebitRecord $lastRecord,
         public bool $alreadyCollected = false,
         public DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution,
+        public ?DirectDebitRecord $collectedRecord = null,
     ) {
     }
 
@@ -71,7 +72,14 @@ readonly class PayerDirectDebitDraft
     {
         $obstacles = $this->blockers;
         if ($this->alreadyCollected) {
-            $obstacles[] = new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, sprintf('Für das Beitragsjahr %d wurde bereits eingezogen.', $this->contributionYear));
+            $obstacles[] = new DirectDebitObstacle(DirectDebitObstacleKind::AlreadyCollected, $this->collectedRecord === null || $this->collectedRecord->isLegacyImport()
+                ? sprintf('Für das Beitragsjahr %d wurde laut Sage-Übernahme bereits eingezogen.', $this->contributionYear)
+                : sprintf(
+                    'Für das Beitragsjahr %d wurde am %s bereits eine Lastschrift exportiert (fällig %s) – ein zweiter Export für dasselbe Jahr ist gesperrt.',
+                    $this->contributionYear,
+                    $this->collectedRecord->exportedAt->format('d.m.Y'),
+                    $this->collectedRecord->collectionDate->format('d.m.Y'),
+                ));
         }
         $remittance = trim($this->defaultRemittanceInformation);
         if ($remittance === '' || mb_strlen($remittance) > DirectDebitTransaction::MAX_REMITTANCE_LENGTH) {
