@@ -110,6 +110,7 @@ final class AdminDirectDebitController extends AbstractController
             'invalid' => array_map($this->overviewEntryToArray(...), $overview->invalid),
             'valid' => array_map($this->overviewEntryToArray(...), $overview->valid),
             'withoutAmount' => array_map($this->overviewEntryToArray(...), $overview->withoutAmount),
+            'inactive' => array_map($this->overviewEntryToArray(...), $overview->inactive),
             'obstacleCategories' => $overview->obstacleCategories,
         ]);
     }
@@ -159,6 +160,7 @@ final class AdminDirectDebitController extends AbstractController
             'collectionDate' => $entry->collectionDate,
             'sequenceType' => $entry->sequenceType,
             'obstacles' => $entry->obstacles,
+            'leftAt' => $entry->leftAt,
         ];
     }
 

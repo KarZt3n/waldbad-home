@@ -13,7 +13,7 @@ use App\Logic\Membership\DirectDebit\Service\PayerDirectDebitPlanner;
  * Lastschrift-Übersicht aller Zahler, getrennt nach „nicht exportierbar“ (mit Grund) und
  * „exportierbar“ — dieselbe Einteilung, die der Sammelexport (`ExportAllDirectDebitsUseCase`)
  * verwendet. Zahler, bei denen mit den Vorgaben der Einzelvorschau nichts abzubuchen ist, werden
- * getrennt aufgeführt.
+ * getrennt aufgeführt: ausgetretene (`$inactive`) und aktive, die keine Beiträge zahlen.
  */
 readonly class GetDirectDebitOverviewQuery
 {
@@ -28,9 +28,12 @@ readonly class GetDirectDebitOverviewQuery
         $invalid = [];
         $valid = [];
         $withoutAmount = [];
+        $inactive = [];
         foreach ($this->planner->planAll($this->clock->now(), $kind) as $draft) {
             $entry = DirectDebitOverviewEntryResponse::fromDraft($draft);
-            if ($draft->defaultAmountCents() <= 0) {
+            if ($draft->defaultAmountCents() <= 0 && $draft->inactive) {
+                $inactive[] = $entry;
+            } elseif ($draft->defaultAmountCents() <= 0) {
                 $withoutAmount[] = $entry;
             } elseif ($entry->obstacles === []) {
                 $valid[] = $entry;
@@ -50,6 +53,6 @@ readonly class GetDirectDebitOverviewQuery
             }
         }
 
-        return new DirectDebitOverviewResponse($invalid, $valid, $withoutAmount, $categories);
+        return new DirectDebitOverviewResponse($invalid, $valid, $withoutAmount, $categories, $inactive);
     }
 }

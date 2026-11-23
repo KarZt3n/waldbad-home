@@ -21,6 +21,7 @@ readonly class DirectDebitOverviewEntryResponse
         public string $collectionDate,
         public string $sequenceType,
         public array $obstacles,
+        public ?string $leftAt = null,
     ) {
     }
 
@@ -42,6 +43,7 @@ readonly class DirectDebitOverviewEntryResponse
                 static fn (DirectDebitObstacle $obstacle): array => ['kind' => $obstacle->kind->value, 'message' => $obstacle->message],
                 $draft->bulkExportObstacles(),
             ),
+            leftAt: $payer->leftAt?->format('Y-m-d'),
         );
     }
 }

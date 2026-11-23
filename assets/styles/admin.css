@@ -808,6 +808,10 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .data-table th.sortable-column:hover, .data-table th.sortable-column:focus-visible { color: var(--ink); }
 .data-table tbody tr.member-row { cursor: pointer; }
 .data-table tbody tr.member-row:hover, .data-table tbody tr.member-row:focus-visible { background: #f2f8f4; }
+.data-table tbody tr.member-row.is-leaving { background: #fff6cf; }
+.data-table tbody tr.member-row.is-leaving:hover, .data-table tbody tr.member-row.is-leaving:focus-visible { background: #ffefb0; }
+.data-table tbody tr.member-row.is-left { background: #fde2e2; }
+.data-table tbody tr.member-row.is-left:hover, .data-table tbody tr.member-row.is-left:focus-visible { background: #f9cccc; }
 .data-table tbody tr:last-child td { border-bottom: 0; }
 
 .member-dialog { width: min(68rem, calc(100vw - 2rem)); height: calc(100vh - 2rem); height: calc(100dvh - 2rem); overflow: hidden; }

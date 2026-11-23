@@ -257,6 +257,7 @@ readonly class PayerDirectDebitPlanner
             alreadyCollected: $alreadyCollected,
             collectedRecord: $collectedRecord,
             kind: $kind,
+            inactive: $entries !== [] && array_all($entries, static fn (Member $entry): bool => $entry->hasLeft($chargedAt)),
         );
     }
 

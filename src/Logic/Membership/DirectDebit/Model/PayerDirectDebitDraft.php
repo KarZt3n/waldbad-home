@@ -14,7 +14,9 @@ use App\Logic\Membership\Member\Model\Member;
  * Buchung“ nicht vor. `$contributionYear` ist das Beitragsjahr, für das abgebucht wird.
  * `$alreadyCollected`: für `$contributionYear` gibt es bereits einen Eintrag in der
  * Lastschrift-Historie (Export über die App oder Sage-Übernahme), nämlich `$collectedRecord`. `$kind`: welche Art von Positionen
- * dieser Entwurf abbucht (Beiträge, Arbeitseinsatz-Pauschale oder Einmalgebühren).
+ * dieser Entwurf abbucht (Beiträge, Arbeitseinsatz-Pauschale oder Einmalgebühren). `$inactive`: alle
+ * Mitglieder des Zahlers sind zum Abrechnungszeitpunkt (bei Beiträgen: Beginn des Beitragsjahres)
+ * ausgetreten — es ist nichts abzubuchen, weil niemand mehr Mitglied ist.
  */
 readonly class PayerDirectDebitDraft
 {
@@ -40,6 +42,7 @@ readonly class PayerDirectDebitDraft
         public bool $alreadyCollected = false,
         public DirectDebitPositionKind $kind = DirectDebitPositionKind::Contribution,
         public ?DirectDebitRecord $collectedRecord = null,
+        public bool $inactive = false,
     ) {
     }
 

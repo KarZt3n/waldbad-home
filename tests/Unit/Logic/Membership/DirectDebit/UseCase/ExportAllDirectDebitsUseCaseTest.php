@@ -96,6 +96,9 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
         self::assertSame(['first', 'fifteenth', 'family'], array_map(static fn (DirectDebitOverviewEntryResponse $entry): string => $entry->payerId, $overview->valid));
         self::assertSame(7000, $overview->valid[2]->amountCents);
         self::assertSame(['exempt'], array_map(static fn (DirectDebitOverviewEntryResponse $entry): string => $entry->payerId, $overview->withoutAmount));
+        // Austritt zum 31.12.: im Beitragsjahr 2027 kein Mitglied mehr — eigene Gruppe statt „ohne Betrag“.
+        self::assertSame(['leaving'], array_map(static fn (DirectDebitOverviewEntryResponse $entry): string => $entry->payerId, $overview->inactive));
+        self::assertSame('2026-12-31', $overview->inactive[0]->leftAt);
     }
 
     /**
@@ -110,6 +113,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
             $this->member('child', payerId: 'family', category: ContributionCategory::FamilyChildPaying, amountCents: 2000, surchargeCents: null),
             $this->member('placeholder', iban: 'DE36000000000000000000'),
             $this->member('exempt', liable: false),
+            $this->member('leaving', leftAt: '2026-12-31'),
         ];
     }
 
@@ -181,6 +185,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
         PaymentDay $paymentDay = PaymentDay::First,
         string $iban = 'DE89370400440532013000',
         bool $liable = true,
+        ?string $leftAt = null,
     ): Member {
         $isPayer = $payerId === null;
 
@@ -199,7 +204,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
             phone: null,
             familyRole: FamilyRole::None,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
-            leftAt: null,
+            leftAt: $leftAt === null ? null : new \DateTimeImmutable($leftAt),
             function: MemberFunction::Member,
             accountHolder: $isPayer ? 'Zahler '.$id : null,
             iban: $isPayer ? $iban : null,

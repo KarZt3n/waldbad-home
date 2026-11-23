@@ -2501,15 +2501,17 @@ const directDebitOverviewPanel = (kind = 'contribution') => {
     exportAll.disabled = true;
     let overview = null;
     const state = {obstacleKind: ''};
-    const openSections = {invalid: false, valid: false, withoutAmount: false};
+    const openSections = {invalid: false, valid: false, withoutAmount: false, inactive: false};
 
-    const table = (entries, withObstacles) => sepaTable(
-        ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', 'Betrag', ...(withObstacles ? ['Grund'] : [])],
+    const table = (entries, withObstacles, withLeftAt = false) => sepaTable(
+        ['Mitgl.-Nr.', 'Hauptnr.', 'Name', 'Vorname', 'IBAN', withLeftAt ? 'Austritt' : 'Betrag', ...(withObstacles ? ['Grund'] : [])],
         entries.map((entry) => {
             const row = element('tr', {className: 'member-row', attributes: {tabindex: '0', role: 'button'}, children: [
                 ...[entry.memberNumber, entry.primaryMemberNumber, entry.lastName, entry.firstName, formatIban(entry.iban)]
                     .map((text) => element('td', {text})),
-                element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
+                withLeftAt
+                    ? element('td', {text: entry.leftAt ? formatDateDE(entry.leftAt) : '–'})
+                    : element('td', {className: 'direct-debit-amount', text: formatEuro(entry.amountCents)}),
                 ...(withObstacles ? [element('td', {className: 'direct-debit-obstacles', text: entry.obstacles.map((obstacle) => obstacle.message).join(' ')})] : []),
             ]});
             const open = () => openDirectDebitDialog(entry.payerId, load, kind);
@@ -2541,8 +2543,12 @@ const directDebitOverviewPanel = (kind = 'contribution') => {
                 overview.valid.length ? table(overview.valid, false) : emptyState('Keine exportierbaren Lastschriften.'),
             ]),
             ...(overview.withoutAmount.length ? [sepaAccordion(openSections, 'withoutAmount', 'Ohne abzubuchenden Betrag', String(overview.withoutAmount.length), [
-                element('p', {className: 'field-hint', text: 'Bei diesen Zahlern ist mit den Vorgaben der Einzelvorschau nichts abzubuchen (z. B. beitragsfrei oder ausgetreten); sie sind nicht im Sammelexport enthalten.'}),
+                element('p', {className: 'field-hint', text: 'Aktive Mitglieder, bei denen mit den Vorgaben der Einzelvorschau nichts abzubuchen ist (z. B. beitragsfrei); sie sind nicht im Sammelexport enthalten.'}),
                 table(overview.withoutAmount, false),
+            ])] : []),
+            ...(overview.inactive.length ? [sepaAccordion(openSections, 'inactive', 'Inaktive Mitglieder', String(overview.inactive.length), [
+                element('p', {className: 'field-hint', text: 'Ausgetreten zum Beginn des Beitragsjahres – es wird nichts mehr abgebucht; nicht im Sammelexport enthalten.'}),
+                table(overview.inactive, false, true),
             ])] : []),
         );
     }
@@ -3110,9 +3116,10 @@ const showMembers = () => {
                 return compareMemberValues(left[memberSortField], right[memberSortField]) * direction;
             });
             const rows = sortedItems.map((memberItem) => {
+                const exitStatus = memberExitStatus(memberItem.leftAt);
                 const row = element('tr', {
-                    className: 'member-row',
-                    attributes: {tabindex: '0', role: 'button'},
+                    className: exitStatus ? `member-row ${exitStatus.className}` : 'member-row',
+                    attributes: {tabindex: '0', role: 'button', ...(exitStatus ? {title: exitStatus.text} : {})},
                     children: [
                         memberItem.memberNumber,
                         memberItem.primaryMemberNumber,
