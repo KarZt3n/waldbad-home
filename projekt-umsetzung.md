@@ -516,7 +516,10 @@ Persistenz-Entities verbleiben gemäß Architektur ausschließlich in der Data L
 - eindeutige Seitentitel und Meta-Beschreibungen
 - kanonische URLs
 - Open-Graph-Metadaten
-- XML-Sitemap und robots.txt
+- XML-Sitemap und robots.txt — umgesetzt: `/sitemap.xml` (veröffentlichte, sichtbare Seiten mit Veröffentlichungsdatum) und `/robots.txt` (sperrt `/admin`, `/api/admin/`, `/api/auth/`; `/api/public` bleibt offen, da Suchmaschinen die Inhalte beim Rendern von dort laden), beide mit der aufgerufenen Domain
+- Titel, Meta-Beschreibung, Canonical-URL und Open-Graph-Angaben je Seite stehen bereits im ausgelieferten HTML; unbekannte, nicht veröffentlichte oder ausgeblendete Seiten antworten mit 404, Redaktion und persönliche Sonderseiten (Meine Mitgliedschaft, E-Mail-Einwilligung, Sauna-Anfrage) mit `noindex`
+- Öffentliche Skripte: statisch geladen werden nur Kern, Inhaltsblöcke und Kopf/Footer; Sauna, Fotoarchiv, Mitgliedsantrag, Helferanmeldung, Kontakt, Gästebuch und Sonderseiten kommen per `import()` erst, wenn eine Seite sie braucht
+- Prod-`.htaccess`: Komprimierung (mod_deflate) und ein Jahr Browser-Cache für die gehashten Dateien unter `/assets`
 - strukturierte Daten für Organisation und Veranstaltungen, soweit inhaltlich korrekt
 - Weiterleitungen für relevante URLs der Bestandswebsite
 

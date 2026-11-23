@@ -1,16 +1,14 @@
 // Entrypoint für die öffentliche Website (siehe `templates/site/public.html.twig`,
-// `importmap.php`). Bündelt nur, was öffentliche Seiten tatsächlich brauchen — kein
-// Redaktions-Code (siehe `admin.js` für das Backend).
+// `importmap.php`). Statisch geladen wird nur, was jede öffentliche Seite braucht (Kopf, Footer,
+// Inhaltsblöcke); Formulare und Sonderseiten kommen per `import()` erst, wenn eine Seite sie nutzt.
+// Kein Redaktions-Code (siehe `admin.js` für das Backend).
 
 import './styles/app.css';
 import {app, buildPageTree, element, encodePageSlug, renderError, request} from './core.js';
 import {renderContentCard} from './content-rendering.js';
-import {renderContactForm} from './public/contact.js';
-import {renderGuestbook} from './public/guestbook.js';
-import {buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, MEMBER_ACCESS_SLUG} from './public/site-chrome.js';
-import {renderMemberSelfServicePage} from './public/member-self-service.js';
-import {EMAIL_CONSENT_SLUG, renderEmailConsentPage} from './public/email-consent.js';
-import {renderSaunaApprovalPage, SAUNA_APPROVAL_SLUG} from './public/sauna-approval.js';
+import {
+    buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG,
+} from './public/site-chrome.js';
 
 const updateDocumentMetadata = (page) => {
     document.title = `${page.seoTitle || page.title} – Waldbad Borkheide`;
@@ -20,7 +18,9 @@ const updateDocumentMetadata = (page) => {
         description.setAttribute('name', 'description');
         document.head.append(description);
     }
-    description.setAttribute('content', page.seoDescription || 'Natürlich baden ohne Chlor im Waldbad Borkheide.');
+    description.setAttribute('content', page.seoDescription || 'Natürlich baden ohne Chlor im chemie- und barrierefreien Waldbad Borkheide.');
+    // Der Server setzt die Canonical-URL nur auf Seiten, die indexiert werden dürfen (siehe `FrontendController`).
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', new URL(window.location.pathname, window.location.origin).href);
 };
 // Die Navigation ändert sich während eines Besuchs praktisch nie; sie wird deshalb nur einmal geladen
 // und bei jedem Seitenwechsel wiederverwendet.
@@ -43,15 +43,24 @@ const loadNavigationTree = () => {
 const preparePublicPage = async (slug) => {
     const navigationTree = await loadNavigationTree();
 
-    if (slug === MEMBER_ACCESS_SLUG) return () => renderMemberSelfServicePage(navigationTree);
-    if (slug === EMAIL_CONSENT_SLUG) return () => renderEmailConsentPage(navigationTree);
-    if (slug === SAUNA_APPROVAL_SLUG) return () => renderSaunaApprovalPage(navigationTree);
+    if (slug === MEMBER_ACCESS_SLUG) {
+        const {renderMemberSelfServicePage} = await import('./public/member-self-service.js');
+        return () => renderMemberSelfServicePage(navigationTree);
+    }
+    if (slug === EMAIL_CONSENT_SLUG) {
+        const {renderEmailConsentPage} = await import('./public/email-consent.js');
+        return () => renderEmailConsentPage(navigationTree);
+    }
+    if (slug === SAUNA_APPROVAL_SLUG) {
+        const {renderSaunaApprovalPage} = await import('./public/sauna-approval.js');
+        return () => renderSaunaApprovalPage(navigationTree);
+    }
 
     const page = await request('/api/public/v1/pages/' + encodePageSlug(slug));
     const publicContext = {visited: new Set([page.id]), pagesById: null, showEmbedErrors: false, isPreview: false};
     const article = renderContentCard(page, publicContext);
-    if (slug === 'kontakt') article.append(renderContactForm());
-    if (slug === 'gaestebuch') article.append(await renderGuestbook());
+    if (slug === 'kontakt') article.append((await import('./public/contact.js')).renderContactForm());
+    if (slug === 'gaestebuch') article.append(await (await import('./public/guestbook.js')).renderGuestbook());
 
     return () => {
         updateDocumentMetadata(page);

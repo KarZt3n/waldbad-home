@@ -4,7 +4,9 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#174f35">
-        <meta name="description" content="Natürlich baden ohne Chlor im chemie- und barrierefreien Waldbad Borkheide.">
+        {% block meta %}
+            <meta name="description" content="Natürlich baden ohne Chlor im chemie- und barrierefreien Waldbad Borkheide.">
+        {% endblock %}
         {% set site_logo = constant('App\\Logic\\Common\\SiteLogo::DEFAULT_URL') %}
         <link rel="icon" href="{{ site_logo }}" type="image/png">
         <link rel="apple-touch-icon" href="{{ site_logo }}">

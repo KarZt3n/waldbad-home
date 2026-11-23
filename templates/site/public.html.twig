@@ -1,6 +1,22 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Waldbad Borkheide – natürlich baden{% endblock %}
+{# Gleiches Format wie `updateDocumentMetadata` in `assets/public.js` beim Seitenwechsel. #}
+{% block title %}{{ metaTitle }} – Waldbad Borkheide{% endblock %}
+{% block meta %}
+    {% set description = metaDescription ?? 'Natürlich baden ohne Chlor im chemie- und barrierefreien Waldbad Borkheide.' %}
+    <meta name="description" content="{{ description }}">
+    {% if indexable %}
+        <link rel="canonical" href="{{ canonicalUrl }}">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="Waldbad Borkheide">
+        <meta property="og:locale" content="de_DE">
+        <meta property="og:title" content="{{ metaTitle }}">
+        <meta property="og:description" content="{{ description }}">
+        <meta property="og:url" content="{{ canonicalUrl }}">
+    {% else %}
+        <meta name="robots" content="noindex">
+    {% endif %}
+{% endblock %}
 {% block body_class %}public-site{% endblock %}
 {% block importmap %}{{ importmap('public') }}{% endblock %}
 

@@ -5,9 +5,8 @@
 // Einwilligung ungewollt auslösen.
 
 import {app, element, formMessage, request} from '../core.js';
-import {buildSiteFooter, buildSiteHeader, buildSocialMediaBar} from './site-chrome.js';
+import {buildSiteFooter, buildSiteHeader, buildSocialMediaBar, EMAIL_CONSENT_SLUG} from './site-chrome.js';
 
-const EMAIL_CONSENT_SLUG = 'e-mail-einwilligung';
 
 const renderEmailConsentConfirmation = (token) => {
     const message = formMessage();
@@ -63,4 +62,4 @@ const renderEmailConsentPage = async (navigationTree) => {
     );
 };
 
-export {EMAIL_CONSENT_SLUG, renderEmailConsentPage};
+export {renderEmailConsentPage};

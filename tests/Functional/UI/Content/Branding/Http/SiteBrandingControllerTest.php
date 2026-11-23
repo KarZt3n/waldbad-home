@@ -33,7 +33,8 @@ final class SiteBrandingControllerTest extends WebTestCase
 
     public function testPublisherChangesLogoShownOnPublicPages(): void
     {
-        $this->client->request('GET', '/');
+        // Eine feste Sonderseite, da CMS-Seiten ohne Veröffentlichung mit 404 antworten.
+        $this->client->request('GET', '/meine-mitgliedschaft');
         self::assertResponseIsSuccessful();
         self::assertSelectorExists('#app[data-logo-url="'.SiteLogo::DEFAULT_URL.'"]');
 
@@ -46,7 +47,7 @@ final class SiteBrandingControllerTest extends WebTestCase
             'defaultLogoUrl' => SiteLogo::DEFAULT_URL,
         ], $this->responseData());
 
-        $this->client->request('GET', '/seite/kontakt');
+        $this->client->request('GET', '/sauna-anfrage');
         self::assertSelectorExists('#app[data-logo-url="/uploads/logos/neu.png"]');
 
         $this->client->jsonRequest('PUT', '/api/admin/v1/site-branding', ['logoUrl' => null], ['HTTP_X_CSRF_TOKEN' => $csrfToken]);

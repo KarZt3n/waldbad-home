@@ -324,6 +324,8 @@ a { color: var(--forest-700); }
 }
 .embedded-page-error { padding: 1rem; border: 1px dashed #aabbb0; border-radius: .65rem; color: var(--muted); background: #f8faf8; }
 
+/* Platzhalter nachgeladener Erweiterungen (siehe `lazyExtension`) — darf das Layout nicht beeinflussen. */
+.extension-slot { display: contents; }
 .prose, .content-card > p {
     max-width: 68ch;
     color: #33463b;

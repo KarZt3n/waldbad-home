@@ -3,352 +3,21 @@
 // (`admin/pages.js`, `openPagePreview`): beide zeigen exakt denselben Rendering-Pfad, damit die
 // Vorschau zuverlässig dem späteren öffentlichen Ergebnis entspricht.
 
-import {confirmAction, element, field, formMessage, pageHref, request, SALUTATION_LABELS, selectField, toast} from './core.js';
-import {renderSaunaExtension} from './public/sauna.js';
-import {renderPhotoAlbumsExtension} from './public/photo-albums.js';
+import {element, pageHref, request, toast} from './core.js';
 
-// Die Texte des Formulars pflegen Redakteure unter „Seiten“ → „Erweiterungen“ (siehe `PageExtension`
-// im Backend); `consentVersion` geht mit dem Antrag zurück, damit nachweisbar bleibt, welchem Wortlaut
-// der Bestätigungen zugestimmt wurde.
-const renderMembershipApplicationForm = (preview = false) => {
-    const container = element('section', {className: 'membership-extension', attributes: {'aria-busy': 'true'}, children: [
-        element('p', {className: 'empty-copy', text: 'Der Mitgliedsantrag wird geladen …'}),
-    ]});
-    request('/api/public/v1/page-extensions/membership_application/texts')
-        .then(({texts, consentVersion}) => container.replaceChildren(buildMembershipApplicationForm(texts, consentVersion, preview)))
-        .catch((error) => container.replaceChildren(element('p', {className: 'failure-message', text: `Der Mitgliedsantrag konnte nicht geladen werden: ${error.message}`})))
-        .finally(() => container.removeAttribute('aria-busy'));
+// Umfangreiche, nur auf einzelnen Seiten genutzte Erweiterungen (Sauna, Fotoarchiv, Mitgliedsantrag)
+// werden erst geladen, wenn eine Seite den Block tatsächlich enthält. Der Platzhalter ist sofort im
+// Seitenaufbau und bekommt den Inhalt, sobald das Modul da ist.
+const lazyExtension = (load) => {
+    const slot = element('div', {className: 'extension-slot', attributes: {'aria-busy': 'true'}});
+    load()
+        .then((node) => slot.replaceChildren(node))
+        .catch((error) => slot.replaceChildren(element('p', {className: 'failure-message', text: `Dieser Inhalt konnte nicht geladen werden: ${error.message}`})))
+        .finally(() => slot.removeAttribute('aria-busy'));
 
-    return container;
+    return slot;
 };
-const buildMembershipApplicationForm = (texts, consentVersion, preview) => {
-    const instanceId = `membership-${Math.random().toString(36).slice(2)}`;
-    const message = formMessage();
-    const applicants = element('div', {className: 'membership-applicants'});
-    const addPerson = element('button', {className: 'secondary-button', text: '＋ Weitere Person', attributes: {type: 'button'}});
 
-    const applicantField = (label, key, type = 'text', required = true) => {
-        const wrapper = field(label, `${instanceId}-${key}-${applicants.children.length}`, '', type);
-        const input = wrapper.querySelector('input');
-        input.dataset.applicantField = key;
-        if (required) input.required = true;
-        return wrapper;
-    };
-    const applicantSalutationField = () => {
-        const wrapper = selectField('Anrede', `${instanceId}-salutation-${applicants.children.length}`, [
-            ['', 'Bitte wählen'],
-            ...Object.entries(SALUTATION_LABELS),
-        ], '');
-        const select = wrapper.querySelector('select');
-        select.dataset.applicantField = 'salutation';
-        select.required = true;
-        wrapper.classList.add('membership-person-salutation');
-        return wrapper;
-    };
-    const refreshApplicantCards = () => {
-        [...applicants.children].forEach((card, index) => {
-            card.querySelector('.membership-person-title').textContent = `Person ${index + 1}`;
-            const email = card.querySelector('[data-applicant-field="email"]');
-            email.required = index === 0;
-            email.closest('.field').querySelector('span').textContent = index === 0 ? 'E-Mail-Adresse' : 'E-Mail-Adresse (optional)';
-            const remove = card.querySelector('.membership-remove-person');
-            remove.hidden = index === 0 && applicants.children.length === 1;
-        });
-        addPerson.disabled = applicants.children.length >= 8;
-    };
-    const appendApplicant = () => {
-        if (applicants.children.length >= 8) return;
-        const isFirstPerson = applicants.children.length === 0;
-        const remove = element('button', {className: 'text-button danger membership-remove-person', text: 'Person entfernen', attributes: {type: 'button'}});
-        const emailField = applicantField('E-Mail-Adresse (optional)', 'email', 'email', false);
-        if (!isFirstPerson) {
-            emailField.append(element('small', {className: 'field-hint membership-text', text: texts.additionalPersonEmailHint}));
-        }
-        const streetField = applicantField('Straße', 'street');
-        const houseNumberField = applicantField('Hausnummer', 'houseNumber');
-        const postalCodeField = applicantField('Postleitzahl', 'postalCode');
-        const cityField = applicantField('Wohnort', 'city');
-        // Für jede weitere Person wird die Anschrift als Vorschlag von Person 1 übernommen — bei
-        // einer Familie im selben Haushalt muss so nicht jede Person dieselben Angaben erneut
-        // eintippen. Bleibt änderbar, falls jemand eine eigene Adresse hat. Die E-Mail-Adresse wird
-        // bewusst nicht übernommen (siehe Hinweistext oben): sie ist je Person optional und eigen.
-        if (!isFirstPerson) {
-            const firstPerson = applicants.children[0];
-            const copyFromFirstPerson = (field, key) => {
-                const firstInput = firstPerson?.querySelector(`[data-applicant-field="${key}"]`);
-                const value = firstInput?.value.trim();
-                if (value) field.querySelector('input').value = value;
-            };
-            copyFromFirstPerson(streetField, 'street');
-            copyFromFirstPerson(houseNumberField, 'houseNumber');
-            copyFromFirstPerson(postalCodeField, 'postalCode');
-            copyFromFirstPerson(cityField, 'city');
-        }
-        const card = element('fieldset', {className: 'membership-person', children: [
-            element('div', {className: 'membership-person-heading', children: [
-                element('legend', {className: 'membership-person-title', text: 'Person'}),
-                remove,
-            ]}),
-            element('div', {className: 'form-grid', children: [
-                applicantSalutationField(),
-                applicantField('Vorname', 'firstName'),
-                applicantField('Nachname', 'lastName'),
-                applicantField('Geburtsdatum', 'birthDate', 'date'),
-                applicantField('Telefon (optional)', 'phone', 'tel', false),
-                streetField,
-                houseNumberField,
-                postalCodeField,
-                cityField,
-                emailField,
-            ]}),
-        ]});
-        remove.addEventListener('click', async () => {
-            const confirmed = await confirmAction('Person entfernen?', 'Die eingegebenen Daten dieser Person werden aus dem Antrag entfernt.', 'Person entfernen');
-            if (!confirmed) return;
-            card.remove();
-            refreshApplicantCards();
-            toast('Person wurde aus dem Antrag entfernt.', 'info');
-        });
-        applicants.append(card);
-        refreshApplicantCards();
-    };
-
-    appendApplicant();
-    addPerson.addEventListener('click', appendApplicant);
-
-    const consent = (name, text, required = true) => {
-        const input = element('input', {attributes: {name, type: 'checkbox', ...(required ? {required: 'required'} : {})}});
-        return element('label', {className: 'check-field', children: [input, element('span', {className: 'membership-text', text})]});
-    };
-    const form = element('form', {className: 'public-form membership-form', children: [
-        element('header', {className: 'membership-intro', children: [
-            element('p', {className: 'eyebrow', text: texts.eyebrow}),
-            element('h2', {text: texts.title}),
-            element('p', {className: 'membership-text', text: texts.intro}),
-        ]}),
-        applicants,
-        addPerson,
-        element('section', {className: 'membership-section', children: [
-            element('h3', {text: texts.sepaTitle}),
-            element('div', {className: 'form-grid', children: [
-                field('Kontoinhaber', 'accountHolder'),
-                field('IBAN', 'iban'),
-            ]}),
-        ]}),
-        element('section', {className: 'membership-section membership-consents', children: [
-            element('h3', {text: texts.consentsTitle}),
-            consent('termsAccepted', texts.consentTerms),
-            consent('privacyAccepted', texts.consentPrivacy),
-            consent('sepaAccepted', texts.consentSepa),
-            consent('emailConsent', texts.consentEmail, false),
-            field('Name der unterzeichnenden Person', 'signerName'),
-            element('small', {className: 'membership-text', text: texts.signerHint}),
-        ]}),
-        message,
-        element('button', {className: 'button membership-submit', text: preview ? 'In der Vorschau nicht absendbar' : texts.submitLabel, attributes: {type: 'submit', ...(preview ? {disabled: 'disabled'} : {})}}),
-    ]});
-    form.querySelector('[name="accountHolder"]').required = true;
-    form.querySelector('[name="iban"]').required = true;
-    form.querySelector('[name="signerName"]').required = true;
-    form.querySelector('[name="iban"]').setAttribute('autocomplete', 'off');
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (preview) return;
-        const data = new FormData(form);
-        const applicantPayload = [...applicants.children].map((card) => Object.fromEntries(
-            [...card.querySelectorAll('[data-applicant-field]')].map((input) => [input.dataset.applicantField, input.value.trim()]),
-        ));
-        const submit = form.querySelector('.membership-submit');
-        submit.disabled = true;
-        message.textContent = 'Der Antrag wird sicher übermittelt …';
-        message.classList.remove('success');
-        try {
-            const response = await request('/api/public/v1/membership-applications', {method: 'POST', body: JSON.stringify({
-                applicants: applicantPayload,
-                accountHolder: data.get('accountHolder'),
-                iban: data.get('iban'),
-                bankName: null,
-                signerName: data.get('signerName'),
-                termsAccepted: data.get('termsAccepted') === 'on',
-                privacyAccepted: data.get('privacyAccepted') === 'on',
-                sepaAccepted: data.get('sepaAccepted') === 'on',
-                emailConsent: data.get('emailConsent') === 'on',
-                declarationVersion: consentVersion,
-            })});
-            const success = element('section', {className: 'membership-success', attributes: {role: 'status'}, children: [
-                element('p', {className: 'eyebrow', text: 'Antrag eingegangen'}),
-                element('h2', {text: texts.successTitle}),
-                element('p', {className: 'membership-text', text: texts.successMessage}),
-                element('small', {text: `Vorgangsnummer: ${response.id}`}),
-            ]});
-            form.replaceWith(success);
-            toast(texts.successMessage);
-        } catch (error) {
-            message.textContent = error.message;
-            toast(error.message, 'error');
-            submit.disabled = false;
-        }
-    });
-
-    return form;
-};
-const openEventHelpDialog = async (block) => {
-    const availability = await request(`/api/public/v1/event-activities/${encodeURIComponent(block.eventIdentifier)}`);
-    const dialog = element('dialog', {className: 'event-help-dialog'});
-    const message = formMessage();
-    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Helferanmeldung schließen'}});
-    const privacy = element('input', {attributes: {name: 'privacyAccepted', type: 'checkbox', required: 'required'}});
-    const activityDetails = (activity, helperStatus = null) => {
-        const scheduleParts = [];
-        if (activity.time) scheduleParts.push(`Start: ${activity.time}`);
-        if (activity.meetTime) scheduleParts.push(`Ende: ${activity.meetTime}`);
-        if (activity.meetPlace) scheduleParts.push(`Treffpunkt: ${activity.meetPlace}`);
-        return element('span', {children: [
-            element('strong', {text: activity.name}),
-            ...(helperStatus ? [element('small', {text: helperStatus})] : []),
-            ...(activity.description ? [element('small', {text: activity.description})] : []),
-            ...(scheduleParts.length ? [element('small', {className: 'event-activity-schedule', text: scheduleParts.join(' · ')})] : []),
-            ...(activity.remark ? [element('small', {className: 'event-activity-remark', text: activity.remark})] : []),
-        ]});
-    };
-    // Nur auswählbare Aktivitäten erscheinen als Checkbox mit Helferzahl, alle übrigen als reine Auflistung.
-    const activityInputs = [];
-    const activityEntries = (availability.items || []).map((activity) => {
-        if (activity.selectable === false) {
-            // Unsichtbare Platzhalter-Checkbox (ohne Name, nicht fokussierbar), damit der Text exakt so weit
-            // eingerückt ist wie bei auswählbaren Aktivitäten – unabhängig von der Checkbox-Größe des Browsers.
-            const spacer = element('input', {className: 'event-activity-choice-spacer', attributes: {
-                type: 'checkbox', disabled: 'disabled', tabindex: '-1', 'aria-hidden': 'true',
-            }});
-            return element('div', {className: 'event-activity-choice is-listed', children: [spacer, activityDetails(activity)]});
-        }
-        const isFull = activity.registeredHelpers >= activity.requiredHelpers;
-        const input = element('input', {attributes: {
-            type: 'checkbox', name: 'activityIds', value: activity.id,
-            ...(isFull ? {disabled: 'disabled'} : {}),
-        }});
-        input.checked = activity.preselected === true && !isFull;
-        activityInputs.push(input);
-        return element('label', {className: `event-activity-choice${isFull ? ' is-full' : ''}`, children: [
-            input,
-            activityDetails(activity, isFull
-                ? `Belegt · ${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`
-                : `${activity.registeredHelpers} von ${activity.requiredHelpers} Helfern angemeldet`),
-        ]});
-    });
-    const selectableActivityInputs = activityInputs.filter((input) => !input.disabled);
-    const updateActivityRequirement = () => {
-        const hasSelection = selectableActivityInputs.some((input) => input.checked);
-        selectableActivityInputs.forEach((input, index) => input.required = !hasSelection && index === 0);
-    };
-    selectableActivityInputs.forEach((input) => input.addEventListener('change', updateActivityRequirement));
-    updateActivityRequirement();
-    const allActivitiesFull = activityInputs.length > 0 && selectableActivityInputs.length === 0;
-    const submitButton = element('button', {
-        className: 'button',
-        text: allActivitiesFull ? 'Aktuell keine Plätze frei' : 'Helferanmeldung absenden',
-        attributes: {type: 'submit', ...(allActivitiesFull ? {disabled: 'disabled'} : {})},
-    });
-    // „Ich bringe jemanden mit“: Jede weitere Person wird als eigene Helferanmeldung mit denselben Aktivitäten gespeichert.
-    const maxCompanions = 8;
-    const companions = element('div', {className: 'event-help-companions'});
-    const addCompanion = element('button', {className: 'secondary-button event-help-add-companion', text: '＋ Ich bringe jemanden mit', attributes: {type: 'button'}});
-    const refreshCompanions = () => {
-        [...companions.children].forEach((card, index) => {
-            card.querySelector('.event-help-companion-title').textContent = `Person ${index + 2}`;
-        });
-        addCompanion.disabled = companions.children.length >= maxCompanions;
-    };
-    addCompanion.addEventListener('click', () => {
-        if (companions.children.length >= maxCompanions) return;
-        const id = `event-help-companion-${Math.random().toString(36).slice(2)}`;
-        const companionField = (label, key, type = 'text') => {
-            const wrapper = field(label, `${id}-${key}`, '', type);
-            const input = wrapper.querySelector('input');
-            input.dataset.companionField = key;
-            input.required = true;
-            return wrapper;
-        };
-        const remove = element('button', {className: 'text-button danger', text: 'Entfernen', attributes: {type: 'button'}});
-        const card = element('fieldset', {className: 'event-help-companion', children: [
-            element('div', {className: 'event-help-companion-heading', children: [
-                element('legend', {className: 'event-help-companion-title', text: 'Weitere Person'}),
-                remove,
-            ]}),
-            element('div', {className: 'form-grid form-grid-3', children: [
-                companionField('Vorname', 'firstName'),
-                companionField('Nachname', 'lastName'),
-                companionField('Geburtsdatum', 'birthDate', 'date'),
-            ]}),
-        ]});
-        remove.addEventListener('click', () => {
-            card.remove();
-            refreshCompanions();
-        });
-        companions.append(card);
-        refreshCompanions();
-    });
-    const companionPayload = () => [...companions.children].map((card) => ({
-        firstName: card.querySelector('[data-companion-field="firstName"]').value,
-        lastName: card.querySelector('[data-companion-field="lastName"]').value,
-        birthDate: card.querySelector('[data-companion-field="birthDate"]').value,
-    }));
-    const form = element('form', {className: 'public-form event-help-form', children: [
-        element('header', {children: [
-            element('p', {className: 'eyebrow', text: 'Helferanmeldung'}),
-            element('h2', {text: block.eventTitle || 'Veranstaltung'}),
-            element('p', {text: 'Schön, dass du uns unterstützen möchtest. Teile uns kurz mit, wobei du helfen kannst.'}),
-        ]}),
-        element('fieldset', {className: 'event-help-companion', children: [
-            element('div', {className: 'event-help-companion-heading', children: [
-                element('legend', {className: 'event-help-companion-title', text: 'Person 1'}),
-            ]}),
-            element('div', {className: 'form-grid form-grid-3', children: [field('Vorname', 'firstName'), field('Nachname', 'lastName'), field('Geburtsdatum', 'birthDate', '', 'date')]}),
-        ]}),
-        companions,
-        addCompanion,
-        ...(activityEntries.length ? [element('fieldset', {className: 'event-activity-choices', children: [
-            element('legend', {text: activityInputs.length ? 'Wobei möchtest du helfen?' : 'Das steht an'}),
-            ...activityEntries,
-        ]})] : []),
-        field('Möchtest du uns noch etwas mitteilen? (optional)', 'message', '', 'textarea'),
-        element('label', {className: 'check-field', children: [privacy, element('span', {text: 'Ich stimme der Verarbeitung meiner Angaben zur Organisation dieser Veranstaltung zu.'})]}),
-        message,
-        submitButton,
-    ]});
-    form.querySelector('[name="firstName"]').required = true;
-    form.querySelector('[name="lastName"]').required = true;
-    form.querySelector('[name="birthDate"]').required = true;
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const data = new FormData(form);
-        const submit = form.querySelector('[type="submit"]');
-        submit.disabled = true;
-        try {
-            const response = await request('/api/public/v1/event-help-requests', {method: 'POST', body: JSON.stringify({
-                eventIdentifier: block.eventIdentifier,
-                firstName: data.get('firstName'),
-                lastName: data.get('lastName'),
-                message: data.get('message'),
-                activityIds: data.getAll('activityIds'),
-                privacyAccepted: data.get('privacyAccepted') === 'on',
-                birthDate: data.get('birthDate'),
-                companions: companionPayload(),
-            })});
-            toast(response.message);
-            dialog.close();
-        } catch (error) {
-            message.textContent = error.message;
-            toast(error.message, 'error');
-            submit.disabled = allActivitiesFull;
-        }
-    });
-    close.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('close', () => dialog.remove());
-    dialog.append(close, form);
-    document.body.append(dialog);
-    dialog.showModal();
-};
 const renderImageSource = (source) => source
     ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
     : null;
@@ -432,13 +101,13 @@ const renderActionButtons = (actions, context) => {
 };
 const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null, showEmbedErrors: false, isPreview: false}) => {
     if (block.type === 'extension' && block.extensionKey === 'membership_application') {
-        return renderMembershipApplicationForm(context.isPreview === true);
+        return lazyExtension(async () => (await import('./public/membership-application.js')).renderMembershipApplicationForm(context.isPreview === true));
     }
     if (block.type === 'extension' && block.extensionKey === 'photo_albums') {
-        return renderPhotoAlbumsExtension(context.isPreview === true);
+        return lazyExtension(async () => (await import('./public/photo-albums.js')).renderPhotoAlbumsExtension(context.isPreview === true));
     }
     if (block.type === 'extension' && block.extensionKey === 'sauna') {
-        return renderSaunaExtension(context.isPreview === true);
+        return lazyExtension(async () => (await import('./public/sauna.js')).renderSaunaExtension(context.isPreview === true));
     }
     if (block.type === 'extension' && ['events_current_year', 'events_from_current_year', 'work_assignments_current_year', 'next_event', 'next_work_assignment', 'next_event_or_work_assignment'].includes(block.extensionKey)) {
         const kind = block.extensionKey === 'next_event_or_work_assignment' ? 'any'
@@ -581,6 +250,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             });
             if (!context.isPreview) help.addEventListener('click', async () => {
                 try {
+                    const {openEventHelpDialog} = await import('./public/event-help.js');
                     await openEventHelpDialog(block);
                 } catch (error) {
                     toast(error.message, 'error');
@@ -762,8 +432,6 @@ const renderContentCard = (page, context) => element('article', {
 });
 
 export {
-    renderMembershipApplicationForm,
-    openEventHelpDialog,
     renderImageSource,
     eventScheduleToBlockShape,
     renderEventScheduleExtension,

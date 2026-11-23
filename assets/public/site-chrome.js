@@ -9,6 +9,10 @@ import {app, element, pageHref, request, treeContainsSlug} from '../core.js';
 // CMS-Seite, die Ansicht hängt nicht von redaktionell gepflegtem Inhalt ab (siehe `preparePublicPage`,
 // `renderMemberSelfServicePage`).
 const MEMBER_ACCESS_SLUG = 'meine-mitgliedschaft';
+// Feste Sonderseiten ohne CMS-Seite; hier statt in ihren Modulen, damit `public.js` sie erkennt,
+// ohne die Module vorab laden zu müssen.
+const EMAIL_CONSENT_SLUG = 'e-mail-einwilligung';
+const SAUNA_APPROVAL_SLUG = 'sauna-anfrage';
 // Beim Seitenwechsel ohne Neuladen (siehe `navigateTo` in `public.js`) entsteht die Kopfzeile jedes Mal
 // neu; die Listener der vorherigen am `document` werden darüber wieder entfernt.
 let headerListeners = new AbortController();
@@ -285,4 +289,4 @@ const buildMemberAccessNav = () => {
     return container;
 };
 
-export {MEMBER_ACCESS_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav, buildSocialMediaBar};
+export {EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav, buildSocialMediaBar};
