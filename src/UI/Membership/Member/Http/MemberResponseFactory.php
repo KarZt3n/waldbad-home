@@ -3,6 +3,7 @@
 namespace App\UI\Membership\Member\Http;
 
 use App\Logic\Membership\Member\Dto\MemberHouseholdResponse;
+use App\Logic\Membership\Member\Dto\MemberListEntryResponse;
 use App\Logic\Membership\Member\Dto\MemberResponse;
 use App\Logic\Membership\Member\Dto\MemberSnapshotResponse;
 use App\Logic\Membership\Member\Exception\MemberNotFoundException;
@@ -18,14 +19,25 @@ readonly class MemberResponseFactory
     }
 
     /**
-     * @param list<MemberResponse> $members
-     * @return array{items: list<array<string, mixed>>, total: int}
+     * @param list<MemberListEntryResponse> $entries
+     * @return array{items: list<array<string, string|bool|null>>, total: int}
      */
-    public function collection(array $members): array
+    public function collection(array $entries): array
     {
         return [
-            'items' => array_map($this->member(...), $members),
-            'total' => count($members),
+            'items' => array_map(static fn (MemberListEntryResponse $entry): array => [
+                'id' => $entry->id,
+                'memberNumber' => $entry->memberNumber,
+                'primaryMemberNumber' => $entry->primaryMemberNumber,
+                'lastName' => $entry->lastName,
+                'firstName' => $entry->firstName,
+                'birthDate' => $entry->birthDate->format('Y-m-d'),
+                'street' => $entry->street,
+                'city' => $entry->city,
+                'leftAt' => $entry->leftAt?->format('Y-m-d'),
+                'active' => $entry->active,
+            ], $entries),
+            'total' => count($entries),
         ];
     }
 

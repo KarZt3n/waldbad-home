@@ -1127,11 +1127,22 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
     dialog.showModal();
 });
 
-const openMemberDialog = async (member, onSaved) => {
+// Die Mitgliedertabelle kennt nur die Listenangaben; vollständige Daten und Familie kommen beim
+// Öffnen parallel nach.
+const openMemberById = async (id, onSaved) => {
+    const [member, household] = await Promise.all([
+        request(`/api/admin/v1/members/${id}`),
+        request(`/api/admin/v1/members/${id}/household`),
+    ]);
+    await openMemberDialog(member, onSaved, household);
+};
+
+const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) => {
     // Die Haushaltsdaten sind serverseitig bereits auf die Hauptnummer dieses einen Mitglieds
     // beschränkt (`GetMemberHouseholdQuery`), laden also ohnehin nur die eigene Familie.
     let [household, payerCandidates] = await Promise.all([
-        member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null),
+        loadedHousehold !== undefined ? loadedHousehold
+            : (member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null)),
         loadPayerCandidates(),
     ]);
     const dialog = element('dialog', {className: 'activity-dialog member-dialog'});
@@ -1139,8 +1150,7 @@ const openMemberDialog = async (member, onSaved) => {
     const openOther = async (id) => {
         if (!(await confirmLeave())) return;
         dialog.close();
-        const other = await request(`/api/admin/v1/members/${id}`);
-        await openMemberDialog(other, onSaved);
+        await openMemberById(id, onSaved);
     };
 
     const salutation = selectField('Anrede', `member-salutation-${suffix}`, Object.entries(SALUTATION_LABELS), member?.salutation || 'mr');
@@ -1571,7 +1581,7 @@ const openMemberDialog = async (member, onSaved) => {
             if (!(await openPayerTransferDialog(currentMember, currentHousehold, 'transfer'))) return;
             dialog.close();
             await onSaved();
-            await openMemberDialog(await request(`/api/admin/v1/members/${currentMember.id}`), onSaved);
+            await openMemberById(currentMember.id, onSaved);
         });
 
         return [button];
@@ -3088,7 +3098,16 @@ const showMembers = () => {
                         memberItem.city,
                     ].map((text) => element('td', {text})),
                 });
-                const open = () => openMemberDialog(memberItem, showMembershipManagement);
+                const open = async () => {
+                    row.setAttribute('aria-busy', 'true');
+                    try {
+                        await openMemberById(memberItem.id, showMembershipManagement);
+                    } catch (error) {
+                        toast(error.message, 'error');
+                    } finally {
+                        row.removeAttribute('aria-busy');
+                    }
+                };
                 row.addEventListener('click', open);
                 row.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
 

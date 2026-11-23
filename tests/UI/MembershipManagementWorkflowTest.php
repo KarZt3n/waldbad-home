@@ -105,6 +105,16 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->request('GET', '/api/admin/v1/members', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         self::assertSame(1, $this->responseData()['total']);
+        $listEntry = $this->arrayList($this->responseData(), 'items')[0];
+        self::assertIsArray($listEntry);
+        self::assertSame(
+            ['id', 'memberNumber', 'primaryMemberNumber', 'lastName', 'firstName', 'birthDate', 'street', 'city', 'leftAt', 'active'],
+            array_keys($listEntry),
+            'Die Tabelle bekommt nur ihre Spalten; Bank-, Kontakt- und Beitragsdaten lädt erst das Öffnen.',
+        );
+        self::assertSame($member['id'], $listEntry['id']);
+        self::assertSame($memberNumber, $listEntry['memberNumber']);
+        self::assertTrue($listEntry['active']);
 
         $update = $this->validMember();
         $update['memberNumber'] = $memberNumber;

@@ -587,6 +587,8 @@ Veraltete, doppelte oder rechtlich ungeklärte Inhalte werden nicht automatisch 
 - Online-Ticketverkauf oder Zahlungsabwicklung
 - qualifizierte elektronische Signatur für die digitale Vereinsaufnahme
 - vollständige Mitgliederverwaltung
+- Mitgliedertabelle: `GET /api/admin/v1/members` liefert nur die Listenangaben (Nummern, Name, Geburtsdatum, Straße, Ort, Austritt/aktiv) – sie reichen für Tabelle, Suche, Statusfilter und Zahler-Auswahl. Bank-, Kontakt- und Beitragsdaten samt Bemerkungen kommen erst beim Öffnen eines Datensatzes (`GET /members/{id}` parallel zur Familie `/household`).
+- Prod komprimiert PHP-Antworten (HTML, JSON) per `zlib.output_compression` aus `deploy/prod/public.user.ini` (als `public_html/.user.ini` installiert), da das Hosting kein mod_deflate hat; Antworten mit Content-Length (Downloads) bleiben unkomprimiert.
 - Reiterleiste der Mitgliederverwaltung: Die Zahlen offener Anträge, Nachrichten und Kündigungen kommen gemeinsam über `GET /api/admin/v1/membership-open-counts` (reine `COUNT`-Abfragen; Bereiche ohne Leserecht liefern `null`). Gezählt wird beim Öffnen und nach jeder Aktion, nicht beim Reiterwechsel; der Reiterinhalt wartet nicht auf die Zahlen.
 - Dienstplanung für Rettungsschwimmer
 - Newsletter-Marketing-Automation

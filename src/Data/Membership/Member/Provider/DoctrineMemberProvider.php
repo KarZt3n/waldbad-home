@@ -6,8 +6,10 @@ use App\Data\Membership\Member\Entity\MemberEntity;
 use App\Data\Membership\Member\Mapper\MemberMapper;
 use App\Logic\Membership\Member\MemberProviderInterface;
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberListEntry;
 use App\Logic\Membership\Member\Model\MemberSnapshot;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 
 /**
  * Liefert ausschließlich nicht gelöschte Mitglieder — als gelöscht markierte Datensätze (Soft-Delete,
@@ -16,6 +18,10 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 readonly class DoctrineMemberProvider implements MemberProviderInterface
 {
+    private const array SEARCH_FIELDS = [
+        'memberNumber', 'primaryMemberNumber', 'lastName', 'firstName', 'street', 'postalCode', 'city', 'email', 'phone',
+    ];
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private MemberMapper $mapper,
@@ -72,14 +78,40 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
 
     public function search(?string $term): array
     {
-        return $this->findMatching((string) $term, [
-            'memberNumber', 'primaryMemberNumber', 'lastName', 'firstName', 'street', 'postalCode', 'city', 'email', 'phone',
-        ]);
+        return $this->findMatching((string) $term, self::SEARCH_FIELDS);
     }
 
     public function searchByName(string $term): array
     {
         return $this->findMatching($term, ['lastName', 'firstName']);
+    }
+
+    public function searchListEntries(?string $term): array
+    {
+        $rows = $this->matchingQuery((string) $term, self::SEARCH_FIELDS)
+            ->select('m.id', 'm.memberNumber', 'm.primaryMemberNumber', 'm.lastName', 'm.firstName', 'm.birthDate', 'm.street', 'm.city', 'm.leftAt')
+            ->getQuery()
+            ->getArrayResult();
+
+        $entries = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $entries[] = new MemberListEntry(
+                id: self::stringValue($row['id']),
+                memberNumber: self::stringValue($row['memberNumber']),
+                primaryMemberNumber: self::stringValue($row['primaryMemberNumber']),
+                lastName: self::stringValue($row['lastName']),
+                firstName: self::stringValue($row['firstName']),
+                birthDate: self::dateValue($row['birthDate']) ?? throw new \UnexpectedValueException('Mitglied ohne Geburtsdatum.'),
+                street: self::stringValue($row['street']),
+                city: self::stringValue($row['city']),
+                leftAt: self::dateValue($row['leftAt']),
+            );
+        }
+
+        return $entries;
     }
 
     /**
@@ -88,6 +120,23 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
      * @return list<Member>
      */
     private function findMatching(string $term, array $fields): array
+    {
+        $result = $this->matchingQuery($term, $fields)->getQuery()->getResult();
+        $entities = [];
+        foreach (is_array($result) ? $result : [] as $item) {
+            if ($item instanceof MemberEntity) {
+                $entities[] = $item;
+            }
+        }
+        $this->preloadCollections($entities);
+
+        return array_map($this->mapper->toModel(...), $entities);
+    }
+
+    /**
+     * @param non-empty-list<string> $fields
+     */
+    private function matchingQuery(string $term, array $fields): QueryBuilder
     {
         // "member" ist ein reserviertes DQL-Schlüsselwort (MEMBER OF) und darf nicht als Alias
         // verwendet werden.
@@ -113,16 +162,22 @@ readonly class DoctrineMemberProvider implements MemberProviderInterface
             }
         }
 
-        $result = $queryBuilder->getQuery()->getResult();
-        $entities = [];
-        foreach (is_array($result) ? $result : [] as $item) {
-            if ($item instanceof MemberEntity) {
-                $entities[] = $item;
-            }
-        }
-        $this->preloadCollections($entities);
+        return $queryBuilder;
+    }
 
-        return array_map($this->mapper->toModel(...), $entities);
+    private static function stringValue(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : throw new \UnexpectedValueException('Unerwarteter Wert in der Mitgliederliste.');
+    }
+
+    private static function dateValue(mixed $value): ?\DateTimeImmutable
+    {
+        return match (true) {
+            $value === null => null,
+            $value instanceof \DateTimeImmutable => $value,
+            $value instanceof \DateTimeInterface => \DateTimeImmutable::createFromInterface($value),
+            default => throw new \UnexpectedValueException('Unerwartetes Datum in der Mitgliederliste.'),
+        };
     }
 
     /**

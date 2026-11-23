@@ -114,6 +114,7 @@ printf 'Neue Assets haben gehashte Dateinamen und können vor dem Umschalten ber
 rsync -a --chmod=D755,F644 --exclude=/index.php --exclude=/uploads "$release_dir/public/" "$docroot/"
 install -m 0644 "$release_dir/deploy/prod/public.htaccess" "$docroot/.htaccess"
 install -m 0644 "$release_dir/deploy/prod/uploads.htaccess" "$docroot/uploads/.htaccess"
+install -m 0644 "$release_dir/deploy/prod/public.user.ini" "$docroot/.user.ini"
 
 # Umschalten: Der Stub wird erst vollständig geschrieben und dann atomar ersetzt.
 printf 'Umschalten: Der Stub wird erst vollständig geschrieben und dann atomar ersetzt.'
@@ -134,9 +135,9 @@ mv -f "$docroot/.index.php.next" "$docroot/index.php"
 ln -s "releases/$release_name" "$deploy_dir/.current-$release_name"
 mv -Tf "$deploy_dir/.current-$release_name" "$current_link"
 
-# Erst jetzt veraltete öffentliche Dateien entfernen; Medien, Stub und .htaccess bleiben.
-printf 'Erst jetzt veraltete öffentliche Dateien entfernen; Medien, Stub und .htaccess bleiben'
-rsync -a --chmod=D755,F644 --delete --exclude=/index.php --exclude=/.htaccess --exclude=/uploads --exclude=/.well-known/ \
+# Erst jetzt veraltete öffentliche Dateien entfernen; Medien, Stub, .htaccess und .user.ini bleiben.
+printf 'Erst jetzt veraltete öffentliche Dateien entfernen; Medien, Stub, .htaccess und .user.ini bleiben'
+rsync -a --chmod=D755,F644 --delete --exclude=/index.php --exclude=/.htaccess --exclude=/.user.ini --exclude=/uploads --exclude=/.well-known/ \
     "$release_dir/public/" "$docroot/"
 
 for release_marker in "$releases_dir"/*/.waldbad-release; do

@@ -45,6 +45,11 @@ readonly class MemberManager implements MemberManagerInterface
         return $this->provider->search($term);
     }
 
+    public function searchListEntries(?string $term): array
+    {
+        return $this->provider->searchListEntries($term);
+    }
+
     public function searchByName(string $term): array
     {
         return $this->provider->searchByName($term);

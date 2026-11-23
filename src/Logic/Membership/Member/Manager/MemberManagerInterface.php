@@ -3,6 +3,7 @@
 namespace App\Logic\Membership\Member\Manager;
 
 use App\Logic\Membership\Member\Model\Member;
+use App\Logic\Membership\Member\Model\MemberListEntry;
 use App\Logic\Membership\Member\Model\MemberSnapshot;
 
 interface MemberManagerInterface
@@ -30,6 +31,14 @@ interface MemberManagerInterface
      * @return list<Member>
      */
     public function search(?string $term): array;
+
+    /**
+     * Gleiche Suche wie `search()`, aber nur mit den Angaben für Listen (ohne Bemerkungen,
+     * Einmalgebühren, Bank- und Kontaktdaten).
+     *
+     * @return list<MemberListEntry>
+     */
+    public function searchListEntries(?string $term): array;
 
     /**
      * Wie `search()`, durchsucht aber nur Vor- und Nachname — jedes Wort muss in einem der beiden
