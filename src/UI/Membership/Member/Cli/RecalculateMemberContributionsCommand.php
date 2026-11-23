@@ -14,7 +14,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * „Beiträge neu berechnen“ ohne Oberfläche — für den geplanten Lauf zum Jahreswechsel
- * (`.github/workflows/recalculate-contributions-prod.yaml`). Ohne --year das laufende Jahr.
+ * (Cronjob im Telekom-Kundencenter). Ohne --year das laufende Jahr.
  * Endet mit Fehlercode, sobald ein Mitglied nicht berechnet werden konnte, damit der Lauf auffällt.
  */
 #[AsCommand(name: 'app:membership:recalculate-contributions', description: 'Berechnet die Beiträge aller Mitglieder für das laufende (oder angegebene) Beitragsjahr neu.')]
