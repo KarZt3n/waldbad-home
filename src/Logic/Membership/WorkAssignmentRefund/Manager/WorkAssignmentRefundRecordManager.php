@@ -19,9 +19,9 @@ readonly class WorkAssignmentRefundRecordManager implements WorkAssignmentRefund
         return $this->provider->findByYear($year);
     }
 
-    public function save(WorkAssignmentRefundRecord $record): WorkAssignmentRefundRecord
+    public function saveAll(array $records): void
     {
-        return $this->processor->save($record);
+        $this->processor->saveAll($records);
     }
 
     public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void

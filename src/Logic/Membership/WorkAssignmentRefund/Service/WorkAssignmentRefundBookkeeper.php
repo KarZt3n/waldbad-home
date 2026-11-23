@@ -24,19 +24,21 @@ readonly class WorkAssignmentRefundBookkeeper
      */
     public function bookAll(array $drafts, CreditTransferBatch $batch): void
     {
-        $this->transaction->execute(function () use ($drafts, $batch): void {
-            foreach ($drafts as $draft) {
-                $this->records->save(new WorkAssignmentRefundRecord(
-                    id: $this->identifierGenerator->generate(),
-                    primaryMemberNumber: $draft->primaryMemberNumber,
-                    payerMemberId: $draft->recipient->id
-                        ?? throw new \LogicException('Eine überwiesene Gutschrift hat immer einen Empfänger.'),
-                    year: $draft->year,
-                    amountCents: $draft->amountCents(),
-                    messageId: $batch->messageId,
-                    exportedAt: $batch->createdAt,
-                ));
-            }
+        $records = array_map(
+            fn (WorkAssignmentRefundDraft $draft): WorkAssignmentRefundRecord => new WorkAssignmentRefundRecord(
+                id: $this->identifierGenerator->generate(),
+                primaryMemberNumber: $draft->primaryMemberNumber,
+                payerMemberId: $draft->recipient->id
+                    ?? throw new \LogicException('Eine überwiesene Gutschrift hat immer einen Empfänger.'),
+                year: $draft->year,
+                amountCents: $draft->amountCents(),
+                messageId: $batch->messageId,
+                exportedAt: $batch->createdAt,
+            ),
+            $drafts,
+        );
+        $this->transaction->execute(function () use ($records): void {
+            $this->records->saveAll($records);
         });
     }
 }

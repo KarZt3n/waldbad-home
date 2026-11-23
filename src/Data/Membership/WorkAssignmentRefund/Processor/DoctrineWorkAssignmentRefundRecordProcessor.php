@@ -17,13 +17,12 @@ readonly class DoctrineWorkAssignmentRefundRecordProcessor implements WorkAssign
     ) {
     }
 
-    public function save(WorkAssignmentRefundRecord $record): WorkAssignmentRefundRecord
+    public function saveAll(array $records): void
     {
-        $entity = $this->mapper->createEntity($record);
-        $this->entityManager->persist($entity);
+        foreach ($records as $record) {
+            $this->entityManager->persist($this->mapper->createEntity($record));
+        }
         $this->entityManager->flush();
-
-        return $this->mapper->toModel($entity);
     }
 
     public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void

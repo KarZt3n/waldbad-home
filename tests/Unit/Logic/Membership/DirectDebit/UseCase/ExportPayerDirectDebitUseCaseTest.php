@@ -201,23 +201,26 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('get')->willReturn($payer);
         $members->method('findByPayerMemberId')->willReturn([]);
-        $members->method('save')->willReturnCallback(function (Member $member): Member {
-            $this->savedMembers[] = $member;
-
-            return $member;
+        $members->method('saveAll')->willReturnCallback(function (array $members): void {
+            foreach ($members as $member) {
+                self::assertInstanceOf(Member::class, $member);
+                $this->savedMembers[] = $member;
+            }
         });
         $records = $this->createStub(DirectDebitRecordManagerInterface::class);
         $records->method('findByPayerMemberId')->willReturn([]);
         $records->method('findCollectedChargeIds')->willReturn([]);
-        $records->method('markChargesCollected')->willReturnCallback(function (array $chargeIds, string $recordId): void {
-            foreach ($chargeIds as $chargeId) {
-                $this->collectedCharges[] = sprintf('%s:%s', $recordId, is_string($chargeId) ? $chargeId : '?');
+        $records->method('saveAll')->willReturnCallback(function (array $records, array $collectedChargeIdsByRecordId): void {
+            foreach ($records as $record) {
+                self::assertInstanceOf(DirectDebitRecord::class, $record);
+                $this->savedRecords[] = $record;
             }
-        });
-        $records->method('save')->willReturnCallback(function (DirectDebitRecord $record): DirectDebitRecord {
-            $this->savedRecords[] = $record;
-
-            return $record;
+            foreach ($collectedChargeIdsByRecordId as $recordId => $chargeIds) {
+                self::assertIsArray($chargeIds);
+                foreach ($chargeIds as $chargeId) {
+                    $this->collectedCharges[] = sprintf('%s:%s', $recordId, is_string($chargeId) ? $chargeId : '?');
+                }
+            }
         });
         $transaction = $this->createStub(DirectDebitBookingTransactionInterface::class);
         $transaction->method('execute')->willReturnCallback(static function (callable $work): void {

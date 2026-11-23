@@ -18,13 +18,20 @@ readonly class DoctrineDirectDebitRecordProcessor implements DirectDebitRecordPr
     ) {
     }
 
-    public function save(DirectDebitRecord $record): DirectDebitRecord
+    public function saveAll(array $records, array $collectedChargeIdsByRecordId = []): void
     {
-        $entity = $this->mapper->createEntity($record);
-        $this->entityManager->persist($entity);
+        $exportedAtByRecordId = [];
+        foreach ($records as $record) {
+            $this->entityManager->persist($this->mapper->createEntity($record));
+            $exportedAtByRecordId[$record->id] = $record->exportedAt;
+        }
+        foreach ($collectedChargeIdsByRecordId as $recordId => $chargeIds) {
+            $collectedAt = $exportedAtByRecordId[$recordId] ?? throw new \LogicException('Einmalgebühren gehören zu einem Eintrag desselben Exports.');
+            foreach (array_unique($chargeIds) as $chargeId) {
+                $this->entityManager->persist(new DirectDebitCollectedChargeEntity($chargeId, $recordId, $collectedAt));
+            }
+        }
         $this->entityManager->flush();
-
-        return $this->mapper->toModel($entity);
     }
 
     public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void
@@ -39,11 +46,4 @@ readonly class DoctrineDirectDebitRecordProcessor implements DirectDebitRecordPr
             ->execute();
     }
 
-    public function markChargesCollected(array $chargeIds, string $recordId, \DateTimeImmutable $collectedAt): void
-    {
-        foreach (array_unique($chargeIds) as $chargeId) {
-            $this->entityManager->persist(new DirectDebitCollectedChargeEntity($chargeId, $recordId, $collectedAt));
-        }
-        $this->entityManager->flush();
-    }
 }

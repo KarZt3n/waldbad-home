@@ -43,35 +43,43 @@ readonly class DirectDebitBookkeeper
      */
     public function bookAll(array $bookings): void
     {
-        $this->transaction->execute(function () use ($bookings): void {
-            foreach ($bookings as ['draft' => $draft, 'batch' => $batch, 'amountCents' => $amountCents, 'positions' => $positions]) {
-                $payer = $draft->payer;
-                $record = $this->records->save(new DirectDebitRecord(
-                    id: $this->identifierGenerator->generate(),
-                    payerMemberId: $payer->id,
-                    mandateReference: $payer->mandateReference
-                        ?? throw new \LogicException('Ein exportierter Zahler hat immer eine Mandatsreferenz.'),
-                    contributionYear: $draft->contributionYear,
-                    sequenceType: $batch->sequenceType,
-                    collectionDate: $batch->collectionDate,
-                    amountCents: $amountCents,
-                    messageId: $batch->messageId,
-                    exportedAt: $batch->createdAt,
-                    kind: $draft->kind,
-                ));
-                $chargeIds = array_values(array_filter(array_map(
-                    static fn (DirectDebitPosition $position): ?string => $position->chargeId,
-                    $positions,
-                )));
-                if ($chargeIds !== []) {
-                    $this->records->markChargesCollected($chargeIds, $record->id, $batch->createdAt);
-                }
-                if ($draft->kind === DirectDebitPositionKind::Contribution && !$draft->joiningYearDebit
-                    && $payer->nextBookingMonth !== null && $payer->nextBookingYear !== null
-                ) {
-                    $this->members->save($payer->withNextBooking($payer->nextBookingMonth, $payer->nextBookingYear + 1));
-                }
+        $records = [];
+        $collectedChargeIds = [];
+        $advancedPayers = [];
+        foreach ($bookings as ['draft' => $draft, 'batch' => $batch, 'amountCents' => $amountCents, 'positions' => $positions]) {
+            $payer = $draft->payer;
+            $record = new DirectDebitRecord(
+                id: $this->identifierGenerator->generate(),
+                payerMemberId: $payer->id,
+                mandateReference: $payer->mandateReference
+                    ?? throw new \LogicException('Ein exportierter Zahler hat immer eine Mandatsreferenz.'),
+                contributionYear: $draft->contributionYear,
+                sequenceType: $batch->sequenceType,
+                collectionDate: $batch->collectionDate,
+                amountCents: $amountCents,
+                messageId: $batch->messageId,
+                exportedAt: $batch->createdAt,
+                kind: $draft->kind,
+            );
+            $records[] = $record;
+            $chargeIds = array_values(array_filter(array_map(
+                static fn (DirectDebitPosition $position): ?string => $position->chargeId,
+                $positions,
+            )));
+            if ($chargeIds !== []) {
+                $collectedChargeIds[$record->id] = $chargeIds;
             }
+            if ($draft->kind === DirectDebitPositionKind::Contribution && !$draft->joiningYearDebit
+                && $payer->nextBookingMonth !== null && $payer->nextBookingYear !== null
+            ) {
+                $advancedPayers[] = $payer->withNextBooking($payer->nextBookingMonth, $payer->nextBookingYear + 1);
+            }
+        }
+
+        // Je ein gemeinsames Speichern statt zwei je Zahler, siehe `DirectDebitRecordManagerInterface::saveAll()`.
+        $this->transaction->execute(function () use ($records, $collectedChargeIds, $advancedPayers): void {
+            $this->records->saveAll($records, $collectedChargeIds);
+            $this->members->saveAll($advancedPayers);
         });
     }
 }

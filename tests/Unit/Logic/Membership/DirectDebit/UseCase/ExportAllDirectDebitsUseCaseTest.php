@@ -119,16 +119,18 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
     private function useCase(DirectDebitFileWriterInterface $writer, array $members): ExportAllDirectDebitsUseCase
     {
         $memberManager = $this->createStub(MemberManagerInterface::class);
-        $memberManager->method('save')->willReturnCallback(function (Member $member): Member {
-            $this->savedMembers[] = $member;
-
-            return $member;
+        $memberManager->method('saveAll')->willReturnCallback(function (array $members): void {
+            foreach ($members as $member) {
+                self::assertInstanceOf(Member::class, $member);
+                $this->savedMembers[] = $member;
+            }
         });
         $records = $this->createStub(DirectDebitRecordManagerInterface::class);
-        $records->method('save')->willReturnCallback(function (DirectDebitRecord $record): DirectDebitRecord {
-            $this->savedRecords[] = $record;
-
-            return $record;
+        $records->method('saveAll')->willReturnCallback(function (array $records): void {
+            foreach ($records as $record) {
+                self::assertInstanceOf(DirectDebitRecord::class, $record);
+                $this->savedRecords[] = $record;
+            }
         });
         $transaction = $this->createStub(DirectDebitBookingTransactionInterface::class);
         $transaction->method('execute')->willReturnCallback(static function (callable $work): void {

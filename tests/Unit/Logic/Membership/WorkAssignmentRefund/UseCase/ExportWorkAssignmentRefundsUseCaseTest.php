@@ -206,10 +206,11 @@ final class ExportWorkAssignmentRefundsUseCaseTest extends TestCase
     private function exporter(CreditTransferFileWriterInterface $writer): WorkAssignmentRefundExporter
     {
         $records = $this->createStub(WorkAssignmentRefundRecordManagerInterface::class);
-        $records->method('save')->willReturnCallback(function (WorkAssignmentRefundRecord $record): WorkAssignmentRefundRecord {
-            $this->savedRecords[] = $record;
-
-            return $record;
+        $records->method('saveAll')->willReturnCallback(function (array $records): void {
+            foreach ($records as $record) {
+                self::assertInstanceOf(WorkAssignmentRefundRecord::class, $record);
+                $this->savedRecords[] = $record;
+            }
         });
         $transaction = $this->createStub(DirectDebitBookingTransactionInterface::class);
         $transaction->method('execute')->willReturnCallback(static function (callable $work): void {

@@ -9,7 +9,12 @@ interface WorkAssignmentRefundRecordManagerInterface
     /** @return list<WorkAssignmentRefundRecord> neueste zuerst */
     public function findByYear(int $year): array;
 
-    public function save(WorkAssignmentRefundRecord $record): WorkAssignmentRefundRecord;
+    /**
+     * Legt die Einträge eines Exports gemeinsam an (ein Speichervorgang statt einer je Empfänger).
+     *
+     * @param list<WorkAssignmentRefundRecord> $records
+     */
+    public function saveAll(array $records): void;
 
     /** Schreibt die Historie eines Zahlers auf ein anderes Mitglied um (Zahler-Übertragung, siehe `PayerTransfer`). */
     public function reassignPayer(string $fromPayerMemberId, string $toPayerMemberId): void;
