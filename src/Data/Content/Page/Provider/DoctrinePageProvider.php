@@ -24,42 +24,11 @@ readonly class DoctrinePageProvider implements PageProviderInterface
         return $entity === null ? null : $this->mapper->toModel($entity);
     }
 
-    public function findPublishedBySlug(string $slug): ?Page
-    {
-        $entity = $this->entityManager->getRepository(PublishedPageEntity::class)->findOneBy([
-            'slug' => $slug,
-            'visible' => true,
-        ]);
-
-        return $entity === null ? null : $this->mapper->toPublishedModel($entity);
-    }
-
-    public function findPublishedById(string $id): ?Page
-    {
-        $page = $this->entityManager->getReference(PageEntity::class, $id);
-        $entity = $this->entityManager->getRepository(PublishedPageEntity::class)->findOneBy([
-            'page' => $page,
-            'visible' => true,
-        ]);
-
-        return $entity === null ? null : $this->mapper->toPublishedModel($entity);
-    }
-
     public function findAll(): array
     {
         $entities = $this->entityManager->getRepository(PageEntity::class)->findBy([], ['updatedAt' => 'DESC']);
 
         return array_map($this->mapper->toModel(...), $entities);
-    }
-
-    public function findPublishedNavigation(): array
-    {
-        $entities = $this->entityManager->getRepository(PublishedPageEntity::class)->findBy(
-            ['visible' => true, 'showInNavigation' => true],
-            ['navigationPosition' => 'ASC'],
-        );
-
-        return array_map($this->mapper->toPublishedModel(...), $entities);
     }
 
     public function findAllPublished(): array

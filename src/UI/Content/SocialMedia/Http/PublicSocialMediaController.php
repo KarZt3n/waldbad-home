@@ -2,8 +2,7 @@
 
 namespace App\UI\Content\SocialMedia\Http;
 
-use App\Logic\Content\SocialMedia\Dto\SocialMediaLinkResponse;
-use App\Logic\Content\SocialMedia\Query\GetPublicSocialMediaLinksQuery;
+use App\UI\Site\Http\PublicSiteChromeResponseFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -11,12 +10,8 @@ use Symfony\Component\Routing\Attribute\Route;
 readonly class PublicSocialMediaController
 {
     #[Route('', name: 'api_public_social_media', methods: ['GET'])]
-    public function links(GetPublicSocialMediaLinksQuery $query): JsonResponse
+    public function links(PublicSiteChromeResponseFactory $chrome): JsonResponse
     {
-        return new JsonResponse(['items' => array_map(static fn (SocialMediaLinkResponse $link): array => [
-            'platform' => $link->platform,
-            'label' => $link->label,
-            'url' => $link->url,
-        ], $query->execute())]);
+        return new JsonResponse(['items' => $chrome->socialMediaLinks()]);
     }
 }

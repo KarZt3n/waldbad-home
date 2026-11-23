@@ -134,10 +134,44 @@ const SOCIAL_MEDIA_ICONS = {
     whatsapp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l1.7-4.6A8.6 8.6 0 1 1 8 19.6z"></path><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1-1.6-2-1-1 .9a5 5 0 0 1-2.8-2.8l.9-1-1-2z"></path></svg>',
 };
 // Wie die Navigation ändert sich die Leiste während eines Besuchs praktisch nie und wird nur einmal geladen.
+// Navigation, Footer und Social-Media-Links liefert der Server direkt im HTML mit (siehe
+// `FrontendController::renderPublic`); die API ist nur Rückfall, falls die Daten fehlen.
+let embeddedSiteChrome;
+const embeddedSiteData = () => {
+    if (embeddedSiteChrome === undefined) {
+        try {
+            embeddedSiteChrome = JSON.parse(document.getElementById('site-chrome-data')?.textContent || 'null');
+        } catch {
+            embeddedSiteChrome = null;
+        }
+    }
+
+    return embeddedSiteChrome;
+};
+const embeddedSiteChromeValue = (key) => {
+    const data = embeddedSiteData();
+
+    return Array.isArray(data?.[key]) ? data[key] : null;
+};
+// Die mitgelieferte Seite gilt nur für den ersten Aufbau; spätere Seitenwechsel laden über die API.
+let embeddedPageTaken = false;
+const takeEmbeddedPage = (slug) => {
+    if (embeddedPageTaken) return null;
+    embeddedPageTaken = true;
+    const page = embeddedSiteData()?.page;
+
+    return page && page.slug === slug ? page : null;
+};
+const embeddedOrRequest = (key, url) => {
+    const embedded = embeddedSiteChromeValue(key);
+
+    return embedded ? Promise.resolve(embedded) : request(url).then((data) => data.items);
+};
+
 let socialMediaRequest = null;
 const loadSocialMediaLinks = () => {
-    socialMediaRequest ??= request('/api/public/v1/social-media')
-        .then((data) => data.items.filter((link) => SOCIAL_MEDIA_ICONS[link.platform]))
+    socialMediaRequest ??= embeddedOrRequest('socialMediaLinks', '/api/public/v1/social-media')
+        .then((items) => items.filter((link) => SOCIAL_MEDIA_ICONS[link.platform]))
         .catch(() => {
             socialMediaRequest = null;
             return [];
@@ -214,8 +248,7 @@ const buildSocialMediaBar = () => {
 // Wie die Navigation ändert sich der Footer während eines Besuchs praktisch nie und wird nur einmal geladen.
 let footerLinksRequest = null;
 const loadFooterLinks = () => {
-    footerLinksRequest ??= request('/api/public/v1/footer-navigation')
-        .then((data) => data.items)
+    footerLinksRequest ??= embeddedOrRequest('footerLinks', '/api/public/v1/footer-navigation')
         .catch(() => {
             footerLinksRequest = null;
             return [];
@@ -289,4 +322,4 @@ const buildMemberAccessNav = () => {
     return container;
 };
 
-export {EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav, buildSocialMediaBar};
+export {embeddedOrRequest, takeEmbeddedPage, EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG, buildSiteHeader, buildSiteFooter, buildMemberAccessNav, buildSocialMediaBar};

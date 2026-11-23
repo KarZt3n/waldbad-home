@@ -70,6 +70,15 @@ final class PublicSiteSeoTest extends WebTestCase
         self::assertSame('Anfahrt & Parken', $crawler->filter('meta[property="og:title"]')->attr('content'));
         self::assertCount(0, $crawler->filter('meta[name="robots"]'));
 
+        // Seite, Navigation, Footer und Social Media kommen mit dem HTML, ohne weitere API-Anfragen.
+        $embedded = json_decode($crawler->filter('#site-chrome-data')->text(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($embedded);
+        self::assertIsArray($embedded['page']);
+        self::assertSame('anfahrt', $embedded['page']['slug']);
+        self::assertSame([], $embedded['footerLinks']);
+        self::assertSame([], $embedded['socialMediaLinks']);
+        self::assertIsArray($embedded['navigation']);
+
         $crawler = $this->client->request('GET', '/seite/startseite');
         self::assertSame('http://localhost/', $crawler->filter('link[rel="canonical"]')->attr('href'));
 

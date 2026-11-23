@@ -97,7 +97,7 @@ readonly class ApiResponseFactory
      *     publishedAt: string|null
      * }
      */
-    private function pageData(PageResponse $page): array
+    public function pageData(PageResponse $page): array
     {
         return [
             'id' => $page->id,

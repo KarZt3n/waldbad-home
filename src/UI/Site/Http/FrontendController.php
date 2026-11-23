@@ -4,6 +4,8 @@ namespace App\UI\Site\Http;
 
 use App\Logic\Content\Branding\Query\GetSiteBrandingQuery;
 use App\Logic\Content\Page\Query\GetPublicPageMetadataQuery;
+use App\Logic\Content\Page\Query\GetPublishedPageQuery;
+use App\UI\Common\Http\ApiResponseFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -14,6 +16,9 @@ class FrontendController extends AbstractController
     public function __construct(
         private readonly GetSiteBrandingQuery $branding,
         private readonly GetPublicPageMetadataQuery $metadata,
+        private readonly PublicSiteChromeResponseFactory $chrome,
+        private readonly GetPublishedPageQuery $publishedPage,
+        private readonly ApiResponseFactory $responseFactory,
     ) {
     }
 
@@ -84,13 +89,24 @@ class FrontendController extends AbstractController
             return $this->renderPublic($slug, 'Seite nicht gefunden', status: Response::HTTP_NOT_FOUND);
         }
 
-        return $this->renderPublic($slug, $metadata->title, $metadata->description, $canonicalUrl, indexable: true);
+        return $this->renderPublic(
+            $slug,
+            $metadata->title,
+            $metadata->description,
+            $canonicalUrl,
+            indexable: true,
+            page: $this->responseFactory->pageData($this->publishedPage->execute($slug)),
+        );
     }
 
     /**
      * Das Logo kommt direkt mit der HTML-Seite, damit die Kopfzeile ohne zusätzliche Anfrage und ohne
-     * Flackern das gepflegte Logo zeigt (siehe `buildSiteHeader`). Persönliche Sonderseiten
-     * (Token-Links) und Fehlerseiten werden nicht indexiert.
+     * Flackern das gepflegte Logo zeigt (siehe `buildSiteHeader`); ebenso Navigation, Footer und
+     * Social-Media-Leiste, damit keine eigenen API-Anfragen nötig sind — auf dem Prod-Hosting kostet
+     * jede zusätzliche Anfrage einen eigenen PHP-Prozess. Persönliche Sonderseiten (Token-Links)
+     * und Fehlerseiten werden nicht indexiert.
+     *
+     * @param array<string, mixed>|null $page Seitendaten wie `GET /api/public/v1/pages/{slug}`
      */
     private function renderPublic(
         string $slug,
@@ -99,6 +115,7 @@ class FrontendController extends AbstractController
         ?string $canonicalUrl = null,
         bool $indexable = false,
         int $status = Response::HTTP_OK,
+        ?array $page = null,
     ): Response {
         return $this->render('site/public.html.twig', [
             'slug' => $slug,
@@ -107,6 +124,13 @@ class FrontendController extends AbstractController
             'metaDescription' => $description,
             'canonicalUrl' => $canonicalUrl,
             'indexable' => $indexable,
+            // JSON_HEX_* verhindert, dass Inhalte das umgebende `<script>` beenden können.
+            'siteChrome' => json_encode([
+                'navigation' => $this->chrome->navigation(),
+                'footerLinks' => $this->chrome->footerLinks(),
+                'socialMediaLinks' => $this->chrome->socialMediaLinks(),
+                'page' => $page,
+            ], JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE),
         ], new Response(status: $status));
     }
 }

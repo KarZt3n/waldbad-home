@@ -7,7 +7,8 @@ import './styles/app.css';
 import {app, buildPageTree, element, encodePageSlug, renderError, request} from './core.js';
 import {renderContentCard} from './content-rendering.js';
 import {
-    buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG,
+    buildMemberAccessNav, buildSiteFooter, buildSiteHeader, buildSocialMediaBar, embeddedOrRequest, EMAIL_CONSENT_SLUG, MEMBER_ACCESS_SLUG, SAUNA_APPROVAL_SLUG,
+    takeEmbeddedPage,
 } from './public/site-chrome.js';
 
 const updateDocumentMetadata = (page) => {
@@ -26,8 +27,8 @@ const updateDocumentMetadata = (page) => {
 // und bei jedem Seitenwechsel wiederverwendet.
 let navigationTreeRequest = null;
 const loadNavigationTree = () => {
-    navigationTreeRequest ??= request('/api/public/v1/navigation')
-        .then((navigation) => buildPageTree(navigation.items, false))
+    navigationTreeRequest ??= embeddedOrRequest('navigation', '/api/public/v1/navigation')
+        .then((items) => buildPageTree(items, false))
         .catch((error) => {
             navigationTreeRequest = null;
             throw error;
@@ -56,7 +57,7 @@ const preparePublicPage = async (slug) => {
         return () => renderSaunaApprovalPage(navigationTree);
     }
 
-    const page = await request('/api/public/v1/pages/' + encodePageSlug(slug));
+    const page = takeEmbeddedPage(slug) ?? await request('/api/public/v1/pages/' + encodePageSlug(slug));
     const publicContext = {visited: new Set([page.id]), pagesById: null, showEmbedErrors: false, isPreview: false};
     const article = renderContentCard(page, publicContext);
     if (slug === 'kontakt') article.append((await import('./public/contact.js')).renderContactForm());

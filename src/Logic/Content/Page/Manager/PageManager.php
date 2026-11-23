@@ -3,6 +3,7 @@
 namespace App\Logic\Content\Page\Manager;
 
 use App\Logic\Common\Exception\BusinessRuleViolationException;
+use App\Logic\Common\ModelCacheInterface;
 use App\Logic\Content\Page\Exception\PageNotFoundException;
 use App\Logic\Content\Page\Exception\PageSlugAlreadyExistsException;
 use App\Logic\Content\Page\Model\ContentBlock;
@@ -11,11 +12,19 @@ use App\Logic\Content\Page\Model\Page;
 use App\Logic\Content\Page\PageProcessorInterface;
 use App\Logic\Content\Page\PageProviderInterface;
 
+/**
+ * Die veröffentlichten Fassungen werden für öffentliche Anfragen (Seite, Navigation, Footer,
+ * Sitemap) serverseitig gecacht und nach jedem Schreiben verworfen; Entwürfe der Redaktion
+ * kommen immer direkt aus der Datenbank.
+ */
 readonly class PageManager implements PageManagerInterface
 {
+    private const string PUBLISHED_CACHE_KEY = 'pages.published';
+
     public function __construct(
         private PageProviderInterface $provider,
         private PageProcessorInterface $processor,
+        private ModelCacheInterface $cache,
     ) {
     }
 
@@ -26,12 +35,24 @@ readonly class PageManager implements PageManagerInterface
 
     public function getPublished(string $slug): Page
     {
-        return $this->provider->findPublishedBySlug($slug) ?? throw new PageNotFoundException($slug);
+        foreach ($this->publishedPages() as $page) {
+            if ($page->visible && $page->slug === $slug) {
+                return $page;
+            }
+        }
+
+        throw new PageNotFoundException($slug);
     }
 
     public function getPublishedById(string $id): Page
     {
-        return $this->provider->findPublishedById($id) ?? throw new PageNotFoundException($id);
+        foreach ($this->publishedPages() as $page) {
+            if ($page->visible && $page->id === $id) {
+                return $page;
+            }
+        }
+
+        throw new PageNotFoundException($id);
     }
 
     public function all(): array
@@ -41,12 +62,40 @@ readonly class PageManager implements PageManagerInterface
 
     public function navigation(): array
     {
-        return $this->provider->findPublishedNavigation();
+        $pages = array_values(array_filter($this->publishedPages(), static fn (Page $page): bool => $page->visible && $page->showInNavigation));
+        usort($pages, static fn (Page $left, Page $right): int => $left->navigationPosition <=> $right->navigationPosition);
+
+        return $pages;
     }
 
     public function publishedPages(): array
     {
-        return $this->provider->findAllPublished();
+        $cached = $this->cachedPublishedPages();
+        if ($cached !== null) {
+            return $cached;
+        }
+        $pages = $this->provider->findAllPublished();
+        $this->cache->store(self::PUBLISHED_CACHE_KEY, $pages);
+
+        return $pages;
+    }
+
+    /** @return list<Page>|null `null` bei leerem oder unerwartetem Cache-Inhalt */
+    private function cachedPublishedPages(): ?array
+    {
+        $cached = $this->cache->load(self::PUBLISHED_CACHE_KEY);
+        if (!is_array($cached) || !array_is_list($cached)) {
+            return null;
+        }
+        $pages = [];
+        foreach ($cached as $page) {
+            if (!$page instanceof Page) {
+                return null;
+            }
+            $pages[] = $page;
+        }
+
+        return $pages;
     }
 
     public function ensureSlugAvailable(string $slug, ?string $exceptId = null): void
@@ -164,21 +213,29 @@ readonly class PageManager implements PageManagerInterface
 
     public function save(Page $page): Page
     {
-        return $this->processor->save($page);
+        $saved = $this->processor->save($page);
+        $this->cache->invalidate(self::PUBLISHED_CACHE_KEY);
+
+        return $saved;
     }
 
     public function saveAll(array $pages): array
     {
-        return $this->processor->saveAll($pages);
+        $saved = $this->processor->saveAll($pages);
+        $this->cache->invalidate(self::PUBLISHED_CACHE_KEY);
+
+        return $saved;
     }
 
     public function savePublishedBlocks(Page $publishedPage): void
     {
         $this->processor->savePublishedBlocks($publishedPage);
+        $this->cache->invalidate(self::PUBLISHED_CACHE_KEY);
     }
 
     public function delete(string $id): void
     {
         $this->processor->delete($id);
+        $this->cache->invalidate(self::PUBLISHED_CACHE_KEY);
     }
 }

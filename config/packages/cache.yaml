@@ -24,3 +24,18 @@ framework:
             cache.photo_albums:
                 adapter: cache.app
                 default_lifetime: 7776000
+            # Seiten, Footer, Social Media und Logo für öffentliche Anfragen (siehe `ModelCacheInterface`):
+            # die Manager invalidieren bei jeder Änderung; die Lebensdauer begrenzt nur Abweichungen
+            # durch direkte Datenbankänderungen.
+            cache.models:
+                adapter: cache.app
+                default_lifetime: 2592000
+
+when@test:
+    framework:
+        cache:
+            pools:
+                # Tests setzen die Datenbank je Testfall neu auf; ein Dateicache würde Daten
+                # aus vorherigen Tests liefern.
+                cache.models:
+                    adapter: cache.adapter.array
