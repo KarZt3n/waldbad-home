@@ -20,7 +20,7 @@ readonly class MemberExportFormatter
         'mandateValidFrom', 'mandateValidUntil',
         'paymentMethod', 'paymentInterval', 'paymentDay', 'payerType', 'payerMemberId',
         'payerMemberNumber', 'payerDisplayName', 'nextBookingMonth', 'nextBookingYear', 'contributionCategory',
-        'contributionAmountCents', 'workAssignmentSurchargeCents', 'createdAt', 'updatedAt', 'deletedAt',
+        'contributionAmountCents', 'workAssignmentSurchargeCents', 'contributionYear', 'createdAt', 'updatedAt', 'deletedAt',
     ];
 
     /**

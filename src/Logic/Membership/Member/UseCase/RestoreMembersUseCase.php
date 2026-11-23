@@ -130,6 +130,7 @@ readonly class RestoreMembersUseCase
             mandateValidFrom: $data->mandateValidFrom,
             mandateValidUntil: $data->mandateValidUntil,
             emailConsent: $row->emailConsent,
+            contributionYear: $row->contributionYear,
         );
     }
 }

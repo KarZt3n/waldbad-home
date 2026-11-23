@@ -88,8 +88,9 @@ readonly class MemberOnboardingOrchestrator
         );
 
         $household = $this->members->findByPrimaryMemberNumber($primaryMemberNumber);
-        $outcome = $this->calculator->calculate($member, $household, $this->clock->now());
-        $member = $member->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents);
+        $calculatedAt = $this->clock->now();
+        $outcome = $this->calculator->calculate($member, $household, $calculatedAt);
+        $member = $member->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents, (int) $calculatedAt->format('Y'));
 
         if ($chargeOneTimeFees) {
             $now = $this->clock->now();

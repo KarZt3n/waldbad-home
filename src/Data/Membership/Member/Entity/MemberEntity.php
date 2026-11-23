@@ -113,6 +113,8 @@ class MemberEntity
         private \DateTimeImmutable $createdAt,
         #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
         private \DateTimeImmutable $updatedAt,
+        #[ORM\Column(type: Types::INTEGER, nullable: true)]
+        private ?int $contributionYear = null,
     ) {
         $this->remarks = new ArrayCollection();
         $this->oneTimeCharges = new ArrayCollection();
@@ -178,6 +180,7 @@ class MemberEntity
     public function getContributionCategory(): ?string { return $this->contributionCategory; }
     public function getContributionAmountCents(): ?int { return $this->contributionAmountCents; }
     public function getWorkAssignmentSurchargeCents(): ?int { return $this->workAssignmentSurchargeCents; }
+    public function getContributionYear(): ?int { return $this->contributionYear; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }
     public function getUpdatedAt(): \DateTimeImmutable { return $this->updatedAt; }
     public function getDeletedAt(): ?\DateTimeImmutable { return $this->deletedAt; }
@@ -241,6 +244,7 @@ class MemberEntity
         ?string $contributionCategory,
         ?int $contributionAmountCents,
         ?int $workAssignmentSurchargeCents,
+        ?int $contributionYear,
         \DateTimeImmutable $updatedAt,
     ): void {
         $this->memberNumber = $memberNumber;
@@ -276,6 +280,7 @@ class MemberEntity
         $this->contributionCategory = $contributionCategory;
         $this->contributionAmountCents = $contributionAmountCents;
         $this->workAssignmentSurchargeCents = $workAssignmentSurchargeCents;
+        $this->contributionYear = $contributionYear;
         $this->updatedAt = $updatedAt;
     }
 }

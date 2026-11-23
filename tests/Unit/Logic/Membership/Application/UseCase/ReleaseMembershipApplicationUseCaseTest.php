@@ -173,7 +173,7 @@ final class ReleaseMembershipApplicationUseCaseTest extends TestCase
         $orchestrator->method('createFromRequest')->willReturnCallback(
             function (CreateMemberRequest $request) use (&$createdMembers): Member {
                 $member = $this->memberFromRequest($request, 'member-'.(count($createdMembers) + 1))
-                    ->withContribution(ContributionCategory::FamilyAdult, 5000, 1500);
+                    ->withContribution(ContributionCategory::FamilyAdult, 5000, 1500, 2026);
                 $createdMembers[] = $member;
 
                 return $member;

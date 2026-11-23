@@ -85,10 +85,11 @@ final class MemberTest extends TestCase
     {
         $member = $this->member();
 
-        $updated = $member->withContribution(null, null, null);
+        $updated = $member->withContribution(null, null, null, 2027);
 
         self::assertNull($updated->contributionCategory);
         self::assertNull($updated->contributionAmountCents);
+        self::assertSame(2027, $updated->contributionYear);
         self::assertSame($member->id, $updated->id);
     }
 

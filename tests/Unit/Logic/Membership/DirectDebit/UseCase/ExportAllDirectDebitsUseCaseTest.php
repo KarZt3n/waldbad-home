@@ -220,6 +220,7 @@ final class ExportAllDirectDebitsUseCaseTest extends TestCase
             version: 0,
             contributionLiable: $liable,
             mandateValidFrom: new \DateTimeImmutable('2020-03-01'),
+            contributionYear: 2027,
         );
     }
 }

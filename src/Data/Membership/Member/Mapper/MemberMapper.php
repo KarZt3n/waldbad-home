@@ -59,6 +59,7 @@ readonly class MemberMapper
                 : ContributionCategory::from($entity->getContributionCategory()),
             contributionAmountCents: $entity->getContributionAmountCents(),
             workAssignmentSurchargeCents: $entity->getWorkAssignmentSurchargeCents(),
+            contributionYear: $entity->getContributionYear(),
             remarks: array_map(
                 static fn (MemberRemarkEntity $remark): Remark => new Remark(
                     id: $remark->getId(),
@@ -120,6 +121,7 @@ readonly class MemberMapper
             workAssignmentSurchargeCents: $member->workAssignmentSurchargeCents,
             createdAt: $at,
             updatedAt: $at,
+            contributionYear: $member->contributionYear,
         );
         foreach ($member->remarks as $remark) {
             $entity->addRemark(new MemberRemarkEntity(
@@ -179,6 +181,7 @@ readonly class MemberMapper
             contributionCategory: $member->contributionCategory?->value,
             contributionAmountCents: $member->contributionAmountCents,
             workAssignmentSurchargeCents: $member->workAssignmentSurchargeCents,
+            contributionYear: $member->contributionYear,
             updatedAt: $updatedAt,
         );
 

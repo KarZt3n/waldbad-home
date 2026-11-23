@@ -30,6 +30,7 @@ readonly class RestoreMemberRow
         public \DateTimeImmutable $createdAt,
         public \DateTimeImmutable $updatedAt,
         public ?\DateTimeImmutable $deletedAt,
+        public ?int $contributionYear = null,
     ) {
     }
 }

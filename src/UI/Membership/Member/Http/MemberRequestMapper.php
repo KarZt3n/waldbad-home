@@ -251,6 +251,8 @@ readonly class MemberRequestMapper
             createdAt: $this->requiredDateTime($row, 'createdAt'),
             updatedAt: $this->requiredDateTime($row, 'updatedAt'),
             deletedAt: ($row['deletedAt'] ?? '') === '' ? null : $this->requiredDateTime($row, 'deletedAt'),
+            // Ältere Exporte haben die Spalte noch nicht.
+            contributionYear: $this->optionalInt($row, 'contributionYear', 2000, 2100),
         );
     }
 

@@ -16,6 +16,7 @@ enum DirectDebitObstacleKind: string
     case MissingPayer = 'missing_payer';
     case IncompleteCreditor = 'incomplete_creditor';
     case InvalidRemittance = 'invalid_remittance';
+    case ContributionNotCalculated = 'contribution_not_calculated';
 
     public function label(): string
     {
@@ -28,6 +29,7 @@ enum DirectDebitObstacleKind: string
             self::MissingPayer => 'Ohne Zahler',
             self::IncompleteCreditor => 'Gläubigerdaten unvollständig',
             self::InvalidRemittance => 'Verwendungszweck ungültig',
+            self::ContributionNotCalculated => 'Beitrag nicht für das Jahr berechnet',
         };
     }
 }

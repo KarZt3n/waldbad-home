@@ -197,6 +197,8 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
             oneTimeCharges: [new ContributionCharge('charge-1', 'Beitrittsgebühr', 2000, new \DateTimeImmutable('2026-08-14'))],
             version: 0,
             mandateValidFrom: new \DateTimeImmutable('2020-03-01'),
+            // Im Eintrittsjahr wird das laufende Jahr abgebucht, sonst die nächste Buchung 2027.
+            contributionYear: str_starts_with($joinedAt, '2026') ? 2026 : 2027,
         );
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('get')->willReturn($payer);

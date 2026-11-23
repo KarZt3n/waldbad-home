@@ -39,14 +39,15 @@ final class DoctrineMemberProcessorTest extends KernelTestCase
         $second = $processor->save($this->member('22222222-2222-4222-8222-222222222222', 'M-0002'));
 
         $processor->saveAll([
-            $first->withContribution(ContributionCategory::IndividualSenior, 5000, null),
-            $second->withContribution(ContributionCategory::IndividualSenior, 6000, null),
+            $first->withContribution(ContributionCategory::IndividualSenior, 5000, null, 2026),
+            $second->withContribution(ContributionCategory::IndividualSenior, 6000, null, 2026),
         ]);
         $this->entityManager->clear();
 
         $provider = $this->service(DoctrineMemberProvider::class);
         self::assertSame(5000, $provider->find($first->id)?->contributionAmountCents);
         self::assertSame(6000, $provider->find($second->id)?->contributionAmountCents);
+        self::assertSame(2026, $provider->find($second->id)->contributionYear);
     }
 
     public function testDeleteOnlyMarksTheMemberAsDeletedAndHidesItFromEveryLookup(): void
@@ -70,7 +71,7 @@ final class DoctrineMemberProcessorTest extends KernelTestCase
         self::assertSame([$other->id], array_map(static fn (Member $found): string => $found->id, $provider->search('M-000')));
 
         $this->expectException(MemberNotFoundException::class);
-        $processor->save($member->withContribution(ContributionCategory::IndividualSenior, 5000, null));
+        $processor->save($member->withContribution(ContributionCategory::IndividualSenior, 5000, null, 2026));
     }
 
     public function testDeletingAnAlreadyDeletedMemberFails(): void
@@ -112,12 +113,12 @@ final class DoctrineMemberProcessorTest extends KernelTestCase
         $processor = $this->service(DoctrineMemberProcessor::class);
         $first = $processor->save($this->member('11111111-1111-4111-8111-111111111111', 'M-0001'));
         $staleSecond = $processor->save($this->member('22222222-2222-4222-8222-222222222222', 'M-0002'));
-        $processor->save($staleSecond->withContribution(ContributionCategory::IndividualSenior, 1000, null));
+        $processor->save($staleSecond->withContribution(ContributionCategory::IndividualSenior, 1000, null, 2026));
 
         try {
             $processor->saveAll([
-                $first->withContribution(ContributionCategory::IndividualSenior, 5000, null),
-                $staleSecond->withContribution(ContributionCategory::IndividualSenior, 6000, null),
+                $first->withContribution(ContributionCategory::IndividualSenior, 5000, null, 2026),
+                $staleSecond->withContribution(ContributionCategory::IndividualSenior, 6000, null, 2026),
             ]);
             self::fail('Ein zwischenzeitlich geändertes Mitglied muss den Sammel-Speichervorgang abbrechen.');
         } catch (ConcurrencyException) {

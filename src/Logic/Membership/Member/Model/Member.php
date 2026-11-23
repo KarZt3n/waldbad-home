@@ -64,6 +64,12 @@ readonly class Member
          * `ConfirmMemberEmailConsentUseCase`).
          */
         public bool $emailConsent = false,
+        /**
+         * Beitragsjahr, für das Kategorie und Beträge zuletzt berechnet wurden (Stichtag 31.12., siehe
+         * `MemberContributionCalculator`). Eine Beitragslastschrift für ein Jahr setzt voraus, dass
+         * der Beitrag für genau dieses Jahr berechnet ist (siehe `PayerDirectDebitPlanner`).
+         */
+        public ?int $contributionYear = null,
     ) {
         if (trim($this->memberNumber) === '') {
             throw new BusinessRuleViolationException('Die Mitgliedsnummer ist erforderlich.');
@@ -160,7 +166,7 @@ readonly class Member
         return !$this->hasLeft($at);
     }
 
-    public function withContribution(?ContributionCategory $category, ?int $amountCents, ?int $workAssignmentSurchargeCents): self
+    public function withContribution(?ContributionCategory $category, ?int $amountCents, ?int $workAssignmentSurchargeCents, int $year): self
     {
         return new self(
             id: $this->id,
@@ -200,6 +206,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $year,
         );
     }
 
@@ -249,6 +256,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -292,6 +300,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -335,6 +344,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -378,6 +388,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -425,6 +436,7 @@ readonly class Member
             mandateValidFrom: $validFrom,
             mandateValidUntil: $validUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -468,6 +480,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -512,6 +525,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -560,6 +574,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -608,6 +623,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -651,6 +667,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -701,6 +718,7 @@ readonly class Member
             mandateValidFrom: $keepsMandate ? $this->mandateValidFrom : null,
             mandateValidUntil: $keepsMandate ? $this->mandateValidUntil : null,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -744,6 +762,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -823,6 +842,7 @@ readonly class Member
             mandateValidFrom: $previousPayer->mandateValidFrom,
             mandateValidUntil: $previousPayer->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -870,6 +890,7 @@ readonly class Member
             mandateValidFrom: null,
             mandateValidUntil: null,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 
@@ -913,6 +934,7 @@ readonly class Member
             mandateValidFrom: $this->mandateValidFrom,
             mandateValidUntil: $this->mandateValidUntil,
             emailConsent: $this->emailConsent,
+            contributionYear: $this->contributionYear,
         );
     }
 

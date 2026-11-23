@@ -59,6 +59,7 @@ readonly class MemberResponse
         public ?\DateTimeImmutable $mandateValidFrom = null,
         public ?\DateTimeImmutable $mandateValidUntil = null,
         public bool $emailConsent = false,
+        public ?int $contributionYear = null,
     ) {
     }
 
@@ -107,6 +108,7 @@ readonly class MemberResponse
             mandateValidFrom: $member->mandateValidFrom,
             mandateValidUntil: $member->mandateValidUntil,
             emailConsent: $member->emailConsent,
+            contributionYear: $member->contributionYear,
         );
     }
 }

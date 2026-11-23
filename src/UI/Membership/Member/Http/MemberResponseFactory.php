@@ -86,6 +86,7 @@ readonly class MemberResponseFactory
             'contributionCategory' => $member->contributionCategory?->value,
             'contributionAmountCents' => $member->contributionAmountCents,
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
+            'contributionYear' => $member->contributionYear,
             'remarks' => array_map($this->remark(...), $member->remarks),
             'oneTimeCharges' => array_map($this->oneTimeCharge(...), $member->oneTimeCharges),
             'version' => $member->version,

@@ -171,10 +171,12 @@ readonly class PayerDirectDebitPlanner
 
         $warnings = [];
         $positions = [];
+        $charged = [];
         foreach ($entries as $entry) {
             if ($entry->hasLeft($now) || !$entry->contributionLiable) {
                 continue;
             }
+            $charged[] = $entry;
             if ($entry->contributionCategory === null && $kind !== DirectDebitPositionKind::OneTimeCharge) {
                 $warnings[] = sprintf('Für %s ist noch kein Beitrag berechnet.', $this->memberName($entry));
             }
@@ -206,6 +208,9 @@ readonly class PayerDirectDebitPlanner
             $contributionYear = $year;
             $collectionDate = $this->nextPaymentDay($payer, $now);
         }
+        $contributionBlockers = $kind === DirectDebitPositionKind::Contribution
+            ? $this->contributionNotCalculatedBlockers($charged, $contributionYear)
+            : [];
         $alreadyCollected = false;
         // Einmalgebühren werden je Gebühr als eingezogen vermerkt, nicht über das Beitragsjahr.
         foreach ($kind === DirectDebitPositionKind::OneTimeCharge ? [] : $kindRecords as $record) {
@@ -229,7 +234,7 @@ readonly class PayerDirectDebitPlanner
             mandateSignedOn: $mandateSignedOn,
             creditor: $creditor,
             positions: $positions,
-            blockers: $this->blockers($payer, $creditor->isComplete(), $now, $withoutPayer),
+            blockers: [...$this->blockers($payer, $creditor->isComplete(), $now, $withoutPayer), ...$contributionBlockers],
             warnings: $warnings,
             defaultCollectionDate: $collectionDate,
             // Mandatsreferenz, Gläubiger-ID, Zahlungsempfänger und Art der Lastschrift.
@@ -354,20 +359,13 @@ readonly class PayerDirectDebitPlanner
     }
 
     /**
-     * Fälligkeit laut „Nächste Buchung“ des Zahlers (Monat/Jahr) an seinem Zahltag (01. bzw. 15.).
-     * Ist keine nächste Buchung hinterlegt oder liegt sie weniger als zwei Tage in der Zukunft (bzw.
-     * schon zurück), der nächste Zahltag mit mindestens zwei Tagen Vorlauf. Fällt das Datum aufs
-     * Wochenende, gilt der darauffolgende Montag.
+     * Beitragslastschriften sind immer im März des Folgejahres fällig, am Zahltag des Zahlers (01.
+     * bzw. 15.) — unabhängig vom Monat der „Nächsten Buchung“, die nur das Beitragsjahr bestimmt.
+     * Fällt das Datum aufs Wochenende, gilt der darauffolgende Montag.
      */
     private function defaultCollectionDate(Member $payer, \DateTimeImmutable $now): \DateTimeImmutable
     {
-        $earliest = $now->setTime(0, 0)->modify('+2 days');
-        if ($payer->nextBookingMonth === null || $payer->nextBookingYear === null) {
-            return $this->nextPaymentDay($payer, $now);
-        }
-        $candidate = $earliest->setDate($payer->nextBookingYear, $payer->nextBookingMonth, $payer->paymentDay->dayOfMonth());
-
-        return $candidate < $earliest ? $this->nextPaymentDay($payer, $now) : $this->skipWeekend($candidate);
+        return $this->skipWeekend($now->setTime(0, 0)->setDate((int) $now->format('Y') + 1, 3, $payer->paymentDay->dayOfMonth()));
     }
 
     /** Nächster Zahltag des Zahlers mit mindestens zwei Tagen Vorlauf. */
@@ -387,6 +385,36 @@ readonly class PayerDirectDebitPlanner
         $weekday = (int) $date->format('N');
 
         return $weekday >= 6 ? $date->modify(sprintf('+%d days', 8 - $weekday)) : $date;
+    }
+
+    /**
+     * Ein Beitragsjahr wird erst abgebucht, wenn der Beitrag aller abgerechneten Mitglieder für genau
+     * dieses Jahr berechnet ist — nach dem Export für 2026 also erst nach „Beiträge neu berechnen“
+     * für 2027 (Alter zum 31.12., Familienrollen und Beitragssätze können sich ändern).
+     *
+     * @param list<Member> $charged
+     *
+     * @return list<DirectDebitObstacle>
+     */
+    private function contributionNotCalculatedBlockers(array $charged, int $contributionYear): array
+    {
+        $outdated = array_values(array_filter(
+            $charged,
+            static fn (Member $member): bool => $member->contributionCategory !== null && $member->contributionYear !== $contributionYear,
+        ));
+        if ($outdated === []) {
+            return [];
+        }
+
+        return [new DirectDebitObstacle(DirectDebitObstacleKind::ContributionNotCalculated, sprintf(
+            'Der Beitrag für %d ist noch nicht berechnet (%s). Zuerst unter Mitglieder „Beiträge neu berechnen“ für %d ausführen.',
+            $contributionYear,
+            implode(', ', array_map(
+                fn (Member $member): string => sprintf('%s: %s', $this->memberName($member), $member->contributionYear === null ? 'ohne Jahr' : 'für '.$member->contributionYear),
+                $outdated,
+            )),
+            $contributionYear,
+        ))];
     }
 
     private function memberName(Member $member): string

@@ -28,7 +28,7 @@ final class HouseholdContributionRecalculatorTest extends TestCase
             static function (Member $member) use (&$saved): Member {
                 $saved[] = $member->id;
 
-                return $member->withContribution(ContributionCategory::IndividualSenior, 5000, null);
+                return $member->withContribution(ContributionCategory::IndividualSenior, 5000, null, 2026);
             },
         );
 

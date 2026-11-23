@@ -88,7 +88,7 @@ readonly class RecalculateAllMemberContributionsUseCase
                 try {
                     $candidate = $this->exemption->correct($candidate, $hasBoardMember);
                     $outcome = $this->calculator->calculate($candidate, $otherHouseholdMembers, $now);
-                    $recalculated[] = $candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents);
+                    $recalculated[] = $candidate->withContribution($outcome->category, $outcome->amountCents, $outcome->workAssignmentSurchargeCents, (int) $now->format('Y'));
                 } catch (BusinessRuleViolationException $exception) {
                     $errors[] = new MemberRecalculationError($candidate->memberNumber, $exception->getMessage());
                 }
