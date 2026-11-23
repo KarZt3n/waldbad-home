@@ -197,6 +197,19 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertSame(4000, $draft->defaultAmountCents());
     }
 
+    /** Ist das laufende Jahr bei veralteter Buchung schon eingezogen (Sage), folgt das nächste Jahr. */
+    public function testStaleNextBookingSkipsAlreadyCollectedYears(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01', nextBookingYear: 2016, contributionYear: 2027);
+
+        $draft = $this->planner([$payer], records: [$this->record(2026, SequenceType::Recurring)])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame(2027, $draft->contributionYear);
+        self::assertFalse($draft->alreadyCollected);
+        self::assertSame([], $draft->bulkExportObstacles());
+        self::assertSame('2027-03-01', $draft->defaultCollectionDate->format('Y-m-d'));
+    }
+
     /** Ist der März des Beitragsjahres schon vorbei (verspäteter Export), gilt der nächste Zahltag. */
     public function testLateExportFallsBackToTheNextPaymentDay(): void
     {

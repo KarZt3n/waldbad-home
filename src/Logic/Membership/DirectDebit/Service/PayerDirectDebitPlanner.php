@@ -201,9 +201,7 @@ readonly class PayerDirectDebitPlanner
         if ($kind === DirectDebitPositionKind::Contribution) {
             $joinedThisYear = (int) $payer->joinedAt->format('Y') === $year;
             $joiningYearDebit = $joinedThisYear && !$this->hasRecordFor($kindRecords, static fn (DirectDebitRecord $record): bool => $record->contributionYear === $year);
-            // Eine zurückliegende nächste Buchung (z. B. aus der Sage-Übernahme) wird nicht nachträglich
-            // abgebucht — eingezogen wird dann das laufende Beitragsjahr.
-            $contributionYear = $joiningYearDebit ? $year : max($payer->nextBookingYear ?? $year, $year);
+            $contributionYear = $joiningYearDebit ? $year : $this->contributionYear($payer, $kindRecords, $year);
             $collectionDate = $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $contributionYear, $now);
         } else {
             $joiningYearDebit = false;
@@ -371,6 +369,26 @@ readonly class PayerDirectDebitPlanner
         $candidate = $now->setTime(0, 0)->setDate($contributionYear, 3, $payer->paymentDay->dayOfMonth());
 
         return $candidate < $now->setTime(0, 0)->modify('+2 days') ? $this->nextPaymentDay($payer, $now) : $this->skipWeekend($candidate);
+    }
+
+    /**
+     * Beitragsjahr laut „Nächster Buchung“. Eine zurückliegende (z. B. aus der Sage-Übernahme) wird
+     * nicht nachträglich abgebucht: Dann gilt das erste Jahr ab dem laufenden, das noch nicht
+     * eingezogen ist.
+     *
+     * @param list<DirectDebitRecord> $kindRecords
+     */
+    private function contributionYear(Member $payer, array $kindRecords, int $year): int
+    {
+        if ($payer->nextBookingYear !== null && $payer->nextBookingYear >= $year) {
+            return $payer->nextBookingYear;
+        }
+        $contributionYear = $year;
+        foreach ($kindRecords as $record) {
+            $contributionYear = max($contributionYear, $record->contributionYear + 1);
+        }
+
+        return $contributionYear;
     }
 
     /** Nächster Zahltag des Zahlers mit mindestens zwei Tagen Vorlauf. */
