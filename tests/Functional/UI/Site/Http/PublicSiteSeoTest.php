@@ -113,6 +113,22 @@ final class PublicSiteSeoTest extends WebTestCase
         }
     }
 
+    /** Redaktions-Stile (`admin.css`) laden nur die Redaktion, öffentliche Seiten bekommen nur `app.css`. */
+    public function testPublicPagesDoNotLoadAdminStyles(): void
+    {
+        $stylesheets = fn (string $path): string => implode("\n", $this->client->request('GET', $path)
+            ->filter('link[rel="stylesheet"]')
+            ->each(static fn ($link): string => (string) $link->attr('href')));
+
+        $public = $stylesheets('/meine-mitgliedschaft');
+        self::assertStringContainsString('/assets/styles/app', $public);
+        self::assertStringNotContainsString('/assets/styles/admin', $public);
+
+        $admin = $stylesheets('/admin');
+        self::assertStringContainsString('/assets/styles/app', $admin);
+        self::assertStringContainsString('/assets/styles/admin', $admin);
+    }
+
     /** Der Polyfill für alte Browser kommt vom eigenen Server, nicht von einem CDN (Datenschutz). */
     public function testImportmapPolyfillIsSelfHosted(): void
     {

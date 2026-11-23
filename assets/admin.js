@@ -4,6 +4,8 @@
 // `admin/*.js`-Modulen.
 
 import './styles/app.css';
+// Nach app.css: Stile, die nur die Redaktion braucht (öffentliche Seiten laden sie nicht).
+import './styles/admin.css';
 import {app, renderError, request} from './core.js';
 import {renderLogin} from './admin/auth.js';
 import {mountAdminShell} from './admin/shell.js';
