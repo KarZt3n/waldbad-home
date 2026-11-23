@@ -85,6 +85,7 @@ readonly class Page
         if ($this->status !== PageStatus::Draft) {
             throw new BusinessRuleViolationException('Nur ein Entwurf kann zur Prüfung eingereicht werden.');
         }
+        $this->assertComplete();
 
         return $this->withStatus(PageStatus::InReview, $updatedAt, $this->publishedAt);
     }
@@ -98,8 +99,24 @@ readonly class Page
         if ($this->status === PageStatus::Archived) {
             throw new BusinessRuleViolationException('Eine archivierte Seite kann nicht veröffentlicht werden.');
         }
+        $this->assertComplete();
 
         return $this->withStatus(PageStatus::Published, $publishedAt, $publishedAt);
+    }
+
+    /**
+     * Ein Entwurf darf unvollständige Blöcke enthalten (z. B. einen Handlungsaufruf ohne Link);
+     * erst Prüfung und Veröffentlichung verlangen alle Pflichtangaben.
+     */
+    private function assertComplete(): void
+    {
+        foreach ($this->blocks as $index => $block) {
+            try {
+                $block->assertComplete();
+            } catch (BusinessRuleViolationException $exception) {
+                throw new BusinessRuleViolationException(sprintf('Block %d: %s', $index + 1, $exception->getMessage()), previous: $exception);
+            }
+        }
     }
 
     public function unpublish(\DateTimeImmutable $updatedAt): self

@@ -228,14 +228,12 @@ readonly class PageRequestMapper
             }
             $normalizedEventDate = $eventDate === null || trim($eventDate) === '' ? null : trim($eventDate);
             $normalizedEventTime = $eventTime === null || trim($eventTime) === '' ? null : trim($eventTime);
+            // Fehlende Angaben sind im Entwurf erlaubt (siehe `ContentBlock::assertComplete()`), nur angegebene Werte müssen gültig sein.
             if ($blockType === ContentBlockType::Event) {
-                if ($normalizedEventTitle === null) {
-                    throw new BadRequestHttpException('Eine Veranstaltung benötigt eine Überschrift.');
-                }
-                if ($normalizedEventDate === null || !$this->isValidDate($normalizedEventDate)) {
+                if ($normalizedEventDate !== null && !$this->isValidDate($normalizedEventDate)) {
                     throw new BadRequestHttpException('Das Veranstaltungsdatum muss ein gültiges Datum sein.');
                 }
-                if ($normalizedEventTime === null || preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $normalizedEventTime) !== 1) {
+                if ($normalizedEventTime !== null && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $normalizedEventTime) !== 1) {
                     throw new BadRequestHttpException('Die Veranstaltungszeit muss im Format HH:MM angegeben werden.');
                 }
             }
@@ -320,7 +318,7 @@ readonly class PageRequestMapper
             $mediaUrl = $item['mediaUrl'] ?? null;
             $mediaAlt = $item['mediaAlt'] ?? null;
             $mediaSource = $item['mediaSource'] ?? null;
-            if (!is_string($title) || trim($title) === '') {
+            if (!is_string($title)) {
                 throw new BadRequestHttpException('Jeder Collection-Eintrag benötigt eine Überschrift.');
             }
             if (!is_string($content)) {

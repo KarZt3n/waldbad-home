@@ -748,7 +748,8 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             className: 'cta-row',
             children: [
                 callToActionContent,
-                element('a', {className: 'button', text: block.linkLabel, attributes: {href: block.linkUrl, target:'_blank'}}),
+                // In der Vorschau eines Entwurfs kann der Link noch fehlen.
+                ...(block.linkUrl && block.linkLabel ? [element('a', {className: 'button', text: block.linkLabel, attributes: {href: block.linkUrl, target:'_blank'}})] : []),
             ],
         });
     }

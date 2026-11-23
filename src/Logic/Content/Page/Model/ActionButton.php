@@ -19,16 +19,13 @@ readonly class ActionButton
         $this->url = self::normalizeUrl($url);
         $this->pageId = $pageId === null || trim($pageId) === '' ? null : trim($pageId);
 
-        if ($this->label === '') {
-            throw new BusinessRuleViolationException('Ein Aktionsbutton benötigt eine Beschriftung.');
-        }
         if (mb_strlen($this->label) > 80) {
             throw new BusinessRuleViolationException('Die Beschriftung eines Aktionsbuttons darf höchstens 80 Zeichen lang sein.');
         }
 
         $hasUrl = $this->url !== null;
         $hasPage = $this->pageId !== null;
-        if ($hasUrl === $hasPage) {
+        if ($hasUrl && $hasPage) {
             throw new BusinessRuleViolationException('Ein Aktionsbutton muss entweder auf eine URL oder auf eine Seite verweisen.');
         }
         if ($this->url !== null && mb_strlen($this->url) > 2048) {
@@ -40,6 +37,17 @@ readonly class ActionButton
         if ($hasUrl && preg_match('~^https?://~i', (string) $this->url) === 1
             && filter_var($this->url, FILTER_VALIDATE_URL) === false) {
             throw new BusinessRuleViolationException('Die URL eines Aktionsbuttons ist ungültig.');
+        }
+    }
+
+    /** Pflichtangaben erst beim Einreichen/Veröffentlichen, siehe `ContentBlock::assertComplete()`. */
+    public function assertComplete(): void
+    {
+        if ($this->label === '') {
+            throw new BusinessRuleViolationException('Ein Aktionsbutton benötigt eine Beschriftung.');
+        }
+        if ($this->url === null && $this->pageId === null) {
+            throw new BusinessRuleViolationException('Ein Aktionsbutton muss entweder auf eine URL oder auf eine Seite verweisen.');
         }
     }
 

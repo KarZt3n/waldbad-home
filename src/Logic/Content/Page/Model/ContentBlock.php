@@ -42,36 +42,6 @@ readonly class ContentBlock
         /** @var list<ContentCollectionItem> */
         public array $collectionItems = [],
     ) {
-        if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
-            && trim($this->content) === ''
-            && $this->mediaUrl === null
-            && $this->embeddedPageId === null) {
-            throw new BusinessRuleViolationException('Ein Inhaltsblock benötigt Text oder ein Medium.');
-        }
-
-        if ($this->type === ContentBlockType::EmbeddedPage && $this->embeddedPageId === null) {
-            throw new BusinessRuleViolationException('Eine eingebettete Seite muss ausgewählt werden.');
-        }
-
-        if ($this->type === ContentBlockType::PageTeaser && $this->embeddedPageId === null) {
-            throw new BusinessRuleViolationException('Ein Seitenteaser benötigt eine Zielseite.');
-        }
-
-        if ($this->type === ContentBlockType::EventReference
-            && ($this->embeddedPageId === null || $this->eventIdentifier === null || trim($this->eventIdentifier) === '')) {
-            throw new BusinessRuleViolationException('Eine eingebettete Veranstaltung muss ausgewählt werden.');
-        }
-
-        if ($this->type === ContentBlockType::Event
-            && ($this->eventTitle === null || $this->eventDate === null || $this->eventTime === null)) {
-            throw new BusinessRuleViolationException('Eine Veranstaltung benötigt Überschrift, Datum und Uhrzeit.');
-        }
-
-        if ($this->type === ContentBlockType::Event && $this->eventHelpEnabled
-            && ($this->eventIdentifier === null || trim($this->eventIdentifier) === '')) {
-            throw new BusinessRuleViolationException('Eine Veranstaltung mit Helferanmeldung benötigt eine stabile Kennung.');
-        }
-
         if ($this->eventHelpButtonLabel !== null && mb_strlen(trim($this->eventHelpButtonLabel)) > 80) {
             throw new BusinessRuleViolationException('Die Beschriftung der Helferanmeldung ist zu lang.');
         }
@@ -92,11 +62,6 @@ readonly class ContentBlock
 
         if ($this->mediaSource !== null && mb_strlen(trim($this->mediaSource)) > 300) {
             throw new BusinessRuleViolationException('Die Bildquelle darf höchstens 300 Zeichen lang sein.');
-        }
-
-        if (in_array($this->type, [ContentBlockType::Image, ContentBlockType::ImageText], true)
-            && $this->mediaUrl === null) {
-            throw new BusinessRuleViolationException('Ein Bildblock benötigt eine Bild-URL.');
         }
 
         if (in_array($this->type, [ContentBlockType::ImageText, ContentBlockType::PageTeaser], true)
@@ -147,12 +112,8 @@ readonly class ContentBlock
             throw new BusinessRuleViolationException('Die Bilddarstellung ist ungültig.');
         }
 
-        if ($this->type === ContentBlockType::CallToAction && ($this->linkUrl === null || $this->linkLabel === null)) {
-            throw new BusinessRuleViolationException('Ein Call-to-Action benötigt Link und Beschriftung.');
-        }
-
         $extension = $this->extensionKey === null ? null : PageExtension::tryFrom($this->extensionKey);
-        if ($this->type === ContentBlockType::Extension && $extension === null) {
+        if ($this->extensionKey !== null && $extension === null) {
             throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
         }
 
@@ -173,9 +134,70 @@ readonly class ContentBlock
             && ($this->collectionColumns === null || $this->collectionColumns < 1 || $this->collectionColumns > 4)) {
             throw new BusinessRuleViolationException('Die Collection muss zwischen einer und vier Spalten besitzen.');
         }
+    }
+
+    /**
+     * Pflichtangaben eines Blocks. Sie gelten erst beim Einreichen zur Prüfung und beim
+     * Veröffentlichen (siehe `Page::assertComplete()`), damit ein halb ausgefüllter Block als
+     * Entwurf gespeichert werden kann; Format- und Längenregeln prüft dagegen immer der Konstruktor.
+     */
+    public function assertComplete(): void
+    {
+        if (!in_array($this->type, [ContentBlockType::EmbeddedPage, ContentBlockType::PageTeaser, ContentBlockType::Event, ContentBlockType::EventReference, ContentBlockType::Extension], true)
+            && trim($this->content) === ''
+            && $this->mediaUrl === null
+            && $this->embeddedPageId === null) {
+            throw new BusinessRuleViolationException('Ein Inhaltsblock benötigt Text oder ein Medium.');
+        }
+
+        if ($this->type === ContentBlockType::EmbeddedPage && $this->embeddedPageId === null) {
+            throw new BusinessRuleViolationException('Eine eingebettete Seite muss ausgewählt werden.');
+        }
+
+        if ($this->type === ContentBlockType::PageTeaser && $this->embeddedPageId === null) {
+            throw new BusinessRuleViolationException('Ein Seitenteaser benötigt eine Zielseite.');
+        }
+
+        if ($this->type === ContentBlockType::EventReference
+            && ($this->embeddedPageId === null || $this->eventIdentifier === null || trim($this->eventIdentifier) === '')) {
+            throw new BusinessRuleViolationException('Eine eingebettete Veranstaltung muss ausgewählt werden.');
+        }
+
+        if ($this->type === ContentBlockType::Event
+            && ($this->eventTitle === null || $this->eventDate === null || $this->eventTime === null)) {
+            throw new BusinessRuleViolationException('Eine Veranstaltung benötigt Überschrift, Datum und Uhrzeit.');
+        }
+
+        if ($this->type === ContentBlockType::Event && $this->eventHelpEnabled
+            && ($this->eventIdentifier === null || trim($this->eventIdentifier) === '')) {
+            throw new BusinessRuleViolationException('Eine Veranstaltung mit Helferanmeldung benötigt eine stabile Kennung.');
+        }
+
+        if (in_array($this->type, [ContentBlockType::Image, ContentBlockType::ImageText], true)
+            && $this->mediaUrl === null) {
+            throw new BusinessRuleViolationException('Ein Bildblock benötigt eine Bild-URL.');
+        }
+
+        if ($this->type === ContentBlockType::CallToAction && ($this->linkUrl === null || $this->linkLabel === null)) {
+            throw new BusinessRuleViolationException('Ein Call-to-Action benötigt Link und Beschriftung.');
+        }
+
+        if ($this->type === ContentBlockType::Extension && $this->extensionKey === null) {
+            throw new BusinessRuleViolationException('Die ausgewählte Seitenerweiterung ist ungültig.');
+        }
 
         if ($this->type === ContentBlockType::FeatureCollection && $this->collectionItems === []) {
             throw new BusinessRuleViolationException('Die Collection benötigt mindestens einen Eintrag.');
+        }
+
+        foreach ($this->actionButtons as $button) {
+            $button->assertComplete();
+        }
+        foreach ($this->eventCallToActions as $callToAction) {
+            $callToAction->assertComplete();
+        }
+        foreach ($this->collectionItems as $item) {
+            $item->assertComplete();
         }
     }
 

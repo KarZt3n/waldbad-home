@@ -1285,8 +1285,11 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
     });
     const saveButton = element('button', {className: 'button', text: 'Entwurf speichern', attributes: {type: 'submit'}});
     if (!canEditPages(page?.id || null) || page?.status === 'archived') saveButton.disabled = true;
+    // Ohne Browser-Pflichtfeldprüfung: Entwürfe dürfen unvollständige Blöcke enthalten, die
+    // Pflichtangaben prüft der Server erst bei „Zur Prüfung“ und „Veröffentlichen“.
     const form = element('form', {
         className: 'editor-form',
+        attributes: {novalidate: 'novalidate'},
         children: [
             element('div', {className: 'editor-heading', children: [
                 element('div', {children: [

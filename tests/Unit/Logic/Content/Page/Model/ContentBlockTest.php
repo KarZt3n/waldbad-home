@@ -35,11 +35,11 @@ final class ContentBlockTest extends TestCase
         $this->expectException(BusinessRuleViolationException::class);
         $this->expectExceptionMessage('Zielseite');
 
-        new ContentBlock(
+        (new ContentBlock(
             type: ContentBlockType::PageTeaser,
             content: '<p>Teaser</p>',
             layout: 'image_left',
-        );
+        ))->assertComplete();
     }
 
     public function testImageSourceLengthIsLimited(): void
@@ -81,11 +81,35 @@ final class ContentBlockTest extends TestCase
         $this->expectException(BusinessRuleViolationException::class);
         $this->expectExceptionMessage('mindestens einen Eintrag');
 
-        new ContentBlock(
+        (new ContentBlock(
             type: ContentBlockType::FeatureCollection,
             content: 'Wir bieten unseren Besuchern',
             collectionColumns: 3,
-        );
+        ))->assertComplete();
+    }
+
+    public function testIncompleteBlocksCanBeCreatedForDrafts(): void
+    {
+        $callToAction = new ContentBlock(type: ContentBlockType::CallToAction, content: '<p>Jetzt mitmachen</p>');
+        $event = new ContentBlock(type: ContentBlockType::Event, content: '', eventTitle: 'Sommerfest');
+        $button = new ContentBlock(type: ContentBlockType::RichText, content: '<p>Text</p>', actionButtons: [new ActionButton('', null, null)]);
+
+        self::assertNull($callToAction->linkUrl);
+        self::assertNull($event->eventDate);
+        self::assertCount(1, $button->actionButtons);
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('Call-to-Action benötigt Link');
+        $callToAction->assertComplete();
+    }
+
+    public function testActionButtonWithoutTargetIsIncomplete(): void
+    {
+        $block = new ContentBlock(type: ContentBlockType::RichText, content: '<p>Text</p>', actionButtons: [new ActionButton('Mehr', null, null)]);
+
+        $this->expectException(BusinessRuleViolationException::class);
+        $this->expectExceptionMessage('URL oder auf eine Seite');
+        $block->assertComplete();
     }
 
     public function testFeatureCollectionLimitsColumns(): void

@@ -520,4 +520,4 @@ const showMediaLibrary = async (segments = []) => {
 };
 
 // Einige Helfer nutzt auch `media-picker.js` (Bildauswahl im Seiteneditor mit Ordnerbaum).
-export {ACCEPTED_IMAGE_TYPES, folderLabel, formatFileSize, pickFiles, showMediaLibrary, slugifyFolderName};
+export {ACCEPTED_FILE_TYPES, ACCEPTED_IMAGE_TYPES, folderLabel, formatFileSize, pickFiles, showMediaLibrary, slugifyFolderName};

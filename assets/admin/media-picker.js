@@ -1,15 +1,15 @@
 // Medien-Dialoge für alle Content-Redaktionseingaben (Seitenblöcke, Collections, Veranstaltungen,
-// Vorlagen, Logo): „Bild auswählen“ zeigt wie in der Mediathek links den Ordnerbaum unter `/uploads`
-// und rechts die Bilder des gewählten Ordners — inklusive Hochladen in den gewählten Ordner
-// (dafür sind Mediathek-Bearbeitungsrechte nötig; ohne sie geht der Upload wie bisher in den
-// Ordner `media`, siehe `LocalImageStorage`). Fest dimensioniertes Overlay mit eigenen
-// Scrollbereichen für Baum und Bildraster. `openMediaFilePicker` bleibt die Dateiauswahl für
-// Linkziele wie den Handlungsaufruf; sie steht allen offen, die Seiten bearbeiten dürfen.
+// Vorlagen, Logo): „Bild auswählen“ bzw. „Datei auswählen“ (Linkziele wie der Handlungsaufruf)
+// zeigen wie in der Mediathek links den Ordnerbaum unter `/uploads` und rechts die Bilder bzw.
+// Dateien des gewählten Ordners — inklusive Hochladen in den gewählten Ordner (dafür sind
+// Mediathek-Bearbeitungsrechte nötig; ohne sie gehen Bilder wie bisher in den Ordner `media`,
+// siehe `LocalImageStorage`, beliebige Dateien lassen sich dann nicht hochladen). Fest
+// dimensioniertes Overlay mit eigenen Scrollbereichen für Baum und Raster.
 
 import {element, field, formMessage, request, toast} from '../core.js';
 import {emptyState, searchField, treeLayout} from './ui.js';
 import {canEditModule} from './session.js';
-import {ACCEPTED_IMAGE_TYPES, folderLabel, formatFileSize, pickFiles, slugifyFolderName} from './media.js';
+import {ACCEPTED_FILE_TYPES, ACCEPTED_IMAGE_TYPES, folderLabel, formatFileSize, pickFiles, slugifyFolderName} from './media.js';
 
 const TREE_LAYOUT = {storageKey: 'waldbad.admin.tree-width.media-picker', defaultWidth: 'minmax(13rem, 17rem)'};
 
@@ -30,13 +30,23 @@ const mediaPickerDialog = (eyebrowText, title) => {
 
 const mediaDetailsRow = (...parts) => element('small', {text: parts.filter(Boolean).join(' · ')});
 
+const MEDIA_FILE_TYPE_LABEL = (file) => (file.url.split('.').pop() || 'Datei').toUpperCase();
+
+const PICKER_TEXTS = {
+    image: {title: 'Bild auswählen', plural: 'Bildern', loading: 'Bilder werden geladen …', search: 'Bildname, Quelle oder Ordner suchen …', upload: 'Bild', none: 'Kein Bild entspricht der Suche.', empty: 'keine Bilder', region: 'Bilder'},
+    file: {title: 'Datei auswählen', plural: 'Dateien', loading: 'Dateien werden geladen …', search: 'Dateiname, Quelle oder Ordner suchen …', upload: 'Datei', none: 'Keine Datei entspricht der Suche.', empty: 'keine Dateien', region: 'Dateien'},
+};
+
 /**
- * Bildauswahl mit Mediathek-Ordnerbaum. `onSelect(image)` übernimmt die gewählte Bilddatei;
- * `getUploadSource` liefert für den Upload die im Content-Formular gepflegte Bildquelle.
+ * Mediathek-Overlay mit Ordnerbaum. `kind` = `image` zeigt nur Bilder, `file` alle Dateien.
+ * `onSelect(file)` übernimmt die Auswahl; `getUploadSource` liefert für den Upload die im
+ * Content-Formular gepflegte Bildquelle.
  */
-const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
+const openMediaPicker = async ({kind, onSelect, getUploadSource = null}) => {
+    const texts = PICKER_TEXTS[kind];
+    const imagesOnly = kind === 'image';
     const editable = canEditModule('media_library');
-    const dialog = mediaPickerDialog('Mediathek', 'Bild auswählen');
+    const dialog = mediaPickerDialog('Mediathek', texts.title);
     dialog.classList.add('media-picker-dialog');
     const chooseImage = (image) => {
         dialog.close();
@@ -51,9 +61,9 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
     let searchTerm = '';
 
     const folderHeading = element('h3', {text: folderLabel(folder)});
-    const countLabel = element('span', {className: 'media-library-count', text: 'Bildauswahl wird geladen …'});
-    const grid = element('div', {className: 'media-grid media-library-grid media-picker-grid', children: [emptyState('Bilder werden geladen …')]});
-    const search = searchField('Bildname, Quelle oder Ordner suchen …', '', (value) => {
+    const countLabel = element('span', {className: 'media-library-count', text: texts.loading});
+    const grid = element('div', {className: 'media-grid media-library-grid media-picker-grid', children: [emptyState(texts.loading)]});
+    const search = searchField(texts.search, '', (value) => {
         searchTerm = value;
         renderContent();
     });
@@ -64,12 +74,14 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
     });
     const recurseToggle = element('label', {className: 'check-field', children: [recursive, element('span', {text: 'Unterordner einbeziehen'})]});
 
-    const uploadButton = element('button', {className: 'button', text: editable ? '＋ Bild hier hochladen' : 'Bild hochladen', attributes: {type: 'button'}});
+    const uploadButton = element('button', {className: 'button', text: editable ? `＋ ${texts.upload} hier hochladen` : `${texts.upload} hochladen`, attributes: {type: 'button'}});
+    // Ohne Mediathek-Recht gibt es nur den Bild-Upload nach /uploads/media.
+    uploadButton.hidden = !editable && !imagesOnly;
     // Bildquelle aus dem aufrufenden Formular mitliefern, damit sie wie beim bisherigen
     // Formular-Upload direkt in der Medienbibliothek landet.
     const uploadSource = () => (typeof getUploadSource === 'function' ? getUploadSource() : '') ?? '';
     uploadButton.addEventListener('click', async () => {
-        const [file] = await pickFiles(ACCEPTED_IMAGE_TYPES);
+        const [file] = await pickFiles(imagesOnly ? ACCEPTED_IMAGE_TYPES : ACCEPTED_FILE_TYPES);
         if (!file) return;
         uploadButton.disabled = true;
         const body = new FormData();
@@ -152,11 +164,11 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
         headerActions.append(createFolderButton);
     }
 
-    const content = element('section', {className: 'tree-content media-picker-content', attributes: {'aria-label': 'Bilder'}, children: [
+    const content = element('section', {className: 'tree-content media-picker-content', attributes: {'aria-label': texts.region}, children: [
         element('header', {className: 'tree-content-header media-picker-header', children: [
             element('div', {className: 'media-picker-info', children: [
                 folderHeading,
-                ...(editable ? [] : [element('small', {text: 'Ohne Mediathek-Recht wird der Upload immer im Ordner /uploads/media gespeichert.'})]),
+                ...(editable || !imagesOnly ? [] : [element('small', {text: 'Ohne Mediathek-Recht wird der Upload immer im Ordner /uploads/media gespeichert.'})]),
             ]}),
             headerActions,
         ]}),
@@ -173,7 +185,9 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
         choose.addEventListener('click', () => chooseImage(image));
 
         return element('article', {className: 'media-card', children: [
-            element('div', {className: 'media-card-preview', children: [element('img', {attributes: {src: image.url, alt: '', loading: 'lazy'}})]}),
+            element('div', {className: 'media-card-preview', children: [image.isImage
+                ? element('img', {attributes: {src: image.url, alt: '', loading: 'lazy'}})
+                : element('span', {className: 'media-file-type', text: MEDIA_FILE_TYPE_LABEL(image)})]}),
             element('strong', {text: image.originalName, attributes: {title: image.originalName}}),
             mediaDetailsRow(image.width && image.height ? `${image.width} × ${image.height} px` : null, formatFileSize(image.size)),
             ...(includeSubfolders ? [mediaDetailsRow(`📁 ${folderLabel(image.folder)}`)] : []),
@@ -185,15 +199,15 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
     const renderContent = () => {
         folderHeading.textContent = folderLabel(folder);
         const term = searchTerm.trim().toLowerCase();
-        const images = files.filter((item) => item.isImage);
+        const images = imagesOnly ? files.filter((item) => item.isImage) : files;
         const visible = images.filter((item) => !term
             || [item.originalName, item.url, item.source || '', item.folder].some((value) => value.toLowerCase().includes(term)));
-        countLabel.textContent = `${visible.length} von ${images.length} Bildern`;
+        countLabel.textContent = `${visible.length} von ${images.length} ${texts.plural}`;
         grid.replaceChildren(...(loadError
             ? [emptyState(loadError)]
             : visible.length
                 ? visible.map(imageCard)
-                : [emptyState(images.length ? 'Kein Bild entspricht der Suche.' : `Der Ordner ${folderLabel(folder)} enthält keine Bilder.`)]));
+                : [emptyState(images.length ? texts.none : `Der Ordner ${folderLabel(folder)} enthält ${texts.empty}.`)]));
     };
 
     const renderTree = () => {
@@ -261,56 +275,9 @@ const openImagePicker = async (onSelect, {getUploadSource = null} = {}) => {
     }
 };
 
-const MEDIA_FILE_TYPE_LABEL = (file) => (file.url.split('.').pop() || 'Datei').toUpperCase();
+const openImagePicker = (onSelect, {getUploadSource = null} = {}) => openMediaPicker({kind: 'image', onSelect, getUploadSource});
 
-// Dateiauswahl aus der Mediathek (alle Ordner) für Linkziele wie den Handlungsaufruf.
-const openMediaFilePicker = async (onSelect) => {
-    const dialog = mediaPickerDialog('Mediathek', 'Datei auswählen');
-    const search = element('input', {attributes: {type: 'search', placeholder: 'Dateiname oder Ordner suchen …', 'aria-label': 'Dateiname oder Ordner suchen'}});
-    const folder = element('select', {attributes: {'aria-label': 'Ordner'}, children: [element('option', {text: 'Alle Ordner', attributes: {value: ''}})]});
-    const list = element('ul', {className: 'media-file-picker-list', children: [element('li', {text: 'Dateien werden geladen …'})]});
-    dialog.append(
-        element('div', {className: 'media-file-picker-toolbar', children: [search, folder]}),
-        list,
-    );
-    document.body.append(dialog);
-    dialog.showModal();
-    search.focus();
-
-    try {
-        const [library, folders] = await Promise.all([
-            request('/api/admin/v1/media-library?recursive=1'),
-            request('/api/admin/v1/media-library/folders'),
-        ]);
-        folder.append(...folders.items.map((item) => element('option', {text: `/uploads/${item.path}`, attributes: {value: item.path}})));
-        const render = () => {
-            const term = search.value.trim().toLowerCase();
-            const files = library.items.filter((file) => (!folder.value || file.folder === folder.value || file.folder.startsWith(`${folder.value}/`))
-                && (!term || `${file.originalName} ${file.url}`.toLowerCase().includes(term)));
-            list.replaceChildren(...(files.length ? files.map((file) => {
-                const choose = element('button', {className: 'media-file-picker-item', attributes: {type: 'button'}, children: [
-                    file.isImage
-                        ? element('img', {attributes: {src: file.url, alt: '', loading: 'lazy'}})
-                        : element('span', {className: 'media-file-picker-type', text: MEDIA_FILE_TYPE_LABEL(file)}),
-                    element('span', {children: [
-                        element('strong', {text: file.originalName}),
-                        element('small', {text: file.url}),
-                    ]}),
-                ]});
-                choose.addEventListener('click', () => {
-                    onSelect(file);
-                    dialog.close();
-                });
-
-                return element('li', {children: [choose]});
-            }) : [element('li', {children: [emptyState(library.items.length ? 'Keine Datei passt zur Auswahl.' : 'Die Mediathek enthält noch keine Dateien.')]})]));
-        };
-        search.addEventListener('input', render);
-        folder.addEventListener('change', render);
-        render();
-    } catch (error) {
-        list.replaceChildren(element('li', {children: [emptyState(error.message)]}));
-    }
-};
+// Dateiauswahl für Linkziele wie den Handlungsaufruf — gleiches Overlay, aber alle Dateitypen.
+const openMediaFilePicker = (onSelect) => openMediaPicker({kind: 'file', onSelect});
 
 export {openImagePicker, openMediaFilePicker};
