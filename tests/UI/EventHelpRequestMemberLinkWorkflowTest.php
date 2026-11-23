@@ -156,13 +156,15 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
             self::assertIsString($lastName);
             $byLastName[$lastName] = $item;
         }
-        self::assertSame($memberNumber, $byLastName['musterfrau']['memberNumber']);
-        self::assertSame($memberId, $byLastName['musterfrau']['memberId']);
+        // Zugeordnet -> Schreibweise aus dem Mitgliedsdatensatz statt der eingegebenen.
+        self::assertSame('Erika', $byLastName['Musterfrau']['firstName']);
+        self::assertSame($memberNumber, $byLastName['Musterfrau']['memberNumber']);
+        self::assertSame($memberId, $byLastName['Musterfrau']['memberId']);
         // Straße + Geburtsdatum des verknüpften Mitglieds werden mitgeliefert (Anzeige in der
         // Helferauflistung, analog zur Kandidatenanzeige beim manuellen Verknüpfen).
-        self::assertSame('Kirchanger 14', $byLastName['musterfrau']['memberStreet']);
-        self::assertSame('1990-06-15', $byLastName['musterfrau']['memberBirthDate']);
-        self::assertSame(['erika@example.test'], $byLastName['musterfrau']['recipientEmails']);
+        self::assertSame('Kirchanger 14', $byLastName['Musterfrau']['memberStreet']);
+        self::assertSame('1990-06-15', $byLastName['Musterfrau']['memberBirthDate']);
+        self::assertSame(['erika@example.test'], $byLastName['Musterfrau']['recipientEmails']);
         self::assertNull($byLastName['Ohnematch']['memberNumber']);
         $unmatchedId = $byLastName['Ohnematch']['id'];
         self::assertIsString($unmatchedId);
@@ -302,11 +304,11 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         $scheduleId = $this->responseData()['id'];
         self::assertIsString($scheduleId);
 
-        $submit = function (array $activityIds) use ($scheduleId): void {
+        $submit = function (array $activityIds, string $lastName = 'Musterfrau') use ($scheduleId): void {
             $this->client->jsonRequest('POST', '/api/public/v1/event-help-requests', [
                 'eventIdentifier' => $scheduleId,
                 'firstName' => 'Erika',
-                'lastName' => 'Musterfrau',
+                'lastName' => $lastName,
                 'birthDate' => '1990-06-15',
                 'message' => '',
                 'activityIds' => $activityIds,
@@ -315,7 +317,8 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         };
         $submit([$activity1Id]);
         self::assertResponseStatusCodeSame(202);
-        $submit([$activity2Id]);
+        // Abweichender Nachname: Zuordnung über Vorname + Geburtsdatum, angezeigt wird der Mitgliedsname.
+        $submit([$activity2Id], 'muster');
         self::assertResponseStatusCodeSame(202);
 
         $this->client->request('GET', '/api/admin/v1/event-help-requests', server: $headers);
@@ -324,6 +327,7 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         self::assertIsArray($responseItems);
         $items = $this->itemsLinkedTo($responseItems, $memberId);
         self::assertCount(1, $items, 'Zwei Anmeldungen derselben verknüpften Person zur selben Veranstaltung dürfen keine zwei Datensätze erzeugen.');
+        self::assertSame(['Erika', 'Musterfrau'], [$items[0]['firstName'], $items[0]['lastName']]);
         $selectedActivities = $items[0]['selectedActivities'];
         self::assertIsArray($selectedActivities);
         $selectedActivityIds = [];
@@ -609,6 +613,8 @@ final class EventHelpRequestMemberLinkWorkflowTest extends WebTestCase
         $items = $this->itemsLinkedTo($responseItems, $memberId);
         self::assertCount(1, $items, 'Beide Teilnahmezeiten müssen in einer einzigen zusammengeführten Anmeldung landen.');
         $merged = $items[0];
+        // Nach dem Verknüpfen gilt der Name aus dem Mitgliedsdatensatz, auch für die zusammengeführte Anmeldung.
+        self::assertSame(['Frida', 'Beispiel'], [$merged['firstName'], $merged['lastName']]);
         self::assertSame('participated', $merged['status']);
         self::assertSame(120, $merged['participationMinutes']);
         $intervals = $merged['participationIntervals'];

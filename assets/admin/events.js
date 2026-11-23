@@ -57,12 +57,46 @@ const showEventHelpers = async () => {
             .map((details) => details.dataset.archiveKey)
             .filter(Boolean),
     );
+    // Suchbegriffe je Veranstaltung überstehen den Neuaufbau nach jedem Ein-/Austragen ebenso.
+    const previousSearchTerms = new Map(
+        [...workspace.querySelectorAll('input[data-helper-search]')]
+            .map((input) => [input.dataset.helperSearch, input.value]),
+    );
+    const normalizeSearchText = (text) => String(text || '').toLocaleLowerCase('de-DE').normalize('NFD').replace(/\p{Diacritic}/gu, '');
+    // Alle Suchwörter müssen in Name (Anmeldung oder verknüpftes Mitglied) oder Mitgliedsnummer vorkommen.
+    const matchesHelperSearch = (requestItem, term) => {
+        const words = normalizeSearchText(term).split(/\s+/).filter(Boolean);
+        if (!words.length) return true;
+        const haystack = normalizeSearchText([
+            requestItem.firstName, requestItem.lastName,
+            requestItem.memberFirstName, requestItem.memberLastName, requestItem.memberNumber,
+        ].filter(Boolean).join(' '));
+        return words.every((word) => haystack.includes(word));
+    };
+    // Zusammengeführte Mehrfachanmeldungen (siehe `buildParticipantEntries`) bleiben vollständig,
+    // sobald eine davon passt.
+    const filterHelperRequests = (requestList, term) => {
+        const matchingMemberIds = new Set(requestList
+            .filter((requestItem) => requestItem.memberId && matchesHelperSearch(requestItem, term))
+            .map((requestItem) => requestItem.memberId));
+        return requestList.filter((requestItem) => (requestItem.memberId && matchingMemberIds.has(requestItem.memberId))
+            || matchesHelperSearch(requestItem, term));
+    };
     const saveParticipation = async (requestItem, participated, intervals = []) => {
         await request(`/api/admin/v1/event-help-requests/${requestItem.id}/participation`, {
             method: 'POST',
             body: JSON.stringify({participated, intervals}),
         });
-        toast(participated ? 'Teilnahme und Helferstunden wurden gespeichert.' : 'Die Person wurde als nicht teilgenommen markiert.');
+        toast(participated ? 'Die Zeiten wurden gespeichert.' : 'Die Person wurde als nicht teilgenommen markiert.');
+        await showEventManagement();
+    };
+    // Ein-/Austragen per Klick: Die Uhrzeit setzt der Server (gerundet, siehe
+    // `ParticipationTimeRounding`), korrigiert wird über einen Klick auf die Zeiten.
+    const recordAttendance = async (requestItem, action) => {
+        await request(`/api/admin/v1/event-help-requests/${requestItem.id}/${action}`, {method: 'POST'});
+        toast(action === 'check-in'
+            ? `${requestItem.firstName} ${requestItem.lastName} ist als anwesend markiert.`
+            : `${requestItem.firstName} ${requestItem.lastName} wurde ausgetragen.`);
         await showEventManagement();
     };
     const openParticipationDialog = (requestItem) => {
@@ -75,6 +109,7 @@ const showEventHelpers = async () => {
             const minutes = [...intervalList.children].reduce((total, row) => {
                 const fromValue = row.querySelector('[data-interval-from]').value;
                 const toValue = row.querySelector('[data-interval-to]').value;
+                // Leeres „Bis" = noch anwesend; zählt erst nach dem Austragen zur Gesamtzeit.
                 if (!/^\d{2}:\d{2}$/.test(fromValue) || !/^\d{2}:\d{2}$/.test(toValue)) return total;
                 const [fromHours, fromMinutes] = fromValue.split(':').map(Number);
                 const [toHours, toMinutes] = toValue.split(':').map(Number);
@@ -98,7 +133,6 @@ const showEventHelpers = async () => {
             const fromInput = from.querySelector('input');
             const toInput = to.querySelector('input');
             fromInput.required = true;
-            toInput.required = true;
             fromInput.dataset.intervalFrom = 'true';
             toInput.dataset.intervalTo = 'true';
             fromInput.addEventListener('input', updateTotalPreview);
@@ -120,14 +154,16 @@ const showEventHelpers = async () => {
         const existingIntervals = Array.isArray(requestItem.participationIntervals) ? requestItem.participationIntervals : [];
         if (existingIntervals.length) existingIntervals.forEach((interval) => appendInterval(interval));
         else appendInterval({fromTime: requestItem.eventTime || '', toTime: ''});
+        const openHint = element('p', {className: 'field-hint', text: '„Bis" leer lassen, solange die Person noch anwesend ist.'});
         addInterval.addEventListener('click', () => appendInterval());
         const cancel = element('button', {className: 'secondary-button', text: 'Abbrechen', attributes: {type: 'button'}});
-        const submit = element('button', {className: 'button', text: 'Teilnahme speichern', attributes: {type: 'submit'}});
+        const submit = element('button', {className: 'button', text: 'Zeiten speichern', attributes: {type: 'submit'}});
         const form = element('form', {className: 'participation-form', children: [
-            element('p', {className: 'eyebrow', text: 'Teilnahme erfassen'}),
+            element('p', {className: 'eyebrow', text: 'Zeiten bearbeiten'}),
             element('h2', {text: `${requestItem.firstName} ${requestItem.lastName}`}),
             element('p', {text: requestItem.eventTitle}),
             intervalList,
+            openHint,
             addInterval,
             totalPreview,
             message,
@@ -140,7 +176,7 @@ const showEventHelpers = async () => {
             try {
                 const intervals = [...intervalList.children].map((row) => ({
                     fromTime: row.querySelector('[data-interval-from]').value,
-                    toTime: row.querySelector('[data-interval-to]').value,
+                    toTime: row.querySelector('[data-interval-to]').value || null,
                 }));
                 await saveParticipation(requestItem, true, intervals);
                 dialog.close();
@@ -274,8 +310,8 @@ const showEventHelpers = async () => {
         document.body.append(dialog);
         dialog.showModal();
     };
-    // Manuelles Hinzufügen einer Person als Helfer zu einer Veranstaltung (Button „+" neben
-    // „Mail an alle Helfer") — für Fälle, in denen jemand nicht über das öffentliche Formular
+    // Manuelles Hinzufügen einer Person als Helfer zu einer Veranstaltung („Neuen Teilnehmer
+    // hinzufügen" im Menü je Veranstaltung) — für Fälle, in denen jemand nicht über das öffentliche Formular
     // angemeldet hat (z. B. spontan vor Ort). Nutzt denselben Mitglied-Such-Endpunkt wie
     // „Mitglied verknüpfen" (siehe `openLinkMemberDialog` oben) und `AddEventHelpRequestUseCase`.
     // Ohne `event` (Button „Neuen Helfer anmelden") wird die Veranstaltung zuerst aus `events` gewählt.
@@ -342,6 +378,11 @@ const showEventHelpers = async () => {
                 selectedEvent = events.find((option) => option.eventIdentifier === select.value) || null;
                 updateSaveState();
             });
+            // Vorauswahl: nächste (heutige oder kommende) Veranstaltung.
+            if (upcoming.length) {
+                select.value = upcoming[0].eventIdentifier;
+                selectedEvent = upcoming[0];
+            }
 
             return element('label', {className: 'field', children: [element('span', {text: 'Veranstaltung'}), select]});
         };
@@ -376,36 +417,53 @@ const showEventHelpers = async () => {
         dialog.showModal();
     };
     const participationStatus = (requestItem) => {
+        if (requestItem.status === 'present') {
+            const open = (requestItem.participationIntervals || []).find((interval) => !interval.toTime);
+            return open ? `Anwesend seit ${open.fromTime} Uhr` : 'Anwesend';
+        }
         if (requestItem.status === 'participated') {
             const hours = new Intl.NumberFormat('de-DE', {maximumFractionDigits: 2}).format(requestItem.participationMinutes / 60);
-            return `Teilgenommen · ${hours} Std.`;
+            return `Ausgetragen · ${hours} Std.`;
         }
         if (requestItem.status === 'not_participated') return 'Nicht teilgenommen';
         if (requestItem.status === 'resolved') return 'Erledigt';
-        return 'Neu';
+        return 'Angemeldet';
     };
+    // Reihenfolge je Veranstaltung: Anwesend, Ausgetragen, nur angemeldet.
+    const PARTICIPANT_STATUS_ORDER = {present: 0, participated: 1, new: 2, resolved: 3, not_participated: 4};
+    const sortByParticipationStatus = (requestList) => [...requestList]
+        .sort((first, second) => (PARTICIPANT_STATUS_ORDER[first.status] ?? 9) - (PARTICIPANT_STATUS_ORDER[second.status] ?? 9));
     const groups = new Map();
     data.items.forEach((item) => {
         if (!groups.has(item.eventIdentifier)) groups.set(item.eventIdentifier, {event: item, requests: []});
         groups.get(item.eventIdentifier).requests.push(item);
     });
-    // ✓/⊘ zum Erfassen der Teilnahme — je Anmeldung, unabhängig davon, ob sie einzeln oder als
-    // Teil einer zusammengeführten Mitgliedskarte angezeigt wird (siehe `buildParticipantEntries`).
+    // ✓ (anwesend) bzw. ⇥ (austragen) und ⊘ (nicht teilgenommen) — je Anmeldung, unabhängig
+    // davon, ob sie einzeln oder als Teil einer zusammengeführten Mitgliedskarte angezeigt wird
+    // (siehe `buildParticipantEntries`).
     const buildParticipationActionButtons = (requestItem) => {
         const actionButtons = [];
         if (!canEditModule('event_helpers') || requestItem.status === 'resolved') return actionButtons;
-        const participated = element('button', {
-            className: 'participant-icon-button participant-icon-button-confirm',
-            text: requestItem.status === 'participated' ? '✎' : '✓',
-            attributes: {
-                type: 'button',
-                title: requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
-                'aria-label': requestItem.status === 'participated' ? 'Teilnahmezeiten bearbeiten' : 'Als teilgenommen markieren',
-            },
+        const isPresent = requestItem.status === 'present';
+        const attendanceLabel = isPresent
+            ? 'Austragen'
+            : (requestItem.status === 'participated' ? 'Erneut als anwesend markieren' : 'Als anwesend markieren');
+        const attendance = element('button', {
+            className: `participant-icon-button ${isPresent ? 'participant-icon-button-check-out' : 'participant-icon-button-confirm'}`,
+            text: isPresent ? '⇥' : '✓',
+            attributes: {type: 'button', title: attendanceLabel, 'aria-label': attendanceLabel},
         });
-        participated.addEventListener('click', () => openParticipationDialog(requestItem));
-        actionButtons.push(participated);
-        if (requestItem.status !== 'not_participated') {
+        attendance.addEventListener('click', async () => {
+            attendance.disabled = true;
+            try {
+                await recordAttendance(requestItem, isPresent ? 'check-out' : 'check-in');
+            } catch (error) {
+                toast(error.message, 'error');
+                attendance.disabled = false;
+            }
+        });
+        actionButtons.push(attendance);
+        if (!['not_participated', 'present'].includes(requestItem.status)) {
             const absent = element('button', {
                 className: 'participant-icon-button participant-icon-button-absent',
                 text: '⊘',
@@ -441,7 +499,17 @@ const showEventHelpers = async () => {
                     ]})] : []),
                     ...(intervals.length ? [element('div', {className: 'participation-times', children: [
                         element('strong', {text: 'Zeiten'}),
-                        element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => element('li', {text: `${interval.fromTime}–${interval.toTime} Uhr`}))}),
+                        element('ul', {className: 'participation-interval-summary', children: intervals.map((interval) => {
+                            const label = `${interval.fromTime}–${interval.toTime || '…'} Uhr`;
+                            if (!canEditModule('event_helpers')) return element('li', {text: label});
+                            const edit = element('button', {
+                                className: 'participation-interval-edit',
+                                text: label,
+                                attributes: {type: 'button', title: 'Zeiten bearbeiten', 'aria-label': `Zeiten bearbeiten: ${label}`},
+                            });
+                            edit.addEventListener('click', () => openParticipationDialog(requestItem));
+                            return element('li', {children: [edit]});
+                        })}),
                     ]})] : []),
                 ]})] : []),
             ]})
@@ -518,7 +586,7 @@ const showEventHelpers = async () => {
         return lines;
     };
     const renderSingleParticipant = (requestItem, event) => {
-        // Reihenfolge der Icon-Buttons ganz rechts: Teilgenommen markieren, Nicht teilgenommen,
+        // Reihenfolge der Icon-Buttons ganz rechts: Anwesend bzw. Austragen, Nicht teilgenommen,
         // Mail — Mail deshalb angehängt statt (wie die anderen beiden) über den Teilnahmestatus
         // ausgeblendet, da sie unabhängig davon verfügbar bleiben soll.
         const mailButton = buildMailButton(event, [requestItem], `${requestItem.firstName} ${requestItem.lastName}`);
@@ -748,21 +816,19 @@ const showEventHelpers = async () => {
         return button;
     };
     const renderEventHelperGroup = ({event, requests}) => {
-        const participatedCount = requests.filter((requestItem) => requestItem.status === 'participated').length;
+        const participatedCount = requests.filter((requestItem) => ['present', 'participated'].includes(requestItem.status)).length;
         // "Nicht teilgenommen" steht nicht mehr in der normalen Liste, sondern gesammelt in einem
         // eigenen, eingeklappten Accordion am Ende der Veranstaltung (siehe unten) — oben sind
         // nur noch die Status „Neu" und „Teilgenommen" zu sehen.
         const notParticipatedRequests = requests.filter((requestItem) => requestItem.status === 'not_participated');
-        const visibleRequests = requests.filter((requestItem) => requestItem.status !== 'not_participated');
-        const broadcastButton = element('button', {className: 'secondary-button button-compact', text: 'Mail an alle Helfer', attributes: {type: 'button'}});
-        broadcastButton.addEventListener('click', () => openEventHelpBroadcastDialog(event));
-        const addHelperButton = element('button', {
-            className: 'secondary-button button-compact',
-            text: '＋',
-            attributes: {type: 'button', title: 'Mitglied als Helfer hinzufügen', 'aria-label': 'Mitglied als Helfer hinzufügen'},
-        });
-        addHelperButton.addEventListener('click', () => openAddEventHelperDialog(event));
-        const visibleEntries = buildParticipantEntries(visibleRequests, event);
+        const visibleRequests = sortByParticipationStatus(requests.filter((requestItem) => requestItem.status !== 'not_participated'));
+        const eventMenu = canEditModule('event_helpers') ? actionMenu('Aktionen zur Veranstaltung', [
+            {label: 'Neuen Teilnehmer hinzufügen', run: () => openAddEventHelperDialog(event)},
+            {label: 'Mail an alle Teilnehmer', run: () => openEventHelpBroadcastDialog(event)},
+        ], {icon: '☰', className: 'event-helper-menu'}) : null;
+        const visibleList = element('div', {className: 'event-helper-list'});
+        const notParticipatedList = element('div', {className: 'event-helper-archive-list event-helper-list'});
+        const notParticipatedCount = element('span', {className: 'status-badge'});
         const notParticipatedKey = `not-participated:${event.eventIdentifier}`;
         const notParticipatedAccordion = notParticipatedRequests.length ? element('details', {
             className: 'event-helper-archive event-helper-not-participated',
@@ -773,28 +839,54 @@ const showEventHelpers = async () => {
             children: [
                 element('summary', {children: [
                     element('strong', {text: 'Nicht teilgenommen'}),
-                    element('span', {className: 'status-badge', text: String(notParticipatedRequests.length)}),
+                    notParticipatedCount,
                 ]}),
-                element('div', {className: 'event-helper-archive-list event-helper-list', children: buildParticipantEntries(notParticipatedRequests, event)}),
+                notParticipatedList,
             ],
         }) : null;
-        return element('section', {className: 'event-helper-group', attributes: {'data-link-target': event.eventIdentifier}, children: [
+        // `searchField` meldet zusätzlich ein natives `change` beim Verlassen des Feldes — etwa beim
+        // Klick auf ✓ in der gefilterten Liste. Ein Neuaufbau mit unverändertem Begriff würde den
+        // angeklickten Button vor dem Klick entfernen; daher nur bei geändertem Begriff neu rendern.
+        let renderedSearchTerm = null;
+        const renderHelperLists = (term) => {
+            if (term === renderedSearchTerm) return;
+            renderedSearchTerm = term;
+            const visibleEntries = buildParticipantEntries(filterHelperRequests(visibleRequests, term), event);
+            visibleList.replaceChildren(...(visibleEntries.length
+                ? visibleEntries
+                : [emptyState(term ? 'Keine Treffer.' : 'Keine offenen Helfer.')]));
+            const matchingNotParticipated = filterHelperRequests(notParticipatedRequests, term);
+            notParticipatedList.replaceChildren(...buildParticipantEntries(matchingNotParticipated, event));
+            notParticipatedCount.textContent = String(matchingNotParticipated.length);
+            if (notParticipatedAccordion) notParticipatedAccordion.hidden = term !== '' && matchingNotParticipated.length === 0;
+        };
+        const initialSearchTerm = previousSearchTerms.get(event.eventIdentifier) || '';
+        const helperSearch = requests.length ? searchField('Helfer suchen (Name oder Mitgliedsnummer) …', initialSearchTerm, renderHelperLists) : null;
+        if (helperSearch) {
+            const searchInput = helperSearch.querySelector('input');
+            searchInput.dataset.helperSearch = event.eventIdentifier;
+            // Live filtern statt erst bei `change` (Enter/Verlassen des Feldes).
+            searchInput.addEventListener('input', () => renderHelperLists(searchInput.value.trim()));
+            helperSearch.classList.add('event-helper-search');
+        }
+        renderHelperLists(initialSearchTerm.trim());
+        return element('section', {className: `event-helper-group${eventMenu ? ' has-menu' : ''}`, attributes: {'data-link-target': event.eventIdentifier}, children: [
+        ...(eventMenu ? [eventMenu] : []),
         element('header', {children: [
             element('div', {children: [
                 element('h3', {text: event.eventTitle}),
                 element('p', {text: `${new Date(`${event.eventDate}T00:00:00`).toLocaleDateString('de-DE')} · ${event.eventTime} Uhr`}),
             ]}),
-            element('div', {className: 'event-helper-header-actions', children: [
-                ...(canEditModule('event_helpers')
-                    ? [element('div', {className: 'event-helper-header-buttons', children: [broadcastButton, addHelperButton]})]
-                    : []),
-                element('div', {className: 'event-helper-counts', children: [
-                    element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
-                    element('span', {className: 'status-badge', text: `${participatedCount} ${participatedCount === 1 ? 'Helfer' : 'Helfer'}`}),
-                ]}),
+        ]}),
+        // Desktop: Suche links, Zahlen rechts daneben; mobil: Zahlen rechtsbündig über der Suche.
+        element('div', {className: 'event-helper-toolbar', children: [
+            ...(helperSearch ? [helperSearch] : []),
+            element('div', {className: 'event-helper-counts', children: [
+                element('small', {text: `${requests.length} ${requests.length === 1 ? 'Person war' : 'Personen waren'} angemeldet`}),
+                element('span', {className: 'status-badge', text: `${participatedCount} ${participatedCount === 1 ? 'Helfer' : 'Helfer'}`}),
             ]}),
         ]}),
-        element('div', {className: 'event-helper-list', children: visibleEntries.length ? visibleEntries : [emptyState('Keine offenen Helfer.')]}),
+        visibleList,
         ...(notParticipatedAccordion ? [notParticipatedAccordion] : []),
         ]});
     };
@@ -836,8 +928,8 @@ const showEventHelpers = async () => {
             .sort(([firstYear], [secondYear]) => secondYear - firstYear)
             .map(([year, eventGroups]) => eventArchive(`Archiv ${year}`, eventGroups, `year:${year}`)),
     ];
-    // Auswahl für „Neuen Helfer anmelden": Veranstaltungen mit aktivierter Helferanmeldung plus
-    // solche, zu denen schon Anmeldungen bestehen (z. B. Helferanmeldung inzwischen deaktiviert).
+    // Auswahl für „Neuen Helfer anmelden": alle Veranstaltungen (auch ohne öffentlichen
+    // „Ich möchte helfen“-Button) plus solche, zu denen schon Anmeldungen bestehen.
     const openRegisterHelperDialog = async () => {
         const {items} = await request('/api/admin/v1/event-help-requests/events');
         const events = new Map(items.map((option) => [option.eventIdentifier, option]));
@@ -851,7 +943,7 @@ const showEventHelpers = async () => {
         });
         const sorted = [...events.values()].sort((left, right) => `${left.eventDate} ${left.eventTime}`.localeCompare(`${right.eventDate} ${right.eventTime}`));
         if (!sorted.length) {
-            toast('Es gibt keine Veranstaltung mit Helferanmeldung.', 'error');
+            toast('Es gibt noch keine Veranstaltung.', 'error');
             return;
         }
         openAddEventHelperDialog(null, sorted);

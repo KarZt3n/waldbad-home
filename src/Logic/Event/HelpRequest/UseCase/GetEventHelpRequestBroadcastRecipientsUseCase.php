@@ -27,7 +27,7 @@ use App\Logic\Membership\Member\MemberProviderInterface;
  *   Mitglieds, auch wenn die automatische Ermittlung sie mangels Bedarf nicht verwendet hätte (z. B.
  *   weil das Mitglied selbst schon eine eigene Adresse hat).
  *
- * Ohne `$requestIds` (Button „Mail an alle Helfer") werden nur Anmeldungen im Status „Neu" oder
+ * Ohne `$requestIds` („Mail an alle Teilnehmer" im Menü je Veranstaltung) werden nur Anmeldungen im Status „Neu" oder
  * „Teilgenommen" berücksichtigt — wer nicht teilgenommen hat oder bereits als erledigt markiert ist,
  * soll die Rundmail an alle nicht automatisch bekommen. Mit `$requestIds` (✉-Icon je Person)
  * entfällt dieser Statusfilter bewusst: Eine dort gezielt ausgewählte Person soll unabhängig von
@@ -54,12 +54,12 @@ readonly class GetEventHelpRequestBroadcastRecipientsUseCase
             $this->manager->all(),
             static fn (EventHelpRequest $request): bool => $request->eventIdentifier === $eventIdentifier
                 && ($requestIds === null
-                    ? in_array($request->status, [EventHelpRequestStatus::New, EventHelpRequestStatus::Participated], true)
+                    ? in_array($request->status, [EventHelpRequestStatus::New, EventHelpRequestStatus::Present, EventHelpRequestStatus::Participated], true)
                     : in_array($request->id, $requestIds, true)),
         ));
         if ($requests === []) {
             throw new BusinessRuleViolationException($requestIds === null
-                ? 'Für diese Veranstaltung liegen keine Helferanmeldungen mit Status „Neu" oder „Teilgenommen" vor.'
+                ? 'Für diese Veranstaltung liegen keine Helferanmeldungen mit Status „Neu", „Anwesend" oder „Teilgenommen" vor.'
                 : 'Die ausgewählte(n) Helferanmeldung(en) wurde(n) nicht gefunden.');
         }
 

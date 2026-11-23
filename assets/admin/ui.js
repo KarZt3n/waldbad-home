@@ -14,9 +14,14 @@ const emptyState = (text) => element('p', {className: 'empty-copy', text});
 // nötig) für mehrere Aktionen unter einem Sammelbegriff, z. B. "Datenbank" mit Import/Export.
 // Schließt sich beim Klick auf einen Menüpunkt sowie automatisch, sobald ein anderes Menü dieser
 // Art auf derselben Seite geöffnet wird.
-const actionMenu = (label, items) => {
-    const menu = element('details', {className: 'action-menu'});
-    const summary = element('summary', {className: 'action-menu-toggle', text: `${label} ▾`});
+// Mit `{icon}` wird statt „Label ▾“ nur das Icon gezeigt; `label` dient dann als Bedienhilfe-Text.
+const actionMenu = (label, items, {icon = null, className = ''} = {}) => {
+    const menu = element('details', {className: `action-menu ${className}`.trim()});
+    const summary = element('summary', {
+        className: `action-menu-toggle${icon ? ' action-menu-toggle-icon' : ''}`,
+        text: icon || `${label} ▾`,
+        attributes: icon ? {'aria-label': label, title: label} : {},
+    });
     const popover = element('div', {className: 'action-menu-popover', children: items.map((item) => {
         const button = element('button', {className: 'action-menu-item', text: item.label, attributes: {type: 'button'}});
         button.addEventListener('click', () => {

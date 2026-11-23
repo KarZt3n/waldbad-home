@@ -7,8 +7,8 @@ use App\Logic\Event\HelpRequest\Model\VolunteerEvent;
 use App\Logic\Event\HelpRequest\VolunteerEventProviderInterface;
 
 /**
- * Auswahlliste für „Neuen Helfer anmelden“ in der Helferverwaltung: alle Veranstaltungen mit
- * aktivierter Helferanmeldung, chronologisch sortiert.
+ * Auswahlliste für „Neuen Helfer anmelden“ in der Helferverwaltung: alle Veranstaltungen, auch
+ * ohne öffentlichen „Ich möchte helfen“-Button, chronologisch sortiert.
  */
 readonly class ListVolunteerEventOptionsQuery
 {
@@ -19,7 +19,7 @@ readonly class ListVolunteerEventOptionsQuery
     /** @return list<VolunteerEventOptionResponse> */
     public function execute(): array
     {
-        $events = $this->eventProvider->findAllWithHelpEnabled();
+        $events = $this->eventProvider->findAll();
         usort($events, static fn (VolunteerEvent $left, VolunteerEvent $right): int => [$left->date, $left->time] <=> [$right->date, $right->time]);
 
         return array_map(VolunteerEventOptionResponse::fromEvent(...), $events);

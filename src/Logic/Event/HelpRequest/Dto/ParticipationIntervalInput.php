@@ -6,7 +6,8 @@ readonly class ParticipationIntervalInput
 {
     public function __construct(
         public string $fromTime,
-        public string $toTime,
+        /** `null`, solange die Person noch anwesend ist. */
+        public ?string $toTime,
     ) {
     }
 }

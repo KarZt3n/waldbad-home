@@ -52,6 +52,13 @@ readonly class EventHelpRequest
         if ($this->status === EventHelpRequestStatus::Participated && $this->participationIntervals === []) {
             throw new BusinessRuleViolationException('Für eine Teilnahme muss mindestens ein Hilfezeitraum erfasst werden.');
         }
+        $openIntervalCount = count(array_filter($this->participationIntervals, static fn (ParticipationInterval $interval): bool => $interval->isOpen()));
+        if ($this->status === EventHelpRequestStatus::Present && $openIntervalCount !== 1) {
+            throw new BusinessRuleViolationException('Eine anwesende Person benötigt genau einen Hilfezeitraum ohne Bis-Uhrzeit.');
+        }
+        if ($this->status !== EventHelpRequestStatus::Present && $openIntervalCount > 0) {
+            throw new BusinessRuleViolationException('Jeder Hilfezeitraum benötigt eine Bis-Uhrzeit, sofern die Person nicht mehr anwesend ist.');
+        }
         if ($this->status === EventHelpRequestStatus::NotParticipated
             && ($this->participationMinutes !== 0 || $this->participationIntervals !== [])) {
             throw new BusinessRuleViolationException('Eine Nichtteilnahme muss mit null Stunden erfasst werden.');
@@ -67,12 +74,16 @@ readonly class EventHelpRequest
             $totalMinutes += $interval->minutes;
             $previousEnd = $interval->endsAtMinute();
         }
-        if ($this->status === EventHelpRequestStatus::Participated && $this->participationMinutes !== $totalMinutes) {
+        if (in_array($this->status, [EventHelpRequestStatus::Participated, EventHelpRequestStatus::Present], true)
+            && $this->participationMinutes !== $totalMinutes) {
             throw new BusinessRuleViolationException('Die gespeicherte Gesamtzeit stimmt nicht mit den Hilfezeiträumen überein.');
         }
     }
 
     /**
+     * Händische Erfassung bzw. Korrektur aller Zeiträume. Bleibt ein Zeitraum ohne Bis-Uhrzeit,
+     * gilt die Person weiterhin als anwesend.
+     *
      * @param list<ParticipationInterval> $participationIntervals
      */
     public function recordParticipation(
@@ -81,6 +92,100 @@ readonly class EventHelpRequest
         \DateTimeImmutable $updatedAt,
     ): self
     {
+        return $participated
+            ? $this->withParticipationIntervals($participationIntervals, $updatedAt)
+            : $this->withParticipationState(EventHelpRequestStatus::NotParticipated, 0, [], $updatedAt);
+    }
+
+    public function openParticipationInterval(): ?ParticipationInterval
+    {
+        if ($this->status !== EventHelpRequestStatus::Present) {
+            return null;
+        }
+        foreach ($this->participationIntervals as $interval) {
+            if ($interval->isOpen()) {
+                return $interval;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Markiert die Person ab `$fromTime` als anwesend. Fällt der Beginn in den letzten Zeitraum
+     * (z. B. kurz nach dem aufgerundeten Austragen), wird dieser fortgesetzt; ab dessen Ende oder
+     * später entsteht ein neuer Zeitraum, die bisherigen bleiben unverändert. Der fortgesetzte
+     * Zeitraum erhält eine neue Kennung, da geänderte Zeiträume in der Persistenz neu angelegt
+     * werden (siehe `EventHelpRequestMapper::syncedIntervalEntities()`).
+     */
+    public function checkIn(string $fromTime, string $intervalId, \DateTimeImmutable $updatedAt): self
+    {
+        if ($this->status === EventHelpRequestStatus::Present) {
+            throw new BusinessRuleViolationException('Die Person ist bereits als anwesend markiert.');
+        }
+        if ($this->status === EventHelpRequestStatus::Resolved) {
+            throw new BusinessRuleViolationException('Eine erledigte Helferanmeldung kann nicht als anwesend markiert werden.');
+        }
+        $intervals = $this->status === EventHelpRequestStatus::Participated ? $this->participationIntervals : [];
+        $checkIn = new ParticipationInterval($intervalId, count($intervals), $fromTime, null);
+        $latest = null;
+        foreach ($intervals as $interval) {
+            if ($latest === null || $interval->endsAtMinute() > $latest->endsAtMinute()) {
+                $latest = $interval;
+            }
+        }
+        if ($latest !== null && $checkIn->startsAtMinute() < $latest->endsAtMinute()) {
+            $intervals = array_values(array_filter($intervals, static fn (ParticipationInterval $interval): bool => $interval !== $latest));
+            $checkIn = new ParticipationInterval($intervalId, $latest->position, $latest->fromTime, null);
+        }
+
+        return $this->withParticipationIntervals([...$intervals, $checkIn], $updatedAt);
+    }
+
+    /**
+     * Schließt den offenen Zeitraum mit `$toTime`. Er erhält eine neue Kennung, da geänderte
+     * Zeiträume in der Persistenz neu angelegt werden (siehe `checkIn()`).
+     */
+    public function checkOut(string $toTime, string $intervalId, \DateTimeImmutable $updatedAt): self
+    {
+        $open = $this->openParticipationInterval();
+        if ($open === null) {
+            throw new BusinessRuleViolationException('Die Person ist nicht als anwesend markiert.');
+        }
+        $intervals = array_map(
+            static fn (ParticipationInterval $interval): ParticipationInterval => $interval === $open
+                ? new ParticipationInterval($intervalId, $interval->position, $interval->fromTime, $toTime)
+                : $interval,
+            $this->participationIntervals,
+        );
+
+        return $this->withParticipationIntervals($intervals, $updatedAt);
+    }
+
+    /**
+     * @param list<ParticipationInterval> $intervals
+     */
+    private function withParticipationIntervals(array $intervals, \DateTimeImmutable $updatedAt): self
+    {
+        $hasOpenInterval = array_filter($intervals, static fn (ParticipationInterval $interval): bool => $interval->isOpen()) !== [];
+
+        return $this->withParticipationState(
+            $hasOpenInterval ? EventHelpRequestStatus::Present : EventHelpRequestStatus::Participated,
+            array_sum(array_map(static fn (ParticipationInterval $interval): int => $interval->minutes, $intervals)),
+            $intervals,
+            $updatedAt,
+        );
+    }
+
+    /**
+     * @param list<ParticipationInterval> $intervals
+     */
+    private function withParticipationState(
+        EventHelpRequestStatus $status,
+        int $minutes,
+        array $intervals,
+        \DateTimeImmutable $updatedAt,
+    ): self {
         return new self(
             id: $this->id,
             eventIdentifier: $this->eventIdentifier,
@@ -90,9 +195,9 @@ readonly class EventHelpRequest
             firstName: $this->firstName,
             lastName: $this->lastName,
             message: $this->message,
-            status: $participated ? EventHelpRequestStatus::Participated : EventHelpRequestStatus::NotParticipated,
-            participationMinutes: $participated ? array_sum(array_map(static fn (ParticipationInterval $interval): int => $interval->minutes, $participationIntervals)) : 0,
-            participationIntervals: $participated ? $participationIntervals : [],
+            status: $status,
+            participationMinutes: $minutes,
+            participationIntervals: $intervals,
             selectedActivities: $this->selectedActivities,
             submittedAt: $this->submittedAt,
             updatedAt: $updatedAt,
@@ -233,10 +338,11 @@ readonly class EventHelpRequest
             $mergedActivities,
         );
 
-        $participated = $this->status === EventHelpRequestStatus::Participated || $other->status === EventHelpRequestStatus::Participated;
+        $participatedStatuses = [EventHelpRequestStatus::Participated, EventHelpRequestStatus::Present];
+        $participated = in_array($this->status, $participatedStatuses, true) || in_array($other->status, $participatedStatuses, true);
         $mergedIntervals = [
-            ...($this->status === EventHelpRequestStatus::Participated ? $this->participationIntervals : []),
-            ...($other->status === EventHelpRequestStatus::Participated ? $other->participationIntervals : []),
+            ...(in_array($this->status, $participatedStatuses, true) ? $this->participationIntervals : []),
+            ...(in_array($other->status, $participatedStatuses, true) ? $other->participationIntervals : []),
         ];
         // Positionen fortlaufend neu vergeben, da sie sich sonst über beide Anmeldungen hinweg
         // wiederholen könnten; die Uhrzeiten selbst bleiben unverändert.
@@ -251,6 +357,9 @@ readonly class EventHelpRequest
             array_keys($mergedIntervals),
         );
         $totalMinutes = array_sum(array_map(static fn (ParticipationInterval $interval): int => $interval->minutes, $mergedIntervals));
+        $mergedStatus = array_filter($mergedIntervals, static fn (ParticipationInterval $interval): bool => $interval->isOpen()) !== []
+            ? EventHelpRequestStatus::Present
+            : EventHelpRequestStatus::Participated;
 
         return new self(
             id: $this->id,
@@ -261,7 +370,7 @@ readonly class EventHelpRequest
             firstName: $this->firstName,
             lastName: $this->lastName,
             message: $this->message,
-            status: $participated ? EventHelpRequestStatus::Participated : $this->status,
+            status: $participated ? $mergedStatus : $this->status,
             participationMinutes: $participated ? $totalMinutes : $this->participationMinutes,
             participationIntervals: $participated ? $mergedIntervals : $this->participationIntervals,
             selectedActivities: $mergedActivities,

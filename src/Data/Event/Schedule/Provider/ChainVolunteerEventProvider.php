@@ -31,12 +31,12 @@ readonly class ChainVolunteerEventProvider implements VolunteerEventProviderInte
             ?? $this->legacyPageProvider->findCurrent($eventIdentifier);
     }
 
-    public function findAllWithHelpEnabled(): array
+    public function findAll(): array
     {
         $events = [];
         // Wie bei `findCurrent()` hat das Veranstaltungsmodul Vorrang vor einem Legacy-Seitenblock
         // mit derselben Kennung.
-        foreach ([...$this->legacyPageProvider->findAllWithHelpEnabled(), ...$this->scheduleProvider->findAllWithHelpEnabled()] as $event) {
+        foreach ([...$this->legacyPageProvider->findAll(), ...$this->scheduleProvider->findAll()] as $event) {
             $events[$event->identifier] = $event;
         }
 

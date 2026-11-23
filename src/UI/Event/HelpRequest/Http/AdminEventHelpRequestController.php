@@ -9,6 +9,8 @@ use App\Logic\Event\HelpRequest\Query\ListVolunteerEventOptionsQuery;
 use App\Logic\Event\HelpRequest\Dto\VolunteerEventOptionResponse;
 use App\Logic\Event\HelpRequest\Dto\ParticipationIntervalInput;
 use App\Logic\Event\HelpRequest\UseCase\AddEventHelpRequestUseCase;
+use App\Logic\Event\HelpRequest\UseCase\CheckInEventHelperUseCase;
+use App\Logic\Event\HelpRequest\UseCase\CheckOutEventHelperUseCase;
 use App\Logic\Event\HelpRequest\UseCase\GetEventHelpRequestBroadcastRecipientsUseCase;
 use App\Logic\Event\HelpRequest\UseCase\LinkEventHelpRequestMemberUseCase;
 use App\Logic\Event\HelpRequest\UseCase\RecordEventHelpParticipationUseCase;
@@ -18,6 +20,7 @@ use App\UI\IdentityAccess\Security\Permission;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -41,8 +44,8 @@ class AdminEventHelpRequestController extends AbstractController
     }
 
     /**
-     * Trägt ein Mitglied manuell als Helfer einer Veranstaltung ein — Button „+" neben „Mail an
-     * alle Helfer" in der Helferverwaltung (siehe `AddEventHelpRequestUseCase`).
+     * Trägt ein Mitglied manuell als Helfer einer Veranstaltung ein — „Neuen Helfer anmelden" bzw.
+     * „Neuen Teilnehmer hinzufügen" im Menü je Veranstaltung (siehe `AddEventHelpRequestUseCase`).
      */
     #[Route('', name: 'api_admin_event_help_add', methods: ['POST'])]
     public function add(Request $request, AddEventHelpRequestUseCase $useCase): JsonResponse
@@ -132,7 +135,7 @@ class AdminEventHelpRequestController extends AbstractController
     /**
      * Freie Rundmail (Betreff/Text von der Verwaltung selbst getippt) an die im Dialog „An:"
      * stehenden Adressen — siehe `SendEventHelpRequestBroadcastUseCase`. Ausgelöst entweder über den
-     * Button „Mail an alle Helfer" je Veranstaltung oder über das ✉-Icon neben einer einzelnen
+     * „Mail an alle Teilnehmer" im Menü je Veranstaltung oder über das ✉-Icon neben einer einzelnen
      * Person, beides in `assets/app.js` (`openEventHelpBroadcastDialog`, `buildMailButton`) — beide
      * holen die Vorbelegung zuvor über `broadcastRecipients()` und schicken hier bereits die
      * (ggf. angepasste) endgültige Liste mit. Pro Empfänger wird ein eigenes Event erzeugt, damit
@@ -240,18 +243,38 @@ class AdminEventHelpRequestController extends AbstractController
                 throw new BadRequestHttpException('Es müssen zwischen einem und zehn Hilfezeiträume angegeben werden.');
             }
             foreach ($rawIntervals as $rawInterval) {
+                $rawToTime = is_array($rawInterval) ? ($rawInterval['toTime'] ?? null) : null;
                 if (!is_array($rawInterval)
                     || !is_string($rawInterval['fromTime'] ?? null)
-                    || !is_string($rawInterval['toTime'] ?? null)) {
-                    throw new BadRequestHttpException('Jeder Hilfezeitraum benötigt eine Von- und Bis-Uhrzeit.');
+                    || ($rawToTime !== null && !is_string($rawToTime))) {
+                    throw new BadRequestHttpException('Jeder Hilfezeitraum benötigt eine Von-Uhrzeit.');
                 }
+                $toTime = $rawToTime === null ? '' : trim($rawToTime);
                 $intervals[] = new ParticipationIntervalInput(
                     fromTime: trim($rawInterval['fromTime']),
-                    toTime: trim($rawInterval['toTime']),
+                    toTime: $toTime === '' ? null : $toTime,
                 );
             }
         }
 
         return new JsonResponse($this->responseFactory->request($useCase->execute($id, $participated, $intervals)));
+    }
+
+    #[Route('/{id}/check-in', name: 'api_admin_event_help_check_in', methods: ['POST'])]
+    public function checkIn(string $id, CheckInEventHelperUseCase $useCase): Response
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+        $useCase->execute($id);
+
+        return new Response(status: Response::HTTP_NO_CONTENT);
+    }
+
+    #[Route('/{id}/check-out', name: 'api_admin_event_help_check_out', methods: ['POST'])]
+    public function checkOut(string $id, CheckOutEventHelperUseCase $useCase): Response
+    {
+        $this->denyAccessUnlessGranted(Permission::EventHelpersEdit->value);
+        $useCase->execute($id);
+
+        return new Response(status: Response::HTTP_NO_CONTENT);
     }
 }

@@ -13,7 +13,7 @@ final class ListVolunteerEventOptionsQueryTest extends TestCase
     public function testSortsEventsByDateAndTime(): void
     {
         $provider = $this->createStub(VolunteerEventProviderInterface::class);
-        $provider->method('findAllWithHelpEnabled')->willReturn([
+        $provider->method('findAll')->willReturn([
             new VolunteerEvent('c', 'Herbstputz', '2026-10-03', '09:00', []),
             new VolunteerEvent('b', 'Nachmittag', '2026-04-11', '14:00', []),
             new VolunteerEvent('a', 'Frühjahrsputz', '2026-04-11', '09:00', []),

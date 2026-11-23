@@ -1276,6 +1276,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
     background: var(--white);
     box-shadow: 0 .75rem 1.75rem rgb(14 47 35 / 18%);
 }
+.action-menu-toggle-icon { justify-content: center; width: 2.45rem; height: 2.45rem; padding: 0; font-size: 1.2rem; line-height: 1; }
 .action-menu-item { padding: .7rem .8rem; border: 0; border-radius: .4rem; color: var(--forest-900); background: transparent; cursor: pointer; font-weight: 750; text-align: left; }
 .action-menu-item:hover, .action-menu-item:focus-visible { background: var(--forest-100); }
 
@@ -1331,14 +1332,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .event-helper-group > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .event-helper-group h3, .event-helper-group header p { margin: 0; }
 .event-helper-group header p { margin-top: .25rem; color: var(--muted); }
-.event-helper-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; }
-.event-helper-header-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+/* Menü oben rechts in der Karte, auch wenn der Kopf auf schmalen Bildschirmen umbricht. */
+.event-helper-group.has-menu { position: relative; }
+.event-helper-group.has-menu > header { padding-right: 3.2rem; }
+.event-helper-menu { position: absolute; top: clamp(1rem, 3vw, 1.5rem); right: clamp(1rem, 3vw, 1.5rem); }
+.event-helper-toolbar { display: flex; align-items: center; gap: .75rem 1rem; margin-bottom: .75rem; }
+.event-helper-toolbar .event-helper-search { flex: 1 1 auto; min-width: 0; margin: 0; }
+.event-helper-toolbar .event-helper-counts { flex: 0 0 auto; margin-left: auto; }
 .event-helper-counts { display: flex; align-items: center; gap: .6rem; }
 .event-helper-counts small { color: var(--muted); font-weight: 650; }
 .event-helper-list { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: .85rem; background: var(--white); }
 .event-helper-participant { display: grid; gap: .75rem; padding: 1rem 1.1rem; background: var(--white); }
 .event-helper-participant + .event-helper-participant { border-top: 1px solid var(--line); }
-.event-helper-participant.status-participated { border-left: .3rem solid var(--forest-700); }
+.event-helper-participant.status-present { border-left: .3rem solid var(--forest-700); background: #f1f8f4; }
+.event-helper-participant.status-participated { border-left: .3rem solid var(--water-400); }
 .event-helper-participant.status-not_participated { border-left: .3rem solid #9ba59f; background: #fafbfa; }
 .event-helper-participant-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1rem; }
 .event-helper-participant-toggle { display: block; width: 100%; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
@@ -1358,7 +1365,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .button-compact { min-height: auto; padding: .5rem 1rem; font-size: .9rem; font-weight: 700; }
 .event-helper-participant-side { display: flex; align-items: center; justify-content: flex-end; gap: .7rem; }
 .participant-status { display: inline-flex; padding: .3rem .65rem; border-radius: 999px; color: var(--forest-900); background: #fff2ba; font-size: .78rem; font-weight: 800; white-space: nowrap; }
-.participant-status.status-participated { background: #dcefe5; }
+.participant-status.status-present { color: var(--white); background: var(--forest-700); }
+.participant-status.status-participated { color: #134652; background: #dcf0f3; }
 .participant-status.status-not_participated, .participant-status.status-resolved { color: var(--muted); background: #edf0ee; }
 .participant-actions { display: flex; gap: .4rem; }
 .participant-icon-button { display: grid; width: 2.45rem; height: 2.45rem; place-items: center; padding: 0; border: 1px solid var(--forest-700); border-radius: .55rem; color: var(--forest-800); background: var(--white); cursor: pointer; font-size: 1.15rem; font-weight: 900; line-height: 1; }
@@ -1366,6 +1374,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .participant-icon-button-absent { border-color: #9ba59f; color: var(--muted); }
 .participant-icon-button-absent:hover { border-color: var(--danger); background: var(--danger); }
 .participant-icon-button-mail { font-size: 1.45rem; }
+.participant-icon-button-check-out { border-color: #3d8fa0; color: #2b6f7d; }
+.participant-icon-button-check-out:hover { border-color: #2b6f7d; background: #2b6f7d; }
 /* Bubble mit Mitgliedsnummer, die zugleich als Verknüpfen-/Bearbeiten-Button dient (siehe
    `assets/app.js`, „memberBubble"): unverknüpft gelb (Hinweis: fehlt noch) mit Icon+Label,
    verknüpft grün gefüllt (Erfolg) mit der Mitgliedsnummer. */
@@ -1414,6 +1424,9 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .participation-total-preview { color: var(--muted); font-size: .9rem; }
 .participation-interval-summary { display: flex; flex-wrap: wrap; gap: .4rem .8rem; margin: 0; padding: 0; list-style: none; }
 .participation-interval-summary li { padding: .3rem .6rem; border-radius: 999px; color: var(--forest-900); background: var(--forest-100); font-size: .9rem; font-weight: 750; }
+.participation-interval-summary li:has(.participation-interval-edit) { padding: 0; }
+.participation-interval-edit { padding: .3rem .6rem; border: 1px dashed transparent; border-radius: 999px; color: inherit; background: transparent; cursor: pointer; font: inherit; }
+.participation-interval-edit:hover { border-color: var(--forest-700); }
 
 .check-field { display: flex; align-items: center; gap: .6rem; margin: 1rem 0; }
 .block-toolbar { justify-content: flex-start; margin: 2rem 0 1rem; }
@@ -1806,8 +1819,8 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
     .membership-person .field:last-child { grid-column: auto; }
     .membership-person-heading, .management-toolbar, .membership-admin-card > header { align-items: stretch; flex-direction: column; }
     .event-helper-group > header { align-items: stretch; flex-direction: column; }
-    .event-helper-header-actions { align-items: flex-start; }
-    .event-helper-header-buttons { justify-content: flex-start; }
+    .event-helper-toolbar { flex-direction: column-reverse; align-items: stretch; }
+    .event-helper-toolbar .event-helper-counts { align-self: flex-end; }
     .event-helper-participant-header { grid-template-columns: 1fr; }
     .event-helper-participant-side { justify-content: space-between; }
     .image-text { flex-direction: column; align-items: stretch; }

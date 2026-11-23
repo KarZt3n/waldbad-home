@@ -148,6 +148,10 @@ readonly class SubmitEventHelpRequestUseCase
     {
         $now = $this->clock->now();
         $member = $this->memberMatcher->match($firstName, $lastName, $birthDate, $email);
+        // Zugeordnete Personen erscheinen mit dem Namen aus dem Mitgliedsdatensatz, unabhängig von
+        // Schreibweise oder Tippfehlern im Formular; ohne Zuordnung bleibt der eingegebene Name.
+        $firstName = $member->firstName ?? $firstName;
+        $lastName = $member->lastName ?? $lastName;
         $request = new EventHelpRequest(
             id: $this->identifierGenerator->generate(),
             eventIdentifier: $event->identifier,
@@ -182,8 +186,12 @@ readonly class SubmitEventHelpRequestUseCase
                 // bestehende Anmeldung übernommen (mehrere bereits bestehende Duplikate werden dabei
                 // gleich mit zusammengeführt); `$request` selbst wird nicht gespeichert. War die bestehende
                 // Anmeldung als „Nicht teilgenommen“ erfasst, ist sie durch die neue Anfrage wieder offen.
+                // Der Name aus dem Mitgliedsdatensatz ersetzt einen bisherigen (z. B. aus einer früheren,
+                // erst nachträglich verknüpften Anmeldung mit Tippfehler).
                 $survivor = count($existing) > 1 ? $this->duplicateMerger->merge($existing, $now) : $existing[0];
-                $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator)->reopen($now);
+                $merged = $survivor->mergedWith($request, $now, $this->identifierGenerator)
+                    ->reopen($now)
+                    ->withIdentity($firstName, $lastName, $now);
                 $response = EventHelpRequestResponse::fromRequest($this->manager->save($merged), memberNumber: $member->memberNumber);
             }
         }

@@ -26,12 +26,12 @@ readonly class PublishedContentVolunteerEventProvider implements VolunteerEventP
         return $this->findInPages($this->pageManager->all(), $eventIdentifier, false);
     }
 
-    public function findAllWithHelpEnabled(): array
+    public function findAll(): array
     {
         $events = [];
         foreach ($this->pageManager->all() as $page) {
             foreach ($page->blocks as $block) {
-                if ($block->type !== ContentBlockType::Event || !$block->eventHelpEnabled || $block->eventIdentifier === null) {
+                if ($block->type !== ContentBlockType::Event || $block->eventIdentifier === null) {
                     continue;
                 }
                 $event = $this->findInPages([$page], $block->eventIdentifier, false);

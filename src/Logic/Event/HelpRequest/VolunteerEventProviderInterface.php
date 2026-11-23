@@ -11,10 +11,10 @@ interface VolunteerEventProviderInterface
     public function findCurrent(string $eventIdentifier): ?VolunteerEvent;
 
     /**
-     * Alle Veranstaltungen mit aktivierter Helferanmeldung, unabhängig davon, ob sie veröffentlicht
-     * sind — die Verwaltung soll Helfer auch vorab oder nachträglich eintragen können.
+     * Alle Veranstaltungen, unabhängig von Veröffentlichung und öffentlicher Helferanmeldung — die
+     * Verwaltung soll zu jeder Veranstaltung Helfer eintragen können, auch vorab oder nachträglich.
      *
      * @return list<VolunteerEvent>
      */
-    public function findAllWithHelpEnabled(): array;
+    public function findAll(): array;
 }

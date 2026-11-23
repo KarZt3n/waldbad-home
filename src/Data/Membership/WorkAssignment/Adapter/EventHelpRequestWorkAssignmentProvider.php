@@ -36,6 +36,13 @@ readonly class EventHelpRequestWorkAssignmentProvider implements MemberWorkAssig
     {
         $intervals = $request->participationIntervals;
         usort($intervals, static fn (ParticipationInterval $left, ParticipationInterval $right): int => $left->startsAtMinute() <=> $right->startsAtMinute());
+        $workIntervals = [];
+        foreach ($intervals as $interval) {
+            // Ein offener Zeitraum zählt erst nach dem Austragen als geleistete Arbeitszeit.
+            if ($interval->toTime !== null) {
+                $workIntervals[] = new WorkAssignmentInterval($interval->fromTime, $interval->toTime);
+            }
+        }
 
         return new WorkAssignmentParticipation(
             memberId: $memberId,
@@ -43,10 +50,7 @@ readonly class EventHelpRequestWorkAssignmentProvider implements MemberWorkAssig
             eventDate: $request->eventDate,
             eventTime: $request->eventTime,
             minutes: $request->participationMinutes ?? 0,
-            intervals: array_map(
-                static fn (ParticipationInterval $interval): WorkAssignmentInterval => new WorkAssignmentInterval($interval->fromTime, $interval->toTime),
-                $intervals,
-            ),
+            intervals: $workIntervals,
         );
     }
 }

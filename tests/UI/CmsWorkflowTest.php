@@ -894,6 +894,43 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame('not_participated', $absentHelper['status']);
         self::assertSame(0, $absentHelper['participationMinutes']);
         self::assertSame([], $absentHelper['participationIntervals']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/check-in', [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseStatusCodeSame(204);
+        $presentHelper = $this->eventHelperById($helperResponse['id']);
+        self::assertSame('present', $presentHelper['status']);
+        self::assertIsArray($presentHelper['participationIntervals']);
+        self::assertCount(1, $presentHelper['participationIntervals']);
+        self::assertIsArray($presentHelper['participationIntervals'][0]);
+        self::assertIsString($presentHelper['participationIntervals'][0]['fromTime']);
+        self::assertContains(substr($presentHelper['participationIntervals'][0]['fromTime'], 3), ['00', '15', '30', '45']);
+        self::assertNull($presentHelper['participationIntervals'][0]['toTime']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/check-in', [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseStatusCodeSame(422);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/check-out', [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseStatusCodeSame(204);
+        $checkedOutHelper = $this->eventHelperById($helperResponse['id']);
+        self::assertSame('participated', $checkedOutHelper['status']);
+        self::assertIsInt($checkedOutHelper['participationMinutes']);
+        self::assertGreaterThan(0, $checkedOutHelper['participationMinutes']);
+        self::assertIsArray($checkedOutHelper['participationIntervals']);
+        self::assertIsArray($checkedOutHelper['participationIntervals'][0]);
+        self::assertIsString($checkedOutHelper['participationIntervals'][0]['toTime']);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests/'.$helperResponse['id'].'/participation', [
+            'participated' => true,
+            'intervals' => [
+                ['fromTime' => '14:00', 'toTime' => '16:30'],
+                ['fromTime' => '18:00', 'toTime' => null],
+            ],
+        ], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
+        self::assertResponseIsSuccessful();
+        $manuallyPresentHelper = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($manuallyPresentHelper);
+        self::assertSame('present', $manuallyPresentHelper['status']);
+        self::assertSame(150, $manuallyPresentHelper['participationMinutes']);
         $this->client->jsonRequest('POST', sprintf('/api/admin/v1/pages/%s/publish', $createdChild['id']), [], ['HTTP_X_CSRF_TOKEN' => $login['csrfToken']]);
         self::assertResponseIsSuccessful();
         $publishedChild = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -1182,6 +1219,23 @@ final class CmsWorkflowTest extends WebTestCase
         $this->client->jsonRequest('DELETE', '/api/admin/v1/pages/'.$startPage[0]['id'], [], $headers);
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Startseite', $this->responseContent());
+    }
+
+    /** @return array<array-key, mixed> */
+    private function eventHelperById(string $id): array
+    {
+        $this->client->request('GET', '/api/admin/v1/event-help-requests');
+        self::assertResponseIsSuccessful();
+        $helpers = json_decode($this->responseContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($helpers);
+        self::assertIsArray($helpers['items']);
+        foreach ($helpers['items'] as $helper) {
+            self::assertIsArray($helper);
+            if (($helper['id'] ?? null) === $id) {
+                return $helper;
+            }
+        }
+        self::fail(sprintf('Helferanmeldung „%s" nicht gefunden.', $id));
     }
 
     private function responseContent(): string

@@ -10,11 +10,11 @@ use App\Logic\Event\HelpRequest\Service\EventHelpRequestRecipientResolver;
 use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 
 /**
- * Verknüpft (oder löst) eine Helferanmeldung mit einem Mitgliedsdatensatz und korrigiert dabei
- * gleich Vor-/Nachname der Anmeldung — für den Fall, dass `MemberIdentityMatcher` beim
- * Absenden keinen eindeutigen Treffer fand (z. B. wegen eines Tippfehlers) oder eine bestehende
- * Verknüpfung falsch war und korrigiert werden muss (siehe „Mitglied verknüpfen" in der
- * Helferverwaltung).
+ * Verknüpft (oder löst) eine Helferanmeldung mit einem Mitgliedsdatensatz und übernimmt dabei
+ * Vor-/Nachname (in der Verwaltung die des Mitglieds) — für den Fall, dass `MemberIdentityMatcher`
+ * beim Absenden keinen eindeutigen Treffer fand (z. B. wegen eines Tippfehlers) oder eine
+ * bestehende Verknüpfung falsch war und korrigiert werden muss (siehe „Mitglied verknüpfen" in der
+ * Helferverwaltung). Der Name gilt auch für eine dabei zusammengeführte Anmeldung.
  */
 readonly class LinkEventHelpRequestMemberUseCase
 {
@@ -43,7 +43,10 @@ readonly class LinkEventHelpRequestMemberUseCase
             // jüngste übrig, die beide zusammenführt (siehe `EventHelpRequestDuplicateMerger`).
             $existing = $this->duplicateMerger->findExisting($this->manager->all(), $memberId, $request->eventIdentifier, excludingId: $id);
             if ($existing !== []) {
-                $request = $this->duplicateMerger->merge([$request, ...$existing], $now);
+                $merged = $this->duplicateMerger->merge([$request, ...$existing], $now);
+                $request = $merged->firstName === $firstName && $merged->lastName === $lastName
+                    ? $merged
+                    : $this->manager->save($merged->withIdentity($firstName, $lastName, $now));
             } else {
                 $request = $this->manager->save($request);
             }

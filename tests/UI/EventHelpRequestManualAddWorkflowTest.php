@@ -103,7 +103,12 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
         self::assertSame($memberNumber, $created['memberNumber']);
         self::assertSame('Erika', $created['firstName']);
         self::assertSame('Musterfrau', $created['lastName']);
-        self::assertSame('new', $created['status']);
+        // Direkt anwesend ab der abgerundeten aktuellen Uhrzeit.
+        self::assertSame('present', $created['status']);
+        self::assertIsArray($created['participationIntervals']);
+        self::assertCount(1, $created['participationIntervals']);
+        self::assertIsArray($created['participationIntervals'][0]);
+        self::assertNull($created['participationIntervals'][0]['toTime']);
         self::assertSame(['erika@example.test'], $created['recipientEmails']);
 
         $this->client->request('GET', '/api/admin/v1/event-help-requests', server: $headers);
@@ -118,13 +123,36 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
             'memberId' => $memberId,
         ], $headers);
         self::assertResponseStatusCodeSame(422);
+
+        // Auch für eine andere als die heutige Veranstaltung direkt anwesend.
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'work_assignment',
+            'title' => 'Herbstputz',
+            'date' => (new \DateTimeImmutable('+7 days'))->format('Y-m-d'),
+            'time' => '09:00',
+            'content' => '',
+            'helpEnabled' => true,
+            'helpButtonLabel' => 'Ich möchte helfen!',
+            'visible' => true,
+            'activities' => [],
+            'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $upcomingScheduleId = $this->responseData()['id'];
+        self::assertIsString($upcomingScheduleId);
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests', [
+            'eventIdentifier' => $upcomingScheduleId,
+            'memberId' => $memberId,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('present', $this->responseData()['status']);
     }
 
     /**
-     * Auswahlliste für „Neuen Helfer anmelden": nur Veranstaltungen mit aktivierter
-     * Helferanmeldung — auch unveröffentlichte —, chronologisch sortiert.
+     * Auswahlliste für „Neuen Helfer anmelden": alle Veranstaltungen — auch unveröffentlichte und
+     * solche ohne öffentlichen „Ich möchte helfen“-Button —, chronologisch sortiert.
      */
-    public function testListsEventsWithHelpEnabledForRegistration(): void
+    public function testListsAllEventsForRegistration(): void
     {
         $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
         $event = static fn (string $title, string $date, bool $helpEnabled, bool $visible): array => [
@@ -143,11 +171,37 @@ final class EventHelpRequestManualAddWorkflowTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $items = $this->responseData()['items'];
         self::assertIsArray($items);
-        self::assertCount(2, $items);
+        self::assertCount(3, $items);
         self::assertIsArray($items[0]);
         self::assertIsArray($items[1]);
+        self::assertIsArray($items[2]);
         self::assertSame(['Frühjahrsputz', '2026-04-11', '09:00'], [$items[0]['eventTitle'], $items[0]['eventDate'], $items[0]['eventTime']]);
-        self::assertSame('Herbstputz', $items[1]['eventTitle']);
+        self::assertSame('Sommerfest', $items[1]['eventTitle']);
+        self::assertSame('Herbstputz', $items[2]['eventTitle']);
+    }
+
+    public function testMemberCanBeAddedToEventWithoutPublicHelpRegistration(): void
+    {
+        $headers = ['HTTP_X_CSRF_TOKEN' => $this->loginAsAdmin()];
+        $this->client->jsonRequest('POST', '/api/admin/v1/members', $this->validMember('Erika', 'Musterfrau', 'erika@example.test', '1990-06-15'), $headers);
+        self::assertResponseStatusCodeSame(201);
+        $memberId = $this->responseData()['id'];
+        self::assertIsString($memberId);
+        $this->client->jsonRequest('POST', '/api/admin/v1/events', [
+            'kind' => 'event', 'title' => 'Eisbaden', 'date' => '2027-01-09', 'time' => '11:00', 'content' => '',
+            'helpEnabled' => false, 'helpButtonLabel' => '', 'visible' => true,
+            'activities' => [], 'callToActions' => [],
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        $scheduleId = $this->responseData()['id'];
+        self::assertIsString($scheduleId);
+
+        $this->client->jsonRequest('POST', '/api/admin/v1/event-help-requests', [
+            'eventIdentifier' => $scheduleId,
+            'memberId' => $memberId,
+        ], $headers);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('Eisbaden', $this->responseData()['eventTitle']);
     }
 
     public function testManuallyAddingAnUnknownMemberOrEventFails(): void

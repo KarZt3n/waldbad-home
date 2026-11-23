@@ -21,13 +21,13 @@ class EventHelpIntervalEntity
         private int $position,
         #[ORM\Column(type: Types::STRING, length: 5)]
         private string $fromTime,
-        #[ORM\Column(type: Types::STRING, length: 5)]
-        private string $toTime,
+        #[ORM\Column(type: Types::STRING, length: 5, nullable: true)]
+        private ?string $toTime,
     ) {
     }
 
     public function getId(): string { return $this->id; }
     public function getPosition(): int { return $this->position; }
     public function getFromTime(): string { return $this->fromTime; }
-    public function getToTime(): string { return $this->toTime; }
+    public function getToTime(): ?string { return $this->toTime; }
 }
