@@ -2,11 +2,12 @@
 // Aktivitäten als Unter-Reiter unter einer gemeinsamen Route (`/admin/veranstaltungen/...`).
 
 import {
-    buildPageTree, confirmAction, element, field, flattenPageTree, formMessage, request, toast,
+    confirmAction, element, field, formMessage, request, toast,
 } from '../core.js';
 import {actionButton, actionMenu, emptyState, focusLinkedItem, searchField, sectionHeading, whileNavigating} from './ui.js';
 import {canEditModule, hasModule} from './session.js';
 import {collectionItemMediaEditor, richTextEditor} from './pages.js';
+import {pagePickerField} from './page-picker.js';
 import {adminPath, setAdminPath, workspace} from './shell.js';
 
 const EVENT_SCHEDULE_KIND_LABELS = {event: 'Veranstaltung', work_assignment: 'Arbeitseinsatz'};
@@ -1316,18 +1317,13 @@ const buildCallToActionEditor = (callToActions, pages, dialogKey, options = {}) 
             const targetField = element('div', {className: 'event-call-action-target'});
             const renderTarget = () => {
                 if (targetType.value === 'page') {
-                    const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
-                    pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
-                    flattenPageTree(buildPageTree(pages || [])).forEach(({page: candidate, depth}) => {
-                        pageSelect.append(element('option', {
-                            text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
-                            attributes: {value: candidate.id},
-                        }));
-                    });
-                    pageSelect.value = action.pageId || '';
-                    pageSelect.required = true;
-                    pageSelect.addEventListener('change', () => action.pageId = pageSelect.value || null);
-                    targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                    targetField.replaceChildren(pagePickerField({
+                        label: 'Verlinkte Seite',
+                        dialogTitle: 'Verlinkte Seite auswählen',
+                        pages: pages || [],
+                        value: action.pageId,
+                        onChange: (pageId) => action.pageId = pageId,
+                    }));
                     return;
                 }
                 const url = field('URL', `event-action-url-${dialogKey}-${actionIndex}`, action.url || '/');

@@ -1675,6 +1675,13 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .context-menu-item[disabled] { color: var(--muted); cursor: not-allowed; opacity: .6; }
 .page-tree-entry { position: relative; display: flex; align-items: center; gap: .15rem; min-width: 0; }
 .page-tree-item.is-hidden .tree-item-name { color: var(--muted); font-style: italic; }
+.page-picker-dialog { width: min(36rem, calc(100vw - 2rem)); }
+.page-picker-tree { position: static; max-height: min(60vh, 32rem); }
+.page-tree-item.is-disabled { cursor: not-allowed; opacity: .45; }
+.page-tree-item.is-disabled:hover { background: transparent; }
+.page-picker-field { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
+.page-picker-field .page-picker-current { font-weight: 750; }
+.page-picker-field .page-picker-current.is-empty { color: var(--muted); font-weight: 400; }
 .page-tree-nav.is-page-dragging, .page-tree-nav.is-page-dragging * { cursor: grabbing; user-select: none; }
 .page-tree-item.dragging { opacity: .45; }
 .page-tree-item.drop-into { border-color: var(--water-400); background: #e2f4f6; }

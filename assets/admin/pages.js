@@ -11,6 +11,7 @@ import {openImagePicker, openMediaFilePicker} from './media-picker.js';
 import {renderPageExtensions} from './page-extensions.js';
 import {renderSocialMedia} from './social-media.js';
 import {renderFooterNavigation} from './footer-navigation.js';
+import {pagePickerField, pageStatusText} from './page-picker.js';
 import {renderSiteBranding} from './site-branding.js';
 
 const BLOCK_TYPES = {
@@ -91,19 +92,14 @@ const actionButtonEditor = (block, index, handlers) => {
             const targetField = element('div', {className: 'event-call-action-target'});
             const renderTarget = () => {
                 if (targetType.value === 'page') {
-                    const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
-                    pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
-                    flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
-                        if (candidate.id === handlers.currentPageId) return;
-                        pageSelect.append(element('option', {
-                            text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
-                            attributes: {value: candidate.id},
-                        }));
-                    });
-                    pageSelect.value = button.pageId || '';
-                    pageSelect.required = true;
-                    pageSelect.addEventListener('change', () => button.pageId = pageSelect.value || null);
-                    targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                    targetField.replaceChildren(pagePickerField({
+                        label: 'Verlinkte Seite',
+                        dialogTitle: 'Verlinkte Seite auswählen',
+                        pages: handlers.pages || [],
+                        value: button.pageId,
+                        disabledIds: [handlers.currentPageId],
+                        onChange: (pageId) => button.pageId = pageId,
+                    }));
                     return;
                 }
 
@@ -177,9 +173,6 @@ const hierarchicalSlug = (title, parentId, pages) => {
     return parent ? `${parent.slug}/${leafSlug}` : leafSlug;
 };
 const parentPageField = (pages, page, initialParentId) => {
-    const select = element('select', {attributes: {name: 'parentId', id: 'parentId'}});
-    select.append(element('option', {text: 'Keine – Hauptseite', attributes: {value: ''}}));
-
     const childIds = new Set();
     const collectChildren = (parentId) => pages.filter((candidate) => candidate.parentId === parentId).forEach((child) => {
         childIds.add(child.id);
@@ -187,16 +180,17 @@ const parentPageField = (pages, page, initialParentId) => {
     });
     if (page) collectChildren(page.id);
 
-    flattenPageTree(buildPageTree(pages)).forEach(({page: candidate, depth}) => {
-        if (candidate.id === page?.id || childIds.has(candidate.id)) return;
-        select.append(element('option', {
-            text: `${'— '.repeat(depth)}${candidate.title}`,
-            attributes: {value: candidate.id},
-        }));
-    });
-    select.value = page?.parentId || initialParentId || '';
 
-    return element('label', {className: 'field', children: [element('span', {text: 'Übergeordnete Seite'}), select]});
+    // Die Seite selbst und ihre Unterseiten scheiden als übergeordnete Seite aus (Zyklus).
+    return pagePickerField({
+        label: 'Übergeordnete Seite',
+        dialogTitle: 'Übergeordnete Seite auswählen',
+        name: 'parentId',
+        noneLabel: 'Keine – Hauptseite',
+        pages,
+        value: page?.parentId || initialParentId || null,
+        disabledIds: page ? [page.id, ...childIds] : [],
+    });
 };
 const richTextEditor = (block, index, onChange = null, ariaLabel = 'Rich-Text-Inhalt') => {
     const editor = element('div', {
@@ -665,19 +659,14 @@ const blockEditor = (block, index, handlers) => {
                 const targetField = element('div', {className: 'event-call-action-target'});
                 const renderTarget = () => {
                     if (targetType.value === 'page') {
-                        const pageSelect = element('select', {attributes: {'aria-label': 'Verlinkte CMS-Seite'}});
-                        pageSelect.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
-                        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
-                            if (candidate.id === handlers.currentPageId) return;
-                            pageSelect.append(element('option', {
-                                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
-                                attributes: {value: candidate.id},
-                            }));
-                        });
-                        pageSelect.value = action.pageId || '';
-                        pageSelect.required = true;
-                        pageSelect.addEventListener('change', () => action.pageId = pageSelect.value || null);
-                        targetField.replaceChildren(element('label', {className: 'field', children: [element('span', {text: 'Verlinkte Seite'}), pageSelect]}));
+                        targetField.replaceChildren(pagePickerField({
+                            label: 'Verlinkte Seite',
+                            dialogTitle: 'Verlinkte Seite auswählen',
+                            pages: handlers.pages || [],
+                            value: action.pageId,
+                            disabledIds: [handlers.currentPageId],
+                            onChange: (pageId) => action.pageId = pageId,
+                        }));
                         return;
                     }
                     const url = field('URL', `block-event-action-url-${index}-${actionIndex}`, action.url || '/');
@@ -726,26 +715,20 @@ const blockEditor = (block, index, handlers) => {
             addAction,
         ]}));
     } else if (block.type === 'page_teaser') {
-        const select = element('select', {attributes: {id: 'block-page-teaser-' + index}});
-        select.append(element('option', {text: 'Zielseite auswählen …', attributes: {value: ''}}));
-        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
-            if (candidate.id === handlers.currentPageId) return;
-            select.append(element('option', {
-                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
-                attributes: {value: candidate.id},
-            }));
+        const targetPage = pagePickerField({
+            label: 'Verlinkte Unterseite',
+            dialogTitle: 'Zielseite für den Teaser auswählen',
+            pages: handlers.pages || [],
+            value: block.embeddedPageId,
+            disabledIds: [handlers.currentPageId],
+            hint: 'Titel und Link werden automatisch aus der ausgewählten Seite übernommen.',
+            onChange: (pageId) => block.embeddedPageId = pageId,
         });
-        select.value = block.embeddedPageId || '';
-        select.addEventListener('change', () => block.embeddedPageId = select.value || null);
         const linkLabel = field('Beschriftung des Links', 'block-page-teaser-label-' + index, block.linkLabel || 'Mehr erfahren');
         block.linkLabel = linkLabel.querySelector('input').value;
         linkLabel.querySelector('input').addEventListener('input', (event) => block.linkLabel = event.target.value || 'Mehr erfahren');
         card.append(
-            element('label', {className: 'field', children: [
-                element('span', {text: 'Verlinkte Unterseite'}),
-                select,
-                element('small', {text: 'Titel und Link werden automatisch aus der ausgewählten Seite übernommen.'}),
-            ]}),
+            targetPage,
             element('div', {className: 'field', children: [
                 element('span', {text: 'Teasertext'}),
                 richTextEditor(block, index + '-page-teaser', null, 'Teasertext'),
@@ -753,22 +736,15 @@ const blockEditor = (block, index, handlers) => {
             linkLabel,
         );
     } else if (block.type === 'embedded_page') {
-        const select = element('select', {attributes: {id: 'block-page-' + index}});
-        select.append(element('option', {text: 'Seite auswählen …', attributes: {value: ''}}));
-        flattenPageTree(buildPageTree(handlers.pages || [])).forEach(({page: candidate, depth}) => {
-            if (candidate.id === handlers.currentPageId) return;
-            select.append(element('option', {
-                text: `${'— '.repeat(depth)}${candidate.title}${candidate.visible ? '' : ' (ausgeblendet)'}`,
-                attributes: {value: candidate.id},
-            }));
-        });
-        select.value = block.embeddedPageId || '';
-        select.addEventListener('change', () => block.embeddedPageId = select.value || null);
-        card.append(element('label', {className: 'field', children: [
-            element('span', {text: 'Einzubettende Seite'}),
-            select,
-            element('small', {text: 'Im Frontend werden nur veröffentlichte und sichtbare Zielseiten ausgegeben.'}),
-        ]}));
+        card.append(pagePickerField({
+            label: 'Einzubettende Seite',
+            dialogTitle: 'Seite zum Einbetten auswählen',
+            pages: handlers.pages || [],
+            value: block.embeddedPageId,
+            disabledIds: [handlers.currentPageId],
+            hint: 'Im Frontend werden nur veröffentlichte und sichtbare Zielseiten ausgegeben.',
+            onChange: (pageId) => block.embeddedPageId = pageId,
+        }));
     } else if (block.type === 'event_reference') {
         const select = element('select', {attributes: {id: 'block-event-reference-' + index}});
         select.append(element('option', {text: 'Veranstaltung auswählen …', attributes: {value: ''}}));
@@ -1415,16 +1391,8 @@ const pageEditor = (page, onSaved, pages = [], initialParentId = null, activitie
     return form;
 };
 
-const PAGE_STATUS_LABELS = {
-    draft: 'Entwurf',
-    in_review: 'In Prüfung',
-    published: 'Veröffentlicht',
-    archived: 'Archiviert',
-};
-
 let selectedPageId = null;
 
-const pageStatusText = (page) => `${PAGE_STATUS_LABELS[page.status] || page.status}${page.publishedAt && page.status !== 'published' ? ' · letzte Version online' : ''}${page.visible ? '' : ' · ausgeblendet'}`;
 
 // Zweispaltige Seitenverwaltung wie die Mediathek: links der Seitenbaum (Aktionen per Rechtsklick
 // bzw. ⋮, Verschieben per Ziehen mit der Maus), rechts der Editor der ausgewählten Seite. Ohne

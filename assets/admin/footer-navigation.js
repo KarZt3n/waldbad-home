@@ -5,16 +5,19 @@
 import {element, formMessage, request, toast} from '../core.js';
 import {sectionHeading} from './ui.js';
 import {canEditFooterNavigation} from './session.js';
+import {openPagePickerDialog} from './page-picker.js';
 
 const renderFooterNavigation = async (mount) => {
-    const data = await request('/api/admin/v1/footer-navigation');
+    const [data, pageData] = await Promise.all([
+        request('/api/admin/v1/footer-navigation'),
+        request('/api/admin/v1/pages'),
+    ]);
     const editable = canEditFooterNavigation();
     let pages = [...data.pages];
 
     const list = element('div', {className: 'social-media-links footer-navigation-pages'});
-    const addSelect = element('select', {attributes: {'aria-label': 'Seite zum Footer hinzufügen'}});
-    const addButton = element('button', {className: 'secondary-button', text: '＋ Hinzufügen', attributes: {type: 'button'}});
-    const addRow = element('div', {className: 'social-media-add', children: [addSelect, addButton]});
+    const addButton = element('button', {className: 'secondary-button', text: '＋ Seite hinzufügen', attributes: {type: 'button'}});
+    const addRow = element('div', {className: 'social-media-add', children: [addButton]});
     const message = formMessage();
 
     const renderPages = () => {
@@ -56,13 +59,16 @@ const renderFooterNavigation = async (mount) => {
                 element('small', {text: 'Steht immer fest am Ende.'}),
             ]}),
         ]}));
-        const used = new Set(pages.map((page) => page.id));
-        const available = data.available.filter((page) => !used.has(page.id));
-        addSelect.replaceChildren(...available.map((page) => element('option', {text: `${page.label} (/seite/${page.slug})`, attributes: {value: page.id}})));
-        addRow.hidden = !editable || !available.length;
+        addRow.hidden = !editable || pages.length >= data.available.length;
     };
-    addButton.addEventListener('click', () => {
-        const page = data.available.find((candidate) => candidate.id === addSelect.value);
+    addButton.addEventListener('click', async () => {
+        const result = await openPagePickerDialog({
+            pages: pageData.items,
+            title: 'Seite zum Footer hinzufügen',
+            hint: 'Bereits im Footer stehende Seiten sind ausgegraut.',
+            disabledIds: pages.map((page) => page.id),
+        });
+        const page = result?.page && data.available.find((candidate) => candidate.id === result.page.id);
         if (!page) return;
         pages.push(page);
         renderPages();
