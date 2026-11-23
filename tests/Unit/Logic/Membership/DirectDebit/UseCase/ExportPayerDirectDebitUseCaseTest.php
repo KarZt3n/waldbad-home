@@ -54,15 +54,26 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         self::assertSame(3, $this->savedMembers[0]->nextBookingMonth);
     }
 
-    public function testJoiningYearDebitIsRecordedWithoutAdvancingTheNextBooking(): void
+    public function testStaleNextBookingIsSetToTheYearAfterTheCollectedContributionYear(): void
     {
-        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class), joinedAt: '2026-09-01')
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class), nextBookingYear: 2015)
+            ->execute($this->request(['payer:contribution'], '2026-10-01'));
+
+        self::assertSame(2026, $this->savedRecords[0]->contributionYear);
+        self::assertSame(2027, $this->savedMembers[0]->nextBookingYear);
+    }
+
+    /** Auch eine (abweichend) auf dem Eintrittsjahr stehende nächste Buchung wechselt aufs Folgejahr. */
+    public function testJoiningYearDebitSetsTheNextBookingToTheFollowingYear(): void
+    {
+        $this->useCase($this->createStub(DirectDebitFileWriterInterface::class), joinedAt: '2026-09-01', nextBookingYear: 2026)
             ->execute(new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable('2026-10-01'), SequenceType::First, 'Beitrag 2026', ['payer:contribution']));
 
         self::assertCount(1, $this->savedRecords);
         self::assertSame(2026, $this->savedRecords[0]->contributionYear);
         self::assertSame(SequenceType::First, $this->savedRecords[0]->sequenceType);
-        self::assertSame([], $this->savedMembers);
+        self::assertCount(1, $this->savedMembers);
+        self::assertSame(2027, $this->savedMembers[0]->nextBookingYear);
     }
 
     public function testWritesOneTransactionOverTheSelectedPositions(): void
@@ -160,7 +171,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
         return new ExportPayerDirectDebitRequest('payer', new \DateTimeImmutable($collectionDate), SequenceType::Recurring, 'Mitgliedsbeitrag 2026', $positionIds, $kind);
     }
 
-    private function useCase(DirectDebitFileWriterInterface $writer, ?DirectDebitCreditor $creditor = null, string $joinedAt = '2020-01-01'): ExportPayerDirectDebitUseCase
+    private function useCase(DirectDebitFileWriterInterface $writer, ?DirectDebitCreditor $creditor = null, string $joinedAt = '2020-01-01', int $nextBookingYear = 2027): ExportPayerDirectDebitUseCase
     {
         $payer = new Member(
             id: 'payer',
@@ -189,7 +200,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
             payerType: PayerType::SelfPayer,
             payerMemberId: null,
             nextBookingMonth: 3,
-            nextBookingYear: 2027,
+            nextBookingYear: $nextBookingYear,
             contributionCategory: ContributionCategory::IndividualSenior,
             contributionAmountCents: 5000,
             workAssignmentSurchargeCents: 1500,
@@ -198,7 +209,7 @@ final class ExportPayerDirectDebitUseCaseTest extends TestCase
             version: 0,
             mandateValidFrom: new \DateTimeImmutable('2020-03-01'),
             // Im Eintrittsjahr wird das laufende Jahr abgebucht, sonst die nächste Buchung 2027.
-            contributionYear: str_starts_with($joinedAt, '2026') ? 2026 : 2027,
+            contributionYear: str_starts_with($joinedAt, '2026') ? 2026 : max($nextBookingYear, 2026),
         );
         $members = $this->createStub(MemberManagerInterface::class);
         $members->method('get')->willReturn($payer);

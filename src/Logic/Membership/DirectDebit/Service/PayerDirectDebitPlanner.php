@@ -201,8 +201,10 @@ readonly class PayerDirectDebitPlanner
         if ($kind === DirectDebitPositionKind::Contribution) {
             $joinedThisYear = (int) $payer->joinedAt->format('Y') === $year;
             $joiningYearDebit = $joinedThisYear && !$this->hasRecordFor($kindRecords, static fn (DirectDebitRecord $record): bool => $record->contributionYear === $year);
-            $contributionYear = $joiningYearDebit ? $year : ($payer->nextBookingYear ?? $year);
-            $collectionDate = $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $now);
+            // Eine zurückliegende nächste Buchung (z. B. aus der Sage-Übernahme) wird nicht nachträglich
+            // abgebucht — eingezogen wird dann das laufende Beitragsjahr.
+            $contributionYear = $joiningYearDebit ? $year : max($payer->nextBookingYear ?? $year, $year);
+            $collectionDate = $joiningYearDebit ? $this->nextPaymentDay($payer, $now) : $this->defaultCollectionDate($payer, $contributionYear, $now);
         } else {
             $joiningYearDebit = false;
             $contributionYear = $year;
@@ -359,13 +361,16 @@ readonly class PayerDirectDebitPlanner
     }
 
     /**
-     * Beitragslastschriften sind immer im März des Folgejahres fällig, am Zahltag des Zahlers (01.
-     * bzw. 15.) — unabhängig vom Monat der „Nächsten Buchung“, die nur das Beitragsjahr bestimmt.
-     * Fällt das Datum aufs Wochenende, gilt der darauffolgende Montag.
+     * Beiträge werden im März des Beitragsjahres eingezogen, am Zahltag des Zahlers (01. bzw. 15.) —
+     * unabhängig vom Monat der „Nächsten Buchung“. Liegt dieser Termin weniger als zwei Tage in der
+     * Zukunft (verspäteter Export), gilt der nächste Zahltag. Fällt das Datum aufs Wochenende, gilt
+     * der darauffolgende Montag.
      */
-    private function defaultCollectionDate(Member $payer, \DateTimeImmutable $now): \DateTimeImmutable
+    private function defaultCollectionDate(Member $payer, int $contributionYear, \DateTimeImmutable $now): \DateTimeImmutable
     {
-        return $this->skipWeekend($now->setTime(0, 0)->setDate((int) $now->format('Y') + 1, 3, $payer->paymentDay->dayOfMonth()));
+        $candidate = $now->setTime(0, 0)->setDate($contributionYear, 3, $payer->paymentDay->dayOfMonth());
+
+        return $candidate < $now->setTime(0, 0)->modify('+2 days') ? $this->nextPaymentDay($payer, $now) : $this->skipWeekend($candidate);
     }
 
     /** Nächster Zahltag des Zahlers mit mindestens zwei Tagen Vorlauf. */

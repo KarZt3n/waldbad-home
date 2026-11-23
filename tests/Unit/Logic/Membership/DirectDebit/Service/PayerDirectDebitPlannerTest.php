@@ -174,27 +174,39 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertStringContainsString('Eintrittsdatum 01.01.2020', $draft->warnings[0]);
     }
 
-    public function testCollectionDateIsMarchOfTheNextYearOnThePaymentDay(): void
+    /** Beitragsjahr 2027 (nächste Buchung 01/2027) wird im März 2027 am Zahltag eingezogen. */
+    public function testCollectionDateIsMarchOfTheContributionYearOnThePaymentDay(): void
     {
-        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, mandateValidFrom: '2020-03-01');
+        $payer = $this->member('payer', paymentDay: PaymentDay::Fifteenth, mandateValidFrom: '2020-03-01', nextBookingMonth: 1);
 
         $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
 
+        self::assertSame(2027, $draft->contributionYear);
         self::assertSame('2027-03-15', $draft->defaultCollectionDate->format('Y-m-d'));
     }
 
-    /** Der Monat der „Nächsten Buchung“ und eine zurückliegende Buchung ändern die Fälligkeit nicht. */
-    public function testCollectionDateIgnoresTheNextBookingMonthAndYear(): void
+    /** Eine zurückliegende nächste Buchung (Sage-Übernahme) wird nicht nachgeholt: eingezogen wird das laufende Jahr. */
+    public function testStaleNextBookingCollectsTheCurrentContributionYear(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01', nextBookingYear: 2015, contributionYear: 2026);
+
+        $draft = $this->planner([$payer])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame(2026, $draft->contributionYear);
+        self::assertSame([], $draft->bulkExportObstacles());
+        self::assertSame(4000, $draft->defaultAmountCents());
+    }
+
+    /** Ist der März des Beitragsjahres schon vorbei (verspäteter Export), gilt der nächste Zahltag. */
+    public function testLateExportFallsBackToTheNextPaymentDay(): void
     {
         $now = new \DateTimeImmutable(self::NOW);
-        $january = $this->member('january', mandateValidFrom: '2020-03-01', nextBookingMonth: 1);
         $overdue = $this->member('overdue', mandateValidFrom: '2020-03-01', nextBookingYear: 2026);
         $without = $this->member('without', mandateValidFrom: '2020-03-01', nextBookingYear: null);
-        $planner = $this->planner([$january, $overdue, $without]);
+        $planner = $this->planner([$overdue, $without]);
 
-        self::assertSame('2027-03-01', $planner->plan('january', $now)->defaultCollectionDate->format('Y-m-d'));
-        self::assertSame('2027-03-01', $planner->plan('overdue', $now)->defaultCollectionDate->format('Y-m-d'));
-        self::assertSame('2027-03-01', $planner->plan('without', $now)->defaultCollectionDate->format('Y-m-d'));
+        self::assertSame('2026-10-01', $planner->plan('overdue', $now)->defaultCollectionDate->format('Y-m-d'));
+        self::assertSame('2026-10-01', $planner->plan('without', $now)->defaultCollectionDate->format('Y-m-d'));
     }
 
     public function testCollectionDateOnAWeekendMovesToMonday(): void

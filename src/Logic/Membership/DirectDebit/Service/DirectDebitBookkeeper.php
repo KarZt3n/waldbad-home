@@ -14,9 +14,9 @@ use App\Logic\Membership\Member\Manager\MemberManagerInterface;
 
 /**
  * Hält einen Lastschrift-Export fest: ein Eintrag in der Lastschrift-Historie des Zahlers mit der
- * Art des Exports und — nur beim Beitragsexport und außer bei der Lastschrift für das Eintrittsjahr —
- * das Vorrücken seiner „Nächsten Buchung“ um ein Jahr, damit derselbe Zeitraum nicht versehentlich
- * ein zweites Mal exportiert wird. Exportierte Einmalgebühren werden als eingezogen vermerkt und in
+ * Art des Exports und — nur beim Beitragsexport —
+ * seine „Nächste Buchung“ auf das Jahr nach dem exportierten Beitragsjahr, damit dasselbe Jahr nicht
+ * versehentlich ein zweites Mal exportiert wird. Exportierte Einmalgebühren werden als eingezogen vermerkt und in
  * keinem weiteren Export mehr angeboten. Alles geschieht gemeinsam oder gar nicht.
  */
 readonly class DirectDebitBookkeeper
@@ -69,10 +69,10 @@ readonly class DirectDebitBookkeeper
             if ($chargeIds !== []) {
                 $collectedChargeIds[$record->id] = $chargeIds;
             }
-            if ($draft->kind === DirectDebitPositionKind::Contribution && !$draft->joiningYearDebit
-                && $payer->nextBookingMonth !== null && $payer->nextBookingYear !== null
-            ) {
-                $advancedPayers[] = $payer->withNextBooking($payer->nextBookingMonth, $payer->nextBookingYear + 1);
+            // Auch nach der Lastschrift für das Eintrittsjahr: Die nächste Buchung steht dann zwar
+            // normalerweise schon auf dem Folgejahr, eine abweichend gepflegte würde das Jahr aber erneut anbieten.
+            if ($draft->kind === DirectDebitPositionKind::Contribution) {
+                $advancedPayers[] = $payer->withNextBooking($payer->nextBookingMonth ?? 3, $draft->contributionYear + 1);
             }
         }
 
