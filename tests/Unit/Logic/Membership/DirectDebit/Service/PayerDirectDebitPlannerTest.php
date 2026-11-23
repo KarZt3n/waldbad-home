@@ -197,6 +197,22 @@ final class PayerDirectDebitPlannerTest extends TestCase
         self::assertSame(4000, $draft->defaultAmountCents());
     }
 
+    /**
+     * Der Export für 2027 läuft noch 2026: Wer zum 31.12.2026 austritt, wird für 2027 nicht mehr
+     * abgerechnet und blockiert den Zahler nicht mit seinem für 2026 berechneten Beitrag.
+     */
+    public function testMemberLeavingBeforeTheContributionYearIsNotCharged(): void
+    {
+        $payer = $this->member('payer', mandateValidFrom: '2015-03-01');
+        $leaving = $this->member('leaving', payerId: 'payer', leftAt: '2026-12-31', contributionYear: 2026);
+
+        $draft = $this->planner([$payer, $leaving])->plan('payer', new \DateTimeImmutable(self::NOW));
+
+        self::assertSame(2027, $draft->contributionYear);
+        self::assertSame([], $draft->bulkExportObstacles());
+        self::assertSame(['Payer Muster'], array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberName, $draft->positions))));
+    }
+
     /** Ist das laufende Jahr bei veralteter Buchung schon eingezogen (Sage), folgt das nächste Jahr. */
     public function testStaleNextBookingSkipsAlreadyCollectedYears(): void
     {

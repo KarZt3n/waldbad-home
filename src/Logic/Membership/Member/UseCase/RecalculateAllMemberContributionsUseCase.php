@@ -51,7 +51,8 @@ readonly class RecalculateAllMemberContributionsUseCase
      * $year: Beitragsjahr, dessen Stichtag 31.12. das Beitragsalter bestimmt (siehe
      * `MemberContributionCalculator`) — ohne Angabe das laufende Jahr. Ob ein Mitglied bereits
      * ausgetreten ist, wird im laufenden Jahr zum heutigen Tag geprüft, für jedes andere Jahr zu
-     * dessen Jahresbeginn (wer bis dahin ausgetreten ist, zahlt für dieses Jahr keinen Beitrag).
+     * dessen Jahresbeginn. Wer bis dahin ausgetreten ist, wird nicht neu berechnet und behält seinen
+     * zuletzt berechneten Beitrag.
      * Zulässig sind nur das laufende und das folgende Jahr: Ein anderes Jahr würde die
      * gespeicherten Beiträge aller Mitglieder mit Werten überschreiben, die keine anstehende
      * Lastschrift mehr braucht.
@@ -81,6 +82,12 @@ readonly class RecalculateAllMemberContributionsUseCase
             // `MemberContributionCalculator::resolveHouseholdRoles()`).
             $household = $this->calculator->resolveHouseholdRoles($household, $now);
             foreach ($household as $candidate) {
+                // Wer zu Beginn des Beitragsjahres schon ausgetreten ist (z. B. zum 31.12. des Vorjahres),
+                // gehört nicht zu diesem Jahr: Sein zuletzt berechneter Beitrag bleibt unverändert. Für
+                // die Familienpreise der übrigen zählt er ohnehin nicht mehr (siehe `MemberContributionCalculator`).
+                if ($candidate->hasLeft($now)) {
+                    continue;
+                }
                 $otherHouseholdMembers = array_values(array_filter(
                     $household,
                     static fn (Member $other): bool => $other->id !== $candidate->id,

@@ -670,18 +670,18 @@ const groupHouseholdByPayer = (householdMembers) => {
 // Gesamtbetrag des Zahlers: dieselbe Definition wie im „Beiträge gesamt"-Feld der Zahler-Liste
 // unten (`payerContent`) — Wurzel plus alle Kinder, je über `contributionPositions` (berücksichtigt
 // Austritt/Beitragsbefreiung), damit beide Stellen denselben Betrag zeigen.
-const householdPayerTotalCents = (group) => [group.root, ...group.children].reduce(
-    (sum, entry) => sum + contributionPositions(entry).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
+const householdPayerTotalCents = (group, year) => [group.root, ...group.children].reduce(
+    (sum, entry) => sum + contributionPositions(entry, year).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
     0,
 );
 
-const householdTreeItem = (group, currentId, openOther) => {
+const householdTreeItem = (group, currentId, openOther, year) => {
     const childrenList = group.children.length ? [element('ul', {
         className: 'member-household-children',
         children: group.children.map((entry) => memberListItem(entry, currentId, openOther)),
     })] : [];
 
-    return memberListItem(group.root, currentId, openOther, childrenList, householdPayerTotalCents(group));
+    return memberListItem(group.root, currentId, openOther, childrenList, householdPayerTotalCents(group, year));
 };
 
 // Ist das Austrittsdatum erreicht (heute oder in der Vergangenheit), gilt das Mitglied als
@@ -715,13 +715,26 @@ const contributionExemptionReason = (entry) => {
     return null;
 };
 
+// Beitragsjahr, das der Haushalt zeigt: das jüngste berechnete Jahr seiner Mitglieder (nach
+// „Beiträge neu berechnen“ für das Folgejahr z. B. 2027), mindestens das laufende Jahr.
+const householdContributionYear = (entries) => Math.max(new Date().getFullYear(), ...entries.map((entry) => entry.contributionYear || 0));
+
+// Heute noch Mitglied, aber vor Beginn von `year` ausgetreten (z. B. zum 31.12. des Vorjahres) —
+// für `year` fällt kein Beitrag mehr an, gespeichert ist noch der Beitrag des laufenden Jahres.
+const leavesBeforeYear = (entry, year) => !!entry.leftAt && !hasMemberLeft(entry.leftAt) && entry.leftAt < `${year}-01-01`;
+
+// Gespeicherter Jahresbeitrag (Kategorie + Arbeitseinsatz-Zuschlag), ohne Befreiungen.
+const storedContributionCents = (entry) => (entry.contributionAmountCents || 0) + (entry.workAssignmentSurchargeCents || 0);
+
 // Die einzelnen Beitragssatz-Positionen, aus denen sich der Beitrag eines Mitglieds
 // zusammensetzt (laufender Beitrag nach Kategorie + ggf. Arbeitseinsatz-Zuschlag).
 // Ausgetretene bzw. Vorstandsmitglieder sind beitragsfrei und werden unabhängig von (ggf.
 // noch nicht neu berechneten) gespeicherten Werten sofort mit 0 € und entsprechendem Hinweis
-// ausgewiesen.
-const contributionPositions = (entry) => {
-    const exemptionReason = contributionExemptionReason(entry);
+// ausgewiesen. Mit `year` gilt das auch für ein Mitglied, das vor Beginn dieses Beitragsjahres
+// austritt (siehe `leavesBeforeYear`).
+const contributionPositions = (entry, year = null) => {
+    const exemptionReason = contributionExemptionReason(entry)
+        ?? (year !== null && leavesBeforeYear(entry, year) ? `Austritt zum ${formatDateDE(entry.leftAt)}` : null);
 
     return exemptionReason
         ? [[exemptionReason, 0]]
@@ -805,10 +818,12 @@ const renderMemberWorkAssignments = (years, refund = null) => {
     ];
 };
 
-const payerListItem = (entry, currentId, openOther) => {
+const payerListItem = (entry, currentId, openOther, year) => {
     const openButton = memberOpenButton(entry, currentId, openOther);
-    const positions = contributionPositions(entry);
+    const positions = contributionPositions(entry, year);
     const sumCents = positions.reduce((sum, [, cents]) => sum + (cents || 0), 0);
+    const leaving = leavesBeforeYear(entry, year);
+    const shownYear = leaving ? year : entry.contributionYear;
 
     return element('li', {className: entry.id === currentId ? 'is-current' : '', children: [
         element('div', {className: 'member-payer-row', children: [
@@ -818,10 +833,14 @@ const payerListItem = (entry, currentId, openOther) => {
                     element('span', {text: ` · ${FAMILY_ROLE_LABELS[entry.familyRole] || entry.familyRole} (${ageWithContributionAgeLabel(entry.birthDate)}) · ${entry.memberNumber}`}),
                 ]}),
                 element('ul', {className: 'member-payer-positions', children: positions.length
-                    ? positions.map(([label, cents]) => element('li', {children: [
-                        element('span', {text: label}),
-                        element('span', {text: ` · ${formatEuro(cents)}`}),
-                    ]}))
+                    ? [
+                        ...positions.map(([label, cents]) => element('li', {children: [
+                            element('span', {text: shownYear ? `Beitrag ${shownYear}: ${label}` : label}),
+                            element('span', {text: ` · ${formatEuro(cents)}`}),
+                        ]})),
+                        ...(leaving && entry.contributionYear && entry.contributionYear < year ? [element('li', {className: 'field-hint', text:
+                            `Beitrag ${entry.contributionYear} bis zum Austritt: ${formatEuro(storedContributionCents(entry))}`})] : []),
+                    ]
                     : [element('li', {className: 'empty-copy', text: 'Noch kein Beitrag berechnet.'})]}),
             ]}),
             element('strong', {className: 'member-payer-sum', text: formatEuro(sumCents)}),
@@ -1429,14 +1448,20 @@ const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) =>
     // In eine eigene Funktion ausgelagert, damit „Beitrag neu berechnen“ nur diesen Ausschnitt
     // austauschen kann, statt den ganzen Dialog zu schließen (siehe Klick-Handler unten).
     const contributionInfoContent = (currentMember) => {
-        const exemptionReason = contributionExemptionReason(currentMember);
+        const year = householdContributionYear([currentMember, ...(household?.householdMembers || [])]);
+        const leaving = leavesBeforeYear(currentMember, year);
+        const exemptionReason = contributionExemptionReason(currentMember) ?? (leaving ? `Austritt zum ${formatDateDE(currentMember.leftAt)}` : null);
+        const shownYear = leaving ? year : currentMember.contributionYear;
 
         return [
             element('p', {children: [
+                ...(shownYear ? [element('span', {text: `Beitrag ${shownYear}: `})] : []),
                 element('strong', {text: exemptionReason
                     ?? (currentMember.contributionCategory ? CONTRIBUTION_CATEGORY_LABELS[currentMember.contributionCategory] || currentMember.contributionCategory : 'Noch nicht berechnet')}),
                 element('span', {text: ` · ${formatEuro(exemptionReason ? 0 : currentMember.contributionAmountCents)} pro Jahr`}),
             ]}),
+            ...(leaving && currentMember.contributionYear && currentMember.contributionYear < year ? [element('p', {className: 'field-hint', text:
+                `Bis zum Austritt gilt der Beitrag ${currentMember.contributionYear}: ${CONTRIBUTION_CATEGORY_LABELS[currentMember.contributionCategory] || currentMember.contributionCategory || 'ohne Kategorie'} · ${formatEuro(storedContributionCents(currentMember))} inkl. Arbeitseinsatz-Zuschlag.`})] : []),
             ...(!exemptionReason && currentMember.workAssignmentSurchargeCents != null ? [element('p', {children: [
                 element('strong', {text: 'Arbeitseinsatz-Zuschlag'}),
                 element('span', {text: ` · zzgl. ${formatEuro(currentMember.workAssignmentSurchargeCents)} pro Jahr (bei Ableistung der Gemeinschaftsstunden erstattungsfähig)`}),
@@ -1533,7 +1558,7 @@ const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) =>
 
     // Ausgelagert, damit „Änderungen speichern“ die Liste bei geöffnetem Dialog austauschen kann.
     const householdListContent = (currentHousehold, currentMember) => currentHousehold.householdMembers.length
-        ? groupHouseholdByPayer(currentHousehold.householdMembers).map((group) => householdTreeItem(group, currentMember.id, openOther))
+        ? groupHouseholdByPayer(currentHousehold.householdMembers).map((group) => householdTreeItem(group, currentMember.id, openOther, householdContributionYear(currentHousehold.householdMembers)))
         : [element('li', {className: 'empty-copy', text: 'Keine weiteren Familienmitglieder.'})];
     const householdList = member ? element('ul', {className: 'member-household-list', children: householdListContent(household, member)}) : null;
     const householdSection = member ? element('fieldset', {children: [
@@ -1596,14 +1621,14 @@ const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) =>
                 ...directDebitButton(currentMember),
             ]}),
         ]}),
-        element('ul', {className: 'member-payer-list', children: sortedPayerEntries(currentHousehold).map((entry) => payerListItem(entry, currentMember.id, openOther))}),
+        element('ul', {className: 'member-payer-list', children: sortedPayerEntries(currentHousehold).map((entry) => payerListItem(entry, currentMember.id, openOther, householdContributionYear(currentHousehold.payerEntries)))}),
         element('div', {className: 'member-payer-total', children: [
-            element('span', {text: 'Gesamtbeitrag pro Jahr'}),
+            element('span', {text: `Gesamtbeitrag ${householdContributionYear(currentHousehold.payerEntries)}`}),
             // Aus denselben Positionen wie die Liste darüber berechnet (statt aus dem vom
             // Server gelieferten Rohwert), damit ein gerade erst gesetztes „Beitragspflichtig“-
             // Häkchen die Summe sofort auf 0 € zieht, statt erst nach „Beitrag neu berechnen“.
             element('span', {text: formatEuro(currentHousehold.payerEntries.reduce(
-                (sum, entry) => sum + contributionPositions(entry).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
+                (sum, entry) => sum + contributionPositions(entry, householdContributionYear(currentHousehold.payerEntries)).reduce((entrySum, [, cents]) => entrySum + (cents || 0), 0),
                 0,
             ))}),
         ]}),

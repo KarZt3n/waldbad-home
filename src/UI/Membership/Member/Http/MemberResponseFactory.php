@@ -137,6 +137,7 @@ readonly class MemberResponseFactory
             'contributionCategory' => $member->contributionCategory?->value,
             'contributionAmountCents' => $member->contributionAmountCents,
             'workAssignmentSurchargeCents' => $member->workAssignmentSurchargeCents,
+            'contributionYear' => $member->contributionYear,
             'contributionLiable' => $member->contributionLiable,
             'leftAt' => $member->leftAt?->format('Y-m-d'),
             // Beim Löschen prüft das Frontend, ob die übrige Familie noch erreichbar ist.

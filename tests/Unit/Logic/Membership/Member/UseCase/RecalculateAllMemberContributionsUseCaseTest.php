@@ -76,6 +76,33 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute(2027);
     }
 
+    /**
+     * Wer zum 31.12.2026 austritt, gehört nicht zum Beitragsjahr 2027 und behält seinen Beitrag für
+     * 2026; wer erst im Laufe von 2027 austritt, wird für 2027 berechnet.
+     */
+    public function testMembersWhoLeftBeforeTheYearAreNotRecalculated(): void
+    {
+        $leaving = $this->member('leaving', 'M-0001', leftAt: '2026-12-31');
+        $stayingUntilSummer = $this->member('summer', 'M-0002', leftAt: '2027-06-30');
+
+        $members = $this->createMock(MemberManagerInterface::class);
+        $members->method('search')->willReturn([$leaving, $stayingUntilSummer]);
+        $members->expects(self::once())->method('saveAll')->with(self::callback(
+            static fn (array $saved): bool => count($saved) === 1 && $saved[0] instanceof Member && $saved[0]->id === 'summer',
+        ));
+
+        $calculator = $this->createStub(MemberContributionCalculator::class);
+        $calculator->method('calculate')->willReturn(new ContributionOutcome(ContributionCategory::IndividualSenior, 5000, null));
+        $calculator->method('resolveHouseholdRoles')->willReturnArgument(0);
+
+        $clock = $this->createStub(ClockInterface::class);
+        $clock->method('now')->willReturn(new \DateTimeImmutable('2026-11-23 10:00:00'));
+
+        $result = (new RecalculateAllMemberContributionsUseCase($members, $calculator, $clock, new BoardFamilyExemptionResolver()))->execute(2027);
+
+        self::assertSame(1, $result->updated);
+    }
+
     /** @return iterable<string, array{int}> */
     public static function yearsOutsideCurrentAndNext(): iterable
     {
@@ -322,6 +349,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
         FamilyRole $familyRole = FamilyRole::None,
         string $birthDate = '1990-01-01',
         ?string $primaryMemberNumber = null,
+        ?string $leftAt = null,
     ): Member {
         return new Member(
             id: $id,
@@ -338,7 +366,7 @@ final class RecalculateAllMemberContributionsUseCaseTest extends TestCase
             phone: null,
             familyRole: $familyRole,
             joinedAt: new \DateTimeImmutable('2020-01-01'),
-            leftAt: null,
+            leftAt: $leftAt === null ? null : new \DateTimeImmutable($leftAt),
             function: $function,
             accountHolder: 'Max Muster',
             iban: $iban,

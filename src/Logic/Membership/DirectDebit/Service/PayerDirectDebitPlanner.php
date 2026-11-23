@@ -169,32 +169,6 @@ readonly class PayerDirectDebitPlanner
         usort($paidByPayer, static fn (Member $left, Member $right): int => $left->birthDate <=> $right->birthDate);
         $entries = $payer->payerType === PayerType::SelfPayer || $withoutPayer ? [$payer, ...$paidByPayer] : $paidByPayer;
 
-        $warnings = [];
-        $positions = [];
-        $charged = [];
-        foreach ($entries as $entry) {
-            if ($entry->hasLeft($now) || !$entry->contributionLiable) {
-                continue;
-            }
-            $charged[] = $entry;
-            if ($entry->contributionCategory === null && $kind !== DirectDebitPositionKind::OneTimeCharge) {
-                $warnings[] = sprintf('Für %s ist noch kein Beitrag berechnet.', $this->memberName($entry));
-            }
-            $positions = [...$positions, ...$this->positionsFor($entry, $payer, $rateLabel, $kind, $collectedChargeIds)];
-        }
-        if ($payer->hasLeft($now) && $payer->leftAt !== null && $positions !== []) {
-            $warnings[] = sprintf(
-                'Der Zahler ist zum %s ausgetreten – es wird weiter über sein Konto für %s eingezogen.',
-                $payer->leftAt->format('d.m.Y'),
-                implode(', ', array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberName, $positions)))),
-            );
-        }
-
-        $mandateSignedOn = $payer->mandateValidFrom ?? $payer->joinedAt;
-        if ($payer->mandateValidFrom === null) {
-            $warnings[] = sprintf('Kein Mandatsdatum hinterlegt – es wird das Eintrittsdatum %s verwendet.', $payer->joinedAt->format('d.m.Y'));
-        }
-
         $year = (int) $now->format('Y');
         $kindRecords = array_values(array_filter($records, static fn (DirectDebitRecord $record): bool => $record->covers($kind)));
         $mandateUsed = $this->hasRecordFor($records, static fn (DirectDebitRecord $record): bool => $record->mandateReference === $payer->mandateReference);
@@ -208,6 +182,38 @@ readonly class PayerDirectDebitPlanner
             $contributionYear = $year;
             $collectionDate = $this->nextPaymentDay($payer, $now);
         }
+        // Beiträge gelten für das Beitragsjahr: Wer zu dessen Beginn ausgetreten ist (z. B. zum 31.12.
+        // des Vorjahres), wird nicht abgerechnet — auch wenn der Export noch im Vorjahr läuft.
+        $chargedAt = $kind === DirectDebitPositionKind::Contribution
+            ? max($now, $now->setDate($contributionYear, 1, 1)->setTime(0, 0))
+            : $now;
+
+        $warnings = [];
+        $positions = [];
+        $charged = [];
+        foreach ($entries as $entry) {
+            if ($entry->hasLeft($chargedAt) || !$entry->contributionLiable) {
+                continue;
+            }
+            $charged[] = $entry;
+            if ($entry->contributionCategory === null && $kind !== DirectDebitPositionKind::OneTimeCharge) {
+                $warnings[] = sprintf('Für %s ist noch kein Beitrag berechnet.', $this->memberName($entry));
+            }
+            $positions = [...$positions, ...$this->positionsFor($entry, $payer, $rateLabel, $kind, $collectedChargeIds)];
+        }
+        if ($payer->hasLeft($chargedAt) && $payer->leftAt !== null && $positions !== []) {
+            $warnings[] = sprintf(
+                'Der Zahler ist zum %s ausgetreten – es wird weiter über sein Konto für %s eingezogen.',
+                $payer->leftAt->format('d.m.Y'),
+                implode(', ', array_values(array_unique(array_map(static fn (DirectDebitPosition $position): string => $position->memberName, $positions)))),
+            );
+        }
+
+        $mandateSignedOn = $payer->mandateValidFrom ?? $payer->joinedAt;
+        if ($payer->mandateValidFrom === null) {
+            $warnings[] = sprintf('Kein Mandatsdatum hinterlegt – es wird das Eintrittsdatum %s verwendet.', $payer->joinedAt->format('d.m.Y'));
+        }
+
         $contributionBlockers = $kind === DirectDebitPositionKind::Contribution
             ? $this->contributionNotCalculatedBlockers($charged, $contributionYear)
             : [];

@@ -811,6 +811,8 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $household = $this->responseData();
         self::assertSame($headId, $this->string($this->arrayData($household, 'payer'), 'id'));
         self::assertCount(2, $this->arrayList($household, 'householdMembers'));
+        // Das Beitragsjahr der Berechnung, damit die Oberfläche Beträge verschiedener Jahre unterscheidet.
+        self::assertSame((int) date('Y'), $this->int($this->arrayData($household, 'payer'), 'contributionYear'));
         self::assertCount(2, $this->arrayList($household, 'payerEntries'));
         self::assertSame(10000, $this->int($household, 'payerTotalAnnualCents'));
 
