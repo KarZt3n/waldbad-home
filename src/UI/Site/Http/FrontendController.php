@@ -5,7 +5,7 @@ namespace App\UI\Site\Http;
 use App\Logic\Content\Branding\Query\GetSiteBrandingQuery;
 use App\Logic\Content\Page\Query\GetPublicPageMetadataQuery;
 use App\Logic\Content\Page\Query\GetPublishedPageQuery;
-use App\UI\Common\Http\ApiResponseFactory;
+use App\UI\Content\Page\Http\PublicPageResponseFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -18,7 +18,7 @@ class FrontendController extends AbstractController
         private readonly GetPublicPageMetadataQuery $metadata,
         private readonly PublicSiteChromeResponseFactory $chrome,
         private readonly GetPublishedPageQuery $publishedPage,
-        private readonly ApiResponseFactory $responseFactory,
+        private readonly PublicPageResponseFactory $publicPage,
     ) {
     }
 
@@ -95,7 +95,7 @@ class FrontendController extends AbstractController
             $metadata->description,
             $canonicalUrl,
             indexable: true,
-            page: $this->responseFactory->pageData($this->publishedPage->execute($slug)),
+            page: $this->publicPage->pageData($this->publishedPage->execute($slug)),
         );
     }
 

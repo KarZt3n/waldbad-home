@@ -17,9 +17,9 @@ readonly class PublicPageController
     }
 
     #[Route('/pages/{slug}', name: 'api_public_page', requirements: ['slug' => '.+'], methods: ['GET'], priority: -1)]
-    public function page(string $slug, GetPublishedPageQuery $query): JsonResponse
+    public function page(string $slug, GetPublishedPageQuery $query, PublicPageResponseFactory $publicPage): JsonResponse
     {
-        return $this->responseFactory->page($query->execute($slug));
+        return new JsonResponse($publicPage->pageData($query->execute($slug)));
     }
 
     #[Route('/pages/id/{id}', name: 'api_public_page_by_id', methods: ['GET'])]

@@ -7,6 +7,7 @@ use App\Data\Media\Library\UploadDirectory;
 use App\Logic\Common\Exception\BusinessRuleViolationException;
 use App\Logic\Common\IdentifierGeneratorInterface;
 use App\Logic\Media\Image\ImageStorageInterface;
+use App\Logic\Media\Image\Model\ImageDimensions;
 use App\Logic\Media\Image\Model\ImageUpload;
 use App\Logic\Media\Image\Model\StoredImage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -141,6 +142,24 @@ readonly class LocalImageStorage implements ImageStorageInterface
         }
 
         return $images;
+    }
+
+    public function dimensions(array $urls): array
+    {
+        $dimensions = [];
+        foreach ($urls as $url) {
+            $path = $this->uploads->filePathFromUrl($url);
+            if ($path === null || !in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), [...self::EXTENSIONS, 'jpeg', 'avif'], true)) {
+                continue;
+            }
+            // Eine beschädigte Datei darf die öffentliche Seite nicht stören; sie bekommt nur keine Maße.
+            $size = @getimagesize($path);
+            if ($size !== false && $size[0] > 0 && $size[1] > 0) {
+                $dimensions[$url] = new ImageDimensions($size[0], $size[1]);
+            }
+        }
+
+        return $dimensions;
     }
 
     public function updateSource(string $url, ?string $source): StoredImage

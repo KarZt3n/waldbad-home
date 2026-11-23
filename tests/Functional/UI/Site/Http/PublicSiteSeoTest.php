@@ -75,6 +75,8 @@ final class PublicSiteSeoTest extends WebTestCase
         self::assertIsArray($embedded);
         self::assertIsArray($embedded['page']);
         self::assertSame('anfahrt', $embedded['page']['slug']);
+        self::assertSame([], $embedded['page']['referencedPages']);
+        self::assertSame([], $embedded['page']['imageSizes']);
         self::assertSame([], $embedded['footerLinks']);
         self::assertSame([], $embedded['socialMediaLinks']);
         self::assertIsArray($embedded['navigation']);

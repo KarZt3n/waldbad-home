@@ -18,6 +18,18 @@ const lazyExtension = (load) => {
     return slot;
 };
 
+// Breite/Höhe aus `imageSizes` der Seitendaten reservieren den Platz, bevor das Bild geladen ist,
+// damit nachfolgender Inhalt nicht nach unten springt (CSS rechnet die Höhe über `height: auto`).
+const contentImage = (url, alt, context) => {
+    const size = context.imageSizes?.[url];
+
+    return element('img', {attributes: {
+        src: url,
+        alt: alt || '',
+        loading: 'lazy',
+        ...(size ? {width: String(size.width), height: String(size.height)} : {}),
+    }});
+};
 const renderImageSource = (source) => source
     ? element('figcaption', {className: 'image-source', text: `Bildquelle: ${source}`})
     : null;
@@ -152,7 +164,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                     children: [
                         element('a', {
                             attributes: {href, 'aria-label': targetPage.title},
-                            children: [element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}})],
+                            children: [contentImage(block.mediaUrl, block.mediaAlt, context)],
                         }),
                         ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
                     ],
@@ -301,7 +313,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         const textAlignment = ['left', 'center', 'right'].includes(block.textAlignment) ? block.textAlignment : 'left';
         const imageFit = ['cover', 'contain'].includes(block.imageFit) ? block.imageFit : 'cover';
         const media = block.mediaUrl ? element('figure', {className: 'event-media', children: [
-            element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}}),
+            contentImage(block.mediaUrl, block.mediaAlt, context),
             ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
         ]}) : null;
         return element('article', {
@@ -332,7 +344,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
                     copy.innerHTML = item.content || '';
                     return element('article', {className: `feature-collection-item${item.mediaUrl ? ' has-image' : ''}`, children: [
                         ...(item.mediaUrl ? [element('figure', {className: 'feature-collection-media', children: [
-                            element('img', {attributes: {src: item.mediaUrl, alt: item.mediaAlt || '', loading: 'lazy'}}),
+                            contentImage(item.mediaUrl, item.mediaAlt, context),
                             ...(item.mediaSource ? [renderImageSource(item.mediaSource)] : []),
                         ]})] : []),
                         element('div', {className: 'feature-collection-body', children: [
@@ -364,7 +376,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
         const verticalAlignment = block.verticalAlignment || 'center';
         const textAlignment = block.textAlignment || 'left';
         const imageFit = block.imageFit || 'cover';
-        const image = element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}});
+        const image = contentImage(block.mediaUrl, block.mediaAlt, context);
         const imageContent = block.linkUrl
             ? element('a', {
                 attributes: {href: block.linkUrl, target: '_blank', rel: 'noopener noreferrer'},
@@ -393,7 +405,7 @@ const renderPublicBlock = (block, context = {visited: new Set(), pagesById: null
             className: `content-image align-${imageAlignment}`,
             attributes: {style: `--image-width: ${imageWidth}%`},
             children: [
-                element('img', {attributes: {src: block.mediaUrl, alt: block.mediaAlt || '', loading: 'lazy'}}),
+                contentImage(block.mediaUrl, block.mediaAlt, context),
                 ...(block.mediaSource ? [renderImageSource(block.mediaSource)] : []),
             ],
         });

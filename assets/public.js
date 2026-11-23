@@ -58,7 +58,15 @@ const preparePublicPage = async (slug) => {
     }
 
     const page = takeEmbeddedPage(slug) ?? await request('/api/public/v1/pages/' + encodePageSlug(slug));
-    const publicContext = {visited: new Set([page.id]), pagesById: null, showEmbedErrors: false, isPreview: false};
+    // Eingebettete Seiten, Teaser- und Buttonziele liefert der Server in `referencedPages` mit, damit
+    // sie ohne Nachladen (und ohne Springen der Seite) sofort im Seitenaufbau stehen.
+    const publicContext = {
+        visited: new Set([page.id]),
+        pagesById: new Map((page.referencedPages ?? []).map((referencedPage) => [referencedPage.id, referencedPage])),
+        imageSizes: page.imageSizes ?? {},
+        showEmbedErrors: false,
+        isPreview: false,
+    };
     const article = renderContentCard(page, publicContext);
     if (slug === 'kontakt') article.append((await import('./public/contact.js')).renderContactForm());
     if (slug === 'gaestebuch') article.append(await (await import('./public/guestbook.js')).renderGuestbook());

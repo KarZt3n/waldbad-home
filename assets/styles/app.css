@@ -340,6 +340,10 @@ a { color: var(--forest-700); }
 .image-content-block.align-center .content-action-row { justify-content: center; }
 .image-content-block.align-right .content-action-row { justify-content: flex-end; }
 
+/* Inhaltsbilder tragen ihre Pixelmaße als width/height (gegen Springen beim Laden); die Höhe ergibt
+   sich trotzdem aus der dargestellten Breite. `:where` lässt Regeln mit fester Höhe Vorrang. */
+:where(main img[width][height]) { height: auto; }
+
 .content-image img {
     display: block;
     width: 100%;

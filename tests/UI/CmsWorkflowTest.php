@@ -742,6 +742,13 @@ final class CmsWorkflowTest extends WebTestCase
         self::assertSame('top', $publicEventReferencePage['blocks'][0]['verticalAlignment']);
         self::assertSame('center', $publicEventReferencePage['blocks'][0]['textAlignment']);
         self::assertSame('contain', $publicEventReferencePage['blocks'][0]['imageFit']);
+        self::assertIsArray($publicEventReferencePage['referencedPages']);
+        self::assertSame(
+            [$createdPage['id']],
+            array_map(static fn (mixed $referenced): mixed => is_array($referenced) ? $referenced['id'] : null, $publicEventReferencePage['referencedPages']),
+            'Die Seite mit der Veranstaltung kommt gleich mit, statt einzeln nachgeladen zu werden.',
+        );
+        self::assertSame([], $publicEventReferencePage['imageSizes'], 'Externe Bilder haben keine bekannten Maße.');
 
         $draftPayload = $page;
         $draftPayload['title'] = 'Überarbeiteter Entwurf';

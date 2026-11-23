@@ -137,6 +137,24 @@ readonly class ContentBlock
     }
 
     /**
+     * IDs aller Seiten, auf die der Block verweist: eingebettete Seite, Teaser- oder
+     * Veranstaltungsziel und Aktionsbuttons mit Seitenziel.
+     *
+     * @return list<string>
+     */
+    public function referencedPageIds(): array
+    {
+        $ids = $this->embeddedPageId === null ? [] : [$this->embeddedPageId];
+        foreach ([...$this->actionButtons, ...$this->eventCallToActions] as $action) {
+            if ($action->pageId !== null) {
+                $ids[] = $action->pageId;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Pflichtangaben eines Blocks. Sie gelten erst beim Einreichen zur Prüfung und beim
      * Veröffentlichen (siehe `Page::assertComplete()`), damit ein halb ausgefüllter Block als
      * Entwurf gespeichert werden kann; Format- und Längenregeln prüft dagegen immer der Konstruktor.
