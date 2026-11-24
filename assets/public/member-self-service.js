@@ -332,7 +332,8 @@ const openMemberCancellationDialog = (token, password, session, preselectedIds, 
     const submit = element('button', {className: 'button', text: 'Kündigung absenden', attributes: {type: 'submit'}});
     const form = element('form', {className: 'confirm-dialog-content', children: [
         element('p', {className: 'eyebrow', text: 'Mitgliedschaft beenden'}),
-        element('p', {text: `Die Mitgliedschaft endet zum ${formatDateDE(session.cancellationExitDate)}. Ein Austritt ist immer zum 31.12. möglich und muss bis zum 30.09. eingehen – danach gilt er zum Ende des folgenden Jahres.`}),
+        element('p', {text: `Die Mitgliedschaft endet zum ${formatDateDE(session.cancellationExitDate)}.`}),
+        element('p', {text: `Ein Austritt ist immer zum 31.12. möglich und muss laut Vereinssatzung bis zum 30.09. eingehen – danach gilt er zum Ende des folgenden Jahres.`}),
         selection,
         handoverArea,
         element('p', {text: 'Die Kündigung wird von uns geprüft und bestätigt; die Bestätigung erhältst du per E-Mail.'}),
