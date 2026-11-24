@@ -820,6 +820,18 @@ final class MembershipManagementWorkflowTest extends WebTestCase
         $this->client->request('GET', '/api/admin/v1/members/'.$headId.'/household', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
         self::assertResponseIsSuccessful();
         self::assertSame(10000, $this->int($this->responseData(), 'payerTotalAnnualCents'));
+
+        // Zum Öffnen des Datensatzes: vollständiges Mitglied und Haushalt in einer Antwort.
+        $this->client->request('GET', '/api/admin/v1/members/'.$childId.'/details', server: ['HTTP_X_CSRF_TOKEN' => $csrfToken]);
+        self::assertResponseIsSuccessful();
+        $details = $this->responseData();
+        $detailsMember = $this->arrayData($details, 'member');
+        self::assertSame($childId, $this->string($detailsMember, 'id'));
+        self::assertSame($this->string($childData, 'street'), $this->string($detailsMember, 'street'));
+        $detailsHousehold = $this->arrayData($details, 'household');
+        self::assertSame($headId, $this->string($this->arrayData($detailsHousehold, 'payer'), 'id'));
+        self::assertCount(2, $this->arrayList($detailsHousehold, 'householdMembers'));
+        self::assertSame(10000, $this->int($detailsHousehold, 'payerTotalAnnualCents'));
     }
 
     public function testRecalculatingOneHouseholdMemberRecalculatesTheWholeFamily(): void

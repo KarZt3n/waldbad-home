@@ -815,6 +815,7 @@ button.member-link-badge.is-linked:hover { border-color: var(--forest-800); back
 .data-table tbody tr:last-child td { border-bottom: 0; }
 
 .member-dialog { width: min(68rem, calc(100vw - 2rem)); height: calc(100vh - 2rem); height: calc(100dvh - 2rem); overflow: hidden; }
+.member-dialog-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .9rem; height: 100%; color: var(--forest-900); font-weight: 750; }
 /* Immer volle Höhe, unabhängig vom Reiter: Kopf mit Reitern bleibt stehen, darunter scrollt der
    Inhalt (`.member-dialog-body`) samt Aktionsleiste am Ende. */
 .member-dialog-content { height: 100%; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }

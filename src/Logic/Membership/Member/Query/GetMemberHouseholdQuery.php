@@ -46,6 +46,7 @@ readonly class GetMemberHouseholdQuery
         }
 
         return new MemberHouseholdResponse(
+            member: MemberResponse::fromMember($member),
             payer: MemberResponse::fromMember($payer),
             householdMembers: array_map(MemberResponse::fromMember(...), $household),
             payerEntries: array_map(MemberResponse::fromMember(...), $payerEntries),

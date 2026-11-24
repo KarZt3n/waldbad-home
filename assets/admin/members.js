@@ -1146,17 +1146,53 @@ const openPayerTransferDialog = (member, household, mode) => new Promise((resolv
     dialog.showModal();
 });
 
-// Die Mitgliedertabelle kennt nur die Listenangaben; vollständige Daten und Familie kommen beim
-// Öffnen parallel nach.
-const openMemberById = async (id, onSaved) => {
-    const [member, household] = await Promise.all([
-        request(`/api/admin/v1/members/${id}`),
-        request(`/api/admin/v1/members/${id}/household`),
-    ]);
-    await openMemberDialog(member, onSaved, household);
+// Platzhalter in Größe des Mitglieder-Dialogs, der sofort aufgeht, solange die Daten noch laden.
+// Schließt der Nutzer ihn vorher, wird der eigentliche Dialog nicht mehr geöffnet. Spinner und
+// Hinweis erscheinen erst nach einer kurzen Verzögerung, damit schnelle Ladevorgänge nicht flackern.
+const MEMBER_LOADING_HINT_DELAY_MS = 500;
+const openMemberLoadingDialog = () => {
+    const dialog = element('dialog', {className: 'activity-dialog member-dialog', attributes: {'aria-busy': 'true'}});
+    const close = element('button', {className: 'event-help-close', text: '×', attributes: {type: 'button', 'aria-label': 'Dialog schließen'}});
+    const status = element('div', {className: 'member-dialog-loading', attributes: {role: 'status', 'aria-live': 'polite'}});
+    const hintTimer = window.setTimeout(() => {
+        status.replaceChildren(
+            element('span', {className: 'navigation-loader-spinner', attributes: {'aria-hidden': 'true'}}),
+            element('span', {text: 'Mitgliedsdaten werden geladen …'}),
+        );
+    }, MEMBER_LOADING_HINT_DELAY_MS);
+    close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => {
+        window.clearTimeout(hintTimer);
+        dialog.remove();
+    });
+    dialog.append(close, status);
+    document.body.append(dialog);
+    dialog.showModal();
+
+    return dialog;
 };
 
-const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) => {
+// Der eigentliche Dialog öffnet sich vor dem Schließen des Platzhalters, damit dazwischen kein
+// leerer Hintergrund aufblitzt; bei Fehlern verschwindet der Platzhalter ebenfalls.
+const withMemberLoadingDialog = async (load) => {
+    const loading = openMemberLoadingDialog();
+    try {
+        await load(loading);
+    } finally {
+        loading.close();
+    }
+};
+
+// Die Mitgliedertabelle kennt nur die Listenangaben; vollständige Daten und Familie kommen beim
+// Öffnen in einer gemeinsamen Anfrage nach (auf Prod kostet jede Anfrage einen eigenen PHP-Prozess).
+const openMemberById = (id, onSaved) => withMemberLoadingDialog(async (loading) => {
+    // await new Promise((resolve) => { window.setTimeout(resolve, 2000); }); // TODO entfernen: simulierte Ladezeit
+    const {member, household} = await request(`/api/admin/v1/members/${id}/details`);
+    if (!loading.open) return;
+    await openMemberDialog(member, onSaved, household, loading);
+});
+
+const openMemberDialog = async (member, onSaved, loadedHousehold = undefined, loading = null) => {
     // Die Haushaltsdaten sind serverseitig bereits auf die Hauptnummer dieses einen Mitglieds
     // beschränkt (`GetMemberHouseholdQuery`), laden also ohnehin nur die eigene Familie.
     let [household, payerCandidates] = await Promise.all([
@@ -1164,6 +1200,7 @@ const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) =>
             : (member ? request(`/api/admin/v1/members/${member.id}/household`) : Promise.resolve(null)),
         loadPayerCandidates(),
     ]);
+    if (loading && !loading.open) return;
     const dialog = element('dialog', {className: 'activity-dialog member-dialog'});
     const suffix = member?.id || 'new';
     const openOther = async (id) => {
@@ -1919,8 +1956,10 @@ const openMemberDialog = async (member, onSaved, loadedHousehold = undefined) =>
                 markSaved();
                 toast('Das Mitglied wurde angelegt.');
                 dialog.close();
-                await onSaved();
-                await openMemberDialog(member, onSaved);
+                await withMemberLoadingDialog(async (loading) => {
+                    await onSaved();
+                    if (loading.open) await openMemberDialog(member, onSaved, undefined, loading);
+                });
                 return;
             }
             // Dialog bleibt offen: nur die serverseitig abgeleiteten Teile (Familie, Beitrag,

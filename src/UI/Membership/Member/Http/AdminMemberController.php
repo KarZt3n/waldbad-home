@@ -262,6 +262,20 @@ class AdminMemberController extends AbstractController
         return new JsonResponse($this->responseFactory->member($query->execute($id)));
     }
 
+    // Beim Öffnen eines Datensatzes braucht der Dialog Mitglied und Haushalt zusammen; eine statt
+    // zweier Anfragen spart auf Prod einen eigenen (oft kalten) PHP-Prozess.
+    #[Route('/{id}/details', name: 'api_admin_member_details', methods: ['GET'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
+    public function details(string $id, GetMemberHouseholdQuery $query): JsonResponse
+    {
+        $this->denyAccessUnlessGranted(Permission::MembersView->value);
+        $household = $query->execute($id);
+
+        return new JsonResponse([
+            'member' => $this->responseFactory->member($household->member),
+            'household' => $this->responseFactory->household($household),
+        ]);
+    }
+
     #[Route('/{id}/household', name: 'api_admin_member_household', methods: ['GET'], requirements: ['id' => '[0-9a-fA-F-]{36}'])]
     public function household(string $id, GetMemberHouseholdQuery $query): JsonResponse
     {
